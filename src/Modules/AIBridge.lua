@@ -34,14 +34,9 @@ function AIBridge:SerializeBuild(build)
 	if spec then
 		state.meta.classId = spec.curClassId
 		state.meta.ascendClassId = spec.curAscendClassId
-		state.meta.className = spec.tree.classNameMap and spec.tree.classNameMap[spec.curClassId] or "Unknown"
-		if spec.tree.ascendNameMap then
-			for name, info in pairs(spec.tree.ascendNameMap) do
-				if info.classId == spec.curClassId and info.ascendClassId == spec.curAscendClassId then
-					state.meta.ascendancyName = name
-					break
-				end
-			end
+		state.meta.className = spec.curClassName or "Unknown"
+		if spec.curAscendClassId and spec.curAscendClassId ~= 0 then
+			state.meta.ascendancyName = spec.curAscendClassName
 		end
 		state.meta.level = build.characterLevel or 100
 	end
@@ -179,7 +174,18 @@ Give specific, actionable advice with numbers. Reference actual stats from the b
 When suggesting changes, explain the expected impact (e.g. "+15% DPS", "+200 life").
 Be concise. Use PoB color codes: ^2=green/good, ^1=red/bad, ^7=white, ^8=gray.
 If the user asks "how do I improve", focus on the top 3 highest-impact changes.
-Format responses for readability in a game tool UI.]]
+Format responses for readability in a game tool UI.
+
+When you can make concrete changes to the build, end your message with an actions block
+on its own line, exactly like this (valid JSON array, no prose inside):
+<actions>
+[{"type":"alloc_node","name":"Resolute Technique"},{"type":"set_config","key":"conditionLowLife","value":true}]
+</actions>
+Supported action types:
+- {"type":"alloc_node","name":"<exact passive node name>"} or {"type":"alloc_node","id":<node id>}
+- {"type":"dealloc_node","name":"..."} or {"type":"dealloc_node","id":...}
+- {"type":"set_config","key":"<config key>","value":<bool or number>}
+Only include actions you are confident about. If no concrete action applies, omit the block entirely.]]
 
 	local userPrompt = "Build state (JSON):\n" .. dkjson.encode(state, {indent = false}) ..
 		"\n\nPlayer question: " .. userMessage
@@ -272,6 +278,200 @@ function AIBridge:GetBuildSummary(build)
 	end
 
 	return table.concat(parts, " | ")
+end
+
+--- Parse an <actions> JSON block out of an AI response.
+-- @param content The raw AI response text
+-- @return string displayText The response with the actions block removed
+-- @return table|nil actions Parsed action array, or nil if no valid block
+function AIBridge:ParseActions(content)
+	if not content then
+		return content, nil
+	end
+
+	local block = content:match("<actions>%s*(.-)%s*</actions>")
+	if not block then
+		return content, nil
+	end
+
+	local actions = dkjson.decode(block)
+	if type(actions) ~= "table" then
+		-- Malformed block: show the text without it, no actions
+		local displayText = content:gsub("<actions>.-</actions>", ""):gsub("%s+$", "")
+		return displayText, nil
+	end
+
+	-- Strip the actions block from the display text
+	local displayText = content:gsub("<actions>.-</actions>", ""):gsub("%s+$", "")
+	return displayText, actions
+end
+
+--- Execute a list of actions on the build.
+-- Each action is a table: { type = "...", ... }
+-- Supported types:
+--   { type="equip_item", slot="Weapon 1", raw="Rarity: MAGIC\n...\n..." }
+--   { type="alloc_node", id=12345 }  or  { type="alloc_node", name="Resolute Technique" }
+--   { type="dealloc_node", id=12345 }
+--   { type="set_config", key="buffCritChance", value=true }
+-- @param build The active build object
+-- @param actions Array of action tables
+-- @return table results Array of { ok=bool, msg=string } per action
+function AIBridge:ExecuteActions(build, actions)
+	local results = {}
+	if not build then
+		return { { ok = false, msg = "No active build" } }
+	end
+
+	for _, action in ipairs(actions) do
+		local ok, msg = self:ExecuteAction(build, action)
+		t_insert(results, { ok = ok, msg = msg or (ok and "OK" or "Failed") })
+	end
+
+	-- Trigger a full rebuild after all actions
+	build.buildFlag = true
+
+	return results
+end
+
+--- Execute a single action on the build
+function AIBridge:ExecuteAction(build, action)
+	local actionType = action.type
+
+	if actionType == "equip_item" then
+		return self:ActionEquipItem(build, action)
+	elseif actionType == "alloc_node" then
+		return self:ActionAllocNode(build, action)
+	elseif actionType == "dealloc_node" then
+		return self:ActionDeallocNode(build, action)
+	elseif actionType == "set_config" then
+		return self:ActionSetConfig(build, action)
+	else
+		return false, "Unknown action type: " .. tostring(actionType)
+	end
+end
+
+--- Equip an item from its raw string into the appropriate slot
+function AIBridge:ActionEquipItem(build, action)
+	local raw = action.raw
+	if not raw or raw == "" then
+		return false, "No item raw string provided"
+	end
+
+	local itemsTab = build.itemsTab
+	if not itemsTab then
+		return false, "Items tab not available"
+	end
+
+	-- Create the item from raw text
+	local item = new("Item", raw)
+	if not item or not item.baseName then
+		return false, "Invalid item data"
+	end
+
+	-- Determine slot: explicit or auto-detect from item type
+	local slotName = action.slot or item:GetPrimarySlot()
+	if not slotName then
+		return false, "Cannot determine slot for item: " .. (item.name or "unknown")
+	end
+
+	-- Validate slot exists
+	if not itemsTab.slots[slotName] then
+		return false, "Invalid slot: " .. slotName
+	end
+
+	-- Add and equip
+	itemsTab:AddItem(item, true)
+	itemsTab.slots[slotName]:SetSelItemId(item.id)
+	itemsTab:PopulateSlots()
+	itemsTab:AddUndoState()
+
+	return true, "Equipped " .. (item.name or item.baseName) .. " in " .. slotName
+end
+
+--- Allocate a passive tree node by ID or name
+function AIBridge:ActionAllocNode(build, action)
+	local spec = build.spec
+	if not spec then
+		return false, "No passive tree spec"
+	end
+
+	local node = self:FindNode(spec, action)
+	if not node then
+		return false, "Node not found: " .. tostring(action.name or action.id)
+	end
+
+	if node.alloc then
+		return true, "Node already allocated: " .. node.name
+	end
+
+	if not node.path then
+		return false, "Node not reachable: " .. node.name
+	end
+
+	spec:AllocNode(node)
+	build.treeTab.modFlag = true
+
+	return true, "Allocated: " .. node.name
+end
+
+--- Deallocate a passive tree node by ID or name
+function AIBridge:ActionDeallocNode(build, action)
+	local spec = build.spec
+	if not spec then
+		return false, "No passive tree spec"
+	end
+
+	local node = self:FindNode(spec, action)
+	if not node then
+		return false, "Node not found: " .. tostring(action.name or action.id)
+	end
+
+	if not node.alloc then
+		return true, "Node not allocated: " .. node.name
+	end
+
+	spec:DeallocNode(node)
+	build.treeTab.modFlag = true
+
+	return true, "Deallocated: " .. node.name
+end
+
+--- Set a configuration option
+function AIBridge:ActionSetConfig(build, action)
+	local configTab = build.configTab
+	if not configTab then
+		return false, "Config tab not available"
+	end
+
+	local key = action.key
+	local value = action.value
+	if not key then
+		return false, "No config key provided"
+	end
+
+	configTab.input[key] = value
+	configTab:BuildModList()
+	configTab.modFlag = true
+
+	return true, "Set config " .. key .. " = " .. tostring(value)
+end
+
+--- Find a passive node by ID or name
+function AIBridge:FindNode(spec, action)
+	if action.id then
+		return spec.nodes[action.id]
+	end
+
+	if action.name then
+		local targetName = action.name:lower()
+		for _, node in pairs(spec.nodes) do
+			if node.name and node.name:lower() == targetName then
+				return node
+			end
+		end
+	end
+
+	return nil
 end
 
 return AIBridge
