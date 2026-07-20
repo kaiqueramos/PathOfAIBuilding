@@ -11,8 +11,11 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 	self.Control()
 
 	self.build = build
-	self.messages = {}  -- {role="user"|"ai"|"system", text=string}
+	self.messages = {}  -- {role="user"|"ai"|"system", text=string, full=string}
 	self.pending = false
+	self.streaming = false
+	self.streamMsgIndex = nil
+	self.streamPos = 0
 
 	-- === TOP: header + build summary ===
 	self.controls.header = new("LabelControl", {"TOPLEFT",self,"TOPLEFT"}, {8, 8, 0, 16}, "^7AI Build Advisor")
@@ -31,6 +34,12 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 		return self.width - 100
 	end
 	self.controls.input:SetPlaceholder("Ask about your build...")
+	-- Enter to send
+	self.controls.input.enterFunc = function(buf)
+		if buf and #buf > 0 then
+			self:SendMessage(buf)
+		end
+	end
 
 	self.controls.send = new("ButtonControl", {"LEFT",self.controls.input,"RIGHT"}, {6, 0, 76, 22}, "Send", function()
 		local msg = self.controls.input.buf
@@ -50,17 +59,20 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 		self:SendMessage("Analyze my defenses. What can I tank and what will kill me?")
 	end)
 
-	-- === MIDDLE: chat history fills remaining space ===
+	-- === MIDDLE: chat history fills remaining space (READ-ONLY) ===
 	self.controls.history = new("EditControl", {"TOPLEFT",self.controls.summary,"BOTTOMLEFT"}, {0, 8, 0, 0}, "", nil, "^%C\t\n", nil, nil, 16, true)
 	self.controls.history.width = function()
 		return self.width - 16
 	end
 	self.controls.history.height = function()
-		-- Fill space between summary and quick buttons
-		local top = 52  -- header(8+16) + summary(4+16) + gap(8)
-		local bottom = 80  -- quick(20+6) + input(22+4) + status(16+4) + gap(8)
+		local top = 52
+		local bottom = 80
 		return math.max(self.height - top - bottom, 100)
 	end
+	-- Make history read-only: block all text input
+	self.controls.history.OnChar = function() end
+	self.controls.history.Insert = function() end
+	self.controls.history.ReplaceSel = function() end
 
 	self:SelectControl(self.controls.input)
 end)
@@ -91,15 +103,51 @@ function AIChatTabClass:SendMessage(text)
 			self:AddMessage("system", "Error: " .. errMsg)
 			self.controls.status.label = "^1Request failed"
 		else
-			self:AddMessage("ai", response)
+			-- Start streaming the response
+			self:StartStream(response)
 			self.controls.status.label = "^2Ready"
 		end
 	end)
 end
 
+--- Start streaming a response (progressive reveal)
+function AIChatTabClass:StartStream(fullText)
+	t_insert(self.messages, { role = "ai", text = "", full = fullText })
+	self.streamMsgIndex = #self.messages
+	self.streamPos = 0
+	self.streaming = true
+end
+
+--- Update streaming progress (called every frame from Draw)
+function AIChatTabClass:UpdateStream()
+	if not self.streaming then return end
+
+	local msg = self.messages[self.streamMsgIndex]
+	if not msg then
+		self.streaming = false
+		return
+	end
+
+	-- Reveal ~40 chars per frame, snap past ^ color codes
+	self.streamPos = self.streamPos + 40
+	local full = msg.full
+	if self.streamPos >= #full then
+		self.streamPos = #full
+		self.streaming = false
+	else
+		-- Don't split a ^X color code
+		if full:sub(self.streamPos, self.streamPos) == "^" then
+			self.streamPos = self.streamPos + 1
+		end
+	end
+
+	msg.text = full:sub(1, self.streamPos)
+	self:RefreshHistory()
+end
+
 --- Add a message to the chat history display
 function AIChatTabClass:AddMessage(role, text)
-	t_insert(self.messages, { role = role, text = text })
+	t_insert(self.messages, { role = role, text = text, full = text })
 	self:RefreshHistory()
 end
 
@@ -139,6 +187,10 @@ function AIChatTabClass:Draw(viewPort, inputEvents)
 	self.y = viewPort.y
 	self.width = viewPort.width
 	self.height = viewPort.height
+
+	-- Update streaming animation
+	self:UpdateStream()
+
 	self:ProcessControlsInput(inputEvents, viewPort)
 	main:DrawBackground(viewPort)
 	self:DrawControls(viewPort)
