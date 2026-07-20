@@ -201,13 +201,13 @@ function main:Init()
 	self.anchorMain.y = function()
 		return self.screenH - 4
 	end
-	self.controls.options = new("ButtonControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {0, 0, 68, 20}, "Options", function()
+	self.controls.options = new("ButtonControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {0, 0, 64, 20}, "Options", function()
 		self:OpenOptionsPopup()
 	end)
-	self.controls.about = new("ButtonControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {72, 0, 68, 20}, "About", function()
+	self.controls.about = new("ButtonControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {68, 0, 64, 20}, "About", function()
 		self:OpenAboutPopup()
 	end)
-	self.controls.ai = new("ButtonControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {144, 0, 68, 20}, "", function()
+	self.controls.ai = new("ButtonControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {136, 0, 76, 20}, "", function()
 		self:OpenAIConfigPopup()
 	end)
 	self.controls.ai.label = function()
@@ -235,11 +235,11 @@ function main:Init()
 	self.controls.checkUpdate.enabled = function()
 		return not launch.updateCheckRunning
 	end
-	self.controls.forkLabel = new("LabelControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {220, -26, 0, 16}, "")
+	self.controls.forkLabel = new("LabelControl", {"LEFT", self.controls.ai, "RIGHT"}, {10, -8, 0, 16}, "")
 	self.controls.forkLabel.label = function()
 		return "^8PoB Community Fork"
 	end
-	self.controls.versionLabel = new("LabelControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {220, -2, 0, 16}, "")
+	self.controls.versionLabel = new("LabelControl", {"LEFT", self.controls.ai, "RIGHT"}, {10, 8, 0, 16}, "")
 	self.controls.versionLabel.label = function()
 		return "^8" .. (launch.versionBranch == "beta" and "Beta: " or "Version: ") .. launch.versionNumber .. (launch.versionBranch == "dev" and " (Dev)" or "")
 	end
