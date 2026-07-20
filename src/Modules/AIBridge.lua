@@ -118,7 +118,7 @@ function AIBridge:SerializeBuild(build)
 		end
 	end
 
-	-- Tree: allocated node IDs and keystones
+	-- Tree: allocated nodes + available notables/keystones for allocation
 	if spec and spec.allocNodes then
 		local nodeIds = {}
 		local keystones = {}
@@ -135,6 +135,25 @@ function AIBridge:SerializeBuild(build)
 		state.tree.keystones = keystones
 		state.tree.notables = notables
 		state.tree.allocatedNodes = nodeIds
+	end
+
+	-- Available nodes for allocation (notables and keystones only, to keep it concise)
+	if spec and spec.nodes then
+		local availableNodes = {}
+		for nodeId, node in pairs(spec.nodes) do
+			if (node.type == "Notable" or node.type == "Keystone") and not node.alloc then
+				t_insert(availableNodes, {
+					id = nodeId,
+					name = node.name,
+					type = node.type,
+				})
+			end
+		end
+		-- Limit to 50 nodes to avoid overwhelming the LLM
+		if #availableNodes > 50 then
+			availableNodes = {unpack(availableNodes, 1, 50)}
+		end
+		state.tree.availableNodes = availableNodes
 	end
 
 	return state
