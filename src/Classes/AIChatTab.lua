@@ -135,9 +135,12 @@ function AIChatTabClass:Save(xml)
 end
 
 function AIChatTabClass:Draw(viewPort, inputEvents)
+	self.x = viewPort.x
+	self.y = viewPort.y
 	self.width = viewPort.width
 	self.height = viewPort.height
 	self:ProcessControlsInput(inputEvents, viewPort)
+	main:DrawBackground(viewPort)
 	self:DrawControls(viewPort)
 end
 
