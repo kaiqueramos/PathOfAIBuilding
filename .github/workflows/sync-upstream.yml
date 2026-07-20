@@ -1,0 +1,72 @@
+name: Sync upstream PoB
+
+on:
+  schedule:
+    # Toda segunda-feira às 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch: {} # permite disparar manualmente pelo GitHub UI
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/PathOfBuildingCommunity/PathOfBuilding.git || true
+          git fetch upstream
+
+      - name: Check for new commits
+        id: check
+        run: |
+          BEHIND=$(git rev-list --count HEAD..upstream/dev)
+          echo "behind=$BEHIND" >> "$GITHUB_OUTPUT"
+          if [ "$BEHIND" -eq 0 ]; then
+            echo "✅ Já está em sync com upstream."
+          else
+            echo "📦 $BEHIND commits novos no upstream."
+          fi
+
+      - name: Merge upstream (clean)
+        if: steps.check.outputs.behind != '0'
+        run: |
+          if git merge upstream/dev --no-edit; then
+            git push origin dev
+            echo "✅ Merge limpo — pushed direto pra dev."
+          else
+            echo "⚠️ Conflito detectado — abortando merge."
+            git merge --abort
+            echo "conflict=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Open PR on conflict
+        if: env.conflict == 'true'
+        run: |
+          BRANCH="sync/upstream-$(date +%Y%m%d)"
+          git checkout -b "$BRANCH"
+          git merge upstream/dev --no-edit || true
+          git add -A
+          git commit -m "sync: merge upstream (com conflitos — resolver manualmente)" || true
+          git push origin "$BRANCH" --force
+          gh pr create \
+            --base dev \
+            --head "$BRANCH" \
+            --title "🔄 Sync upstream ($(date +%Y-%m-%d)) — CONFLITOS" \
+            --body "O merge automático detectou conflitos. Resolver manualmente antes de mergear." \
+            || echo "PR já existe ou não foi possível criar."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
