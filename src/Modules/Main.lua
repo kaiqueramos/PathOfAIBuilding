@@ -207,6 +207,9 @@ function main:Init()
 	self.controls.about = new("ButtonControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {72, 0, 68, 20}, "About", function()
 		self:OpenAboutPopup()
 	end)
+	self.controls.ai = new("ButtonControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {144, 0, 68, 20}, "AI", function()
+		self:OpenAIConfigPopup()
+	end)
 	self.controls.applyUpdate = new("ButtonControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {0, -24, 140, 20}, "^x50E050Update Ready", function()
 		self:OpenUpdatePopup()
 	end)
@@ -1417,6 +1420,11 @@ function main:OpenAboutPopup(helpSectionIndex)
 		controls.changelog.controls.scrollBar.offset = helpSections[helpSectionIndex].height * textSize
 	end
 	self:OpenPopup(popupWidth, 628, "About", controls)
+end
+
+function main:OpenAIConfigPopup()
+	local AIConfigPanel = LoadModule("Classes/AIConfigPanel")
+	AIConfigPanel:OpenPopup()
 end
 
 function main:DrawBackground(viewPort)

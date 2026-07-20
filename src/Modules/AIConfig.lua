@@ -2,6 +2,8 @@
 -- Módulo de configuração segura para chaves de API
 -- Armazena configurações no userPath (fora do repositório)
 
+local dkjson = require "dkjson"
+
 local AIConfig = {
 	config = {},
 	configPath = nil,
@@ -33,9 +35,8 @@ function AIConfig:Load()
 	local content = file:read("*all")
 	file:close()
 	
-	-- Parse JSON (usando dkjson que já vem no PoB)
-	local json = require("dkjson")
-	local config, err = json.decode(content)
+	-- Parse JSON
+	local config, err = dkjson.decode(content)
 	
 	if not config then
 		return false, "Erro ao parsear config: " .. tostring(err)
@@ -56,8 +57,7 @@ function AIConfig:Save()
 		return false, "configPath não inicializado"
 	end
 	
-	local json = require("dkjson")
-	local content = json.encode(self.config, { indent = true })
+	local content = dkjson.encode(self.config, { indent = true })
 	
 	local file = io.open(self.configPath, "w")
 	if not file then
