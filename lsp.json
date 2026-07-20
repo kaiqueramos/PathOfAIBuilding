@@ -1,0 +1,10 @@
+{
+  "servers": {
+    "lua-language-server": {
+      "command": "/home/karramos/.local/bin/lua-language-server",
+      "args": ["--stdio"],
+      "fileTypes": [".lua"],
+      "rootMarkers": [".luarc.json", ".git"]
+    }
+  }
+}
