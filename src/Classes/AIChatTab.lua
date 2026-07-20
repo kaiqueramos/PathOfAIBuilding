@@ -24,7 +24,7 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 	-- === BOTTOM: status, input, quick buttons (anchored from bottom) ===
 	self.controls.status = new("LabelControl", {"BOTTOMLEFT",self,"BOTTOMLEFT"}, {8, -4, 0, 16}, "")
 
-	self.controls.input = new("EditControl", {"BOTTOMLEFT",self.controls.status,"TOPLEFT"}, {0, -4, 0, 22}, "", nil, nil, nil, function(buf)
+	self.controls.input = new("EditControl", {"BOTTOMLEFT",self.controls.status,"TOPLEFT"}, {0, -4, 0, 22}, "", nil, "^%C\t\n", nil, function(buf)
 		self.controls.send.enabled = #buf > 0
 	end)
 	self.controls.input.width = function()
