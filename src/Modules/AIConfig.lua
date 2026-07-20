@@ -1,170 +1,165 @@
 -- Path of Building AI Integration
--- Módulo de configuração segura para chaves de API
--- Armazena configurações no userPath (fora do repositório)
+-- Secure API key configuration module
+-- Stores config in userPath (outside the repository)
+-- Singleton: all LoadModule calls share the same instance
 
 local dkjson = require "dkjson"
+
+-- Singleton guard: return cached instance if already loaded
+if _G._AIConfigInstance then
+	return _G._AIConfigInstance
+end
 
 local AIConfig = {
 	config = {},
 	configPath = nil,
 }
 
--- Inicializa o caminho do config baseado no userPath do PoB
+-- Initialize config path based on PoB's userPath
 function AIConfig:Init(userPath)
 	if not userPath then
-		return false, "userPath não fornecido"
+		return false, "userPath not provided"
 	end
-	
+
 	self.configPath = userPath .. "ai_config.json"
 	return self:Load()
 end
 
--- Carrega configurações do arquivo JSON
+-- Load configuration from JSON file
 function AIConfig:Load()
 	if not self.configPath then
-		return false, "configPath não inicializado"
+		return false, "configPath not initialized"
 	end
-	
+
 	local file = io.open(self.configPath, "r")
 	if not file then
-		-- Arquivo não existe, usa defaults
+		-- File doesn't exist, use defaults
 		self.config = self:GetDefaults()
 		return true
 	end
-	
+
 	local content = file:read("*all")
 	file:close()
-	
-	-- Parse JSON
+
 	local config, err = dkjson.decode(content)
-	
 	if not config then
-		return false, "Erro ao parsear config: " .. tostring(err)
+		return false, "Error parsing config: " .. tostring(err)
 	end
-	
-	-- Merge com defaults (para campos faltantes)
+
+	-- Merge with defaults (for missing fields)
 	self.config = self:GetDefaults()
 	for k, v in pairs(config) do
 		self.config[k] = v
 	end
-	
+
 	return true
 end
 
--- Salva configurações no arquivo JSON
+-- Save configuration to JSON file
 function AIConfig:Save()
 	if not self.configPath then
-		return false, "configPath não inicializado"
+		return false, "configPath not initialized"
 	end
-	
+
 	local content = dkjson.encode(self.config, { indent = true })
-	
+
 	local file = io.open(self.configPath, "w")
 	if not file then
-		return false, "Não foi possível abrir arquivo para escrita"
+		return false, "Cannot open file for writing"
 	end
-	
+
 	file:write(content)
 	file:close()
-	
-	-- Define permissões restritas (apenas owner pode ler)
-	-- Isso é importante para proteger a API key
+
+	-- Restrict permissions (owner read/write only)
 	os.execute('chmod 600 "' .. self.configPath .. '" 2>/dev/null')
-	
+
 	return true
 end
 
--- Retorna configurações padrão
+-- Returns default configuration
 function AIConfig:GetDefaults()
 	return {
-		-- Endpoint da API de IA (OpenAI-compatible)
 		api_endpoint = "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
-		
-		-- API Key (NUNCA commitar isso)
 		api_key = "",
-		
-		-- Modelo a usar
 		model = "qwen3.7-max",
-		
-		-- Timeout para requests (segundos)
 		timeout = 120,
-		
-		-- Habilitar logging de requests (sem keys)
 		debug_logging = false,
-		
-		-- Versão do config (para migrações futuras)
 		config_version = 1,
 	}
 end
 
--- Valida se a configuração está completa
+-- Validate that configuration is complete
 function AIConfig:Validate()
 	if not self.config.api_key or self.config.api_key == "" then
-		return false, "API Key não configurada"
+		return false, "API Key not configured"
 	end
-	
+
 	if not self.config.api_endpoint or self.config.api_endpoint == "" then
-		return false, "API Endpoint não configurado"
+		return false, "API Endpoint not configured"
 	end
-	
+
 	if not self.config.model or self.config.model == "" then
-		return false, "Modelo não configurado"
+		return false, "Model not configured"
 	end
-	
+
 	return true
 end
 
--- Retorna a API key (para uso em requests)
--- NUNCA logue isso
+-- Returns the API key (for use in requests)
+-- NEVER log this
 function AIConfig:GetAPIKey()
 	return self.config.api_key or ""
 end
 
--- Retorna o endpoint
+-- Returns the endpoint
 function AIConfig:GetEndpoint()
 	return self.config.api_endpoint or ""
 end
 
--- Retorna o modelo
+-- Returns the model
 function AIConfig:GetModel()
 	return self.config.model or ""
 end
 
--- Atualiza a API key
+-- Updates the API key
 function AIConfig:SetAPIKey(key)
 	self.config.api_key = key
 	return self:Save()
 end
 
--- Atualiza o endpoint
+-- Updates the endpoint
 function AIConfig:SetEndpoint(endpoint)
 	self.config.api_endpoint = endpoint
 	return self:Save()
 end
 
--- Atualiza o modelo
+-- Updates the model
 function AIConfig:SetModel(model)
 	self.config.model = model
 	return self:Save()
 end
 
--- Limpa a API key (para logout/reset)
+-- Clears the API key (for logout/reset)
 function AIConfig:ClearAPIKey()
 	self.config.api_key = ""
 	return self:Save()
 end
 
--- Retorna config sanitizada (sem a key) para logging/debug
+-- Returns sanitized config (no key) for logging/debug
 function AIConfig:GetSanitizedConfig()
 	local sanitized = {}
 	for k, v in pairs(self.config) do
 		if k == "api_key" then
-			sanitized[k] = v ~= "" and "[CONFIGURADA]" or "[VAZIA]"
+			sanitized[k] = v ~= "" and "[SET]" or "[EMPTY]"
 		else
 			sanitized[k] = v
 		end
 	end
 	return sanitized
 end
+
+-- Cache singleton globally
+_G._AIConfigInstance = AIConfig
 
 return AIConfig
