@@ -2,6 +2,7 @@
 -- AI Chat Tab: conversational interface for build advice
 -- Follows the NotesTab pattern (ControlHost + Control)
 
+local t_insert = table.insert
 local dkjson = require "dkjson"
 local AIBridge = LoadModule("Modules/AIBridge")
 

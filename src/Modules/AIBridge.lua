@@ -2,6 +2,7 @@
 -- AIBridge: serializes build state, calls LLM API, executes actions
 -- Uses PoB's existing lcurl subprocess pattern for async HTTP
 
+local t_insert = table.insert
 local dkjson = require "dkjson"
 local AIConfig = LoadModule("Modules/AIConfig")
 
