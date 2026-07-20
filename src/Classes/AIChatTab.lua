@@ -6,19 +6,65 @@ local t_insert = table.insert
 local dkjson = require "dkjson"
 local AIBridge = LoadModule("Modules/AIBridge")
 
--- Transliterate Latin-1 accented bytes (Wine keyboard) to ASCII.
--- Wine/SimpleGraphic delivers PT-BR keys as single Latin-1 bytes (ç=0xE7),
--- which the PoB font can't render (shows '?'). Map them to plain ASCII so
--- the field stays clean and the LLM still understands the text.
-local TRANSLIT = {
-	["\195"] = "a", ["\196"] = "a", ["\197"] = "a", ["\198"] = "ae",
-	["\199"] = "c",
-	["\200"] = "e", ["\201"] = "e", ["\202"] = "e", ["\203"] = "e",
-	["\204"] = "i", ["\205"] = "i", ["\206"] = "i", ["\207"] = "i",
-	["\209"] = "n",
-	["\210"] = "o", ["\211"] = "o", ["\212"] = "o", ["\213"] = "o", ["\214"] = "o", ["\216"] = "o",
-	["\217"] = "u", ["\218"] = "u", ["\219"] = "u", ["\220"] = "u",
-	["\221"] = "y",
+-- Transliterate accented characters to ASCII.
+-- Handles both:
+-- 1. Latin-1 single-byte (Wine keyboard input: ç=0xE7)
+-- 2. UTF-8 multi-byte (API response: ã=0xC3 0xA3)
+-- PoB font lacks accented glyphs → shows '?' or '[U+XXXX]'.
+-- Map to plain ASCII so text stays clean and readable.
+
+-- UTF-8 multi-byte sequences → ASCII
+local UTF8_TRANSLIT = {
+	-- à á â ã ä å æ
+	["\195\160"] = "a", ["\195\161"] = "a", ["\195\162"] = "a", ["\195\163"] = "a",
+	["\195\164"] = "a", ["\195\165"] = "a", ["\195\166"] = "ae",
+	-- ç
+	["\195\167"] = "c",
+	-- è é ê ë
+	["\195\168"] = "e", ["\195\169"] = "e", ["\195\170"] = "e", ["\195\171"] = "e",
+	-- ì í î ï
+	["\195\172"] = "i", ["\195\173"] = "i", ["\195\174"] = "i", ["\195\175"] = "i",
+	-- ñ
+	["\195\177"] = "n",
+	-- ò ó ô õ ö ø
+	["\195\178"] = "o", ["\195\179"] = "o", ["\195\180"] = "o", ["\195\181"] = "o",
+	["\195\182"] = "o", ["\195\184"] = "o",
+	-- ù ú û ü
+	["\195\185"] = "u", ["\195\186"] = "u", ["\195\187"] = "u", ["\195\188"] = "u",
+	-- ý ÿ
+	["\195\189"] = "y", ["\195\191"] = "y",
+	-- À Á Â Ã Ä Å Æ
+	["\195\128"] = "A", ["\195\129"] = "A", ["\195\130"] = "A", ["\195\131"] = "A",
+	["\195\132"] = "A", ["\195\133"] = "A", ["\195\134"] = "AE",
+	-- Ç
+	["\195\135"] = "C",
+	-- È É Ê Ë
+	["\195\136"] = "E", ["\195\137"] = "E", ["\195\138"] = "E", ["\195\139"] = "E",
+	-- Ì Í Î Ï
+	["\195\140"] = "I", ["\195\141"] = "I", ["\195\142"] = "I", ["\195\143"] = "I",
+	-- Ñ
+	["\195\145"] = "N",
+	-- Ò Ó Ô Õ Ö Ø
+	["\195\146"] = "O", ["\195\147"] = "O", ["\195\148"] = "O", ["\195\149"] = "O",
+	["\195\150"] = "O", ["\195\152"] = "O",
+	-- Ù Ú Û Ü
+	["\195\153"] = "U", ["\195\154"] = "U", ["\195\155"] = "U", ["\195\156"] = "U",
+	-- Ý
+	["\195\157"] = "Y",
+	-- ß
+	["\195\159"] = "ss",
+}
+
+-- Latin-1 single-byte → ASCII (Wine keyboard)
+local LATIN1_TRANSLIT = {
+	["\192"] = "A", ["\193"] = "A", ["\194"] = "A", ["\195"] = "A", ["\196"] = "A", ["\197"] = "A", ["\198"] = "AE",
+	["\199"] = "C",
+	["\200"] = "E", ["\201"] = "E", ["\202"] = "E", ["\203"] = "E",
+	["\204"] = "I", ["\205"] = "I", ["\206"] = "I", ["\207"] = "I",
+	["\209"] = "N",
+	["\210"] = "O", ["\211"] = "O", ["\212"] = "O", ["\213"] = "O", ["\214"] = "O", ["\216"] = "O",
+	["\217"] = "U", ["\218"] = "U", ["\219"] = "U", ["\220"] = "U",
+	["\221"] = "Y",
 	["\223"] = "ss",
 	["\224"] = "a", ["\225"] = "a", ["\226"] = "a", ["\227"] = "a", ["\228"] = "a", ["\229"] = "a", ["\230"] = "ae",
 	["\231"] = "c",
@@ -29,10 +75,17 @@ local TRANSLIT = {
 	["\249"] = "u", ["\250"] = "u", ["\251"] = "u", ["\252"] = "u",
 	["\253"] = "y", ["\255"] = "y",
 }
+
 local function translit(text)
-	return (text:gsub("[%z\128-\255]", function(b)
-		return TRANSLIT[b] or ""
-	end))
+	-- First: UTF-8 multi-byte sequences
+	text = text:gsub("\195[\128-\191]", function(seq)
+		return UTF8_TRANSLIT[seq] or ""
+	end)
+	-- Then: Latin-1 single bytes (remaining high bytes)
+	text = text:gsub("[\192-\255]", function(b)
+		return LATIN1_TRANSLIT[b] or ""
+	end)
+	return text
 end
 
 local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(self, build)
@@ -137,8 +190,8 @@ function AIChatTabClass:SendMessage(text)
 			self:AddMessage("system", "Error: " .. errMsg)
 			self.controls.status.label = "^1Request failed"
 		else
-			-- Start streaming the response
-			self:StartStream(response)
+			-- Start streaming the response (transliterate accented chars)
+			self:StartStream(translit(response))
 			self.controls.status.label = "^2Ready"
 		end
 	end)
