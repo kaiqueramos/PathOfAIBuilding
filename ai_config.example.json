@@ -1,0 +1,8 @@
+{
+  "api_endpoint": "https://api.openai.com/v1",
+  "api_key": "YOUR_API_KEY_HERE",
+  "model": "gpt-4o",
+  "timeout": 120,
+  "debug_logging": false,
+  "config_version": 1
+}

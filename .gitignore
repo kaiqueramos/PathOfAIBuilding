@@ -39,3 +39,13 @@ runtime/imgui.ini
 runtime/SimpleGraphic/SimpleGraphic.log
 
 src/poe_api_response.json
+
+# AI Integration - NUNCA COMMITAR
+ai_config.json
+*.ai_key
+.ai_secrets
+ai_keys/
+
+# User-specific AI settings
+Settings.xml
+*.user.json
