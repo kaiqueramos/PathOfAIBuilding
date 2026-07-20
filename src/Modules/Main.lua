@@ -207,9 +207,16 @@ function main:Init()
 	self.controls.about = new("ButtonControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {72, 0, 68, 20}, "About", function()
 		self:OpenAboutPopup()
 	end)
-	self.controls.ai = new("ButtonControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {144, 0, 68, 20}, "AI", function()
+	self.controls.ai = new("ButtonControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {144, 0, 68, 20}, "", function()
 		self:OpenAIConfigPopup()
 	end)
+	self.controls.ai.label = function()
+		if self.aiConfig and self.aiConfig:Validate() then
+			return "^2AI Ready"
+		else
+			return "^1AI Setup"
+		end
+	end
 	self.controls.applyUpdate = new("ButtonControl", {"BOTTOMLEFT",self.anchorMain,"BOTTOMLEFT"}, {0, -24, 140, 20}, "^x50E050Update Ready", function()
 		self:OpenUpdatePopup()
 	end)
@@ -815,6 +822,9 @@ function main:ChangeUserPath(newUserPath, ignoreBuild)
 	MakeDir(self.buildPath)
 	self:LoadSettings(ignoreBuild)
 	self:LoadSharedItems()
+	-- Initialize AI config
+	self.aiConfig = LoadModule("Modules/AIConfig")
+	self.aiConfig:Init(self.userPath)
 end
 --- Opens the popup for the "Options" menu
 --- @param savedState table|nil optional passing of saved values, in case of reopening `{nodePowerTheme, colorPositive, ...}`
