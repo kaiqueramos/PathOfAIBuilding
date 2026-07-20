@@ -469,6 +469,10 @@ function buildMode:Init(dbFileName, buildName, buildXML, convertBuild, importLin
 		self.viewMode = "COMPARE"
 	end)
 	self.controls.modeCompare.locked = function() return self.viewMode == "COMPARE" end
+	self.controls.modeAI = new("ButtonControl", {"LEFT",self.controls.modeCompare,"RIGHT"}, {4, 0, 72, 20}, "AI", function()
+		self.viewMode = "AI"
+	end)
+	self.controls.modeAI.locked = function() return self.viewMode == "AI" end
 	-- Skills
 	self.controls.mainSkillLabel = new("LabelControl", {"TOPLEFT",self.anchorSideBar,"TOPLEFT"}, {0, 80, 300, 16}, "^7Main Skill:")
 	self.controls.mainSocketGroup = new("DropDownControl", {"TOPLEFT",self.controls.mainSkillLabel,"BOTTOMLEFT"}, {0, 2, 300, 18}, nil, function(index, value)
@@ -604,6 +608,7 @@ function buildMode:Init(dbFileName, buildName, buildXML, convertBuild, importLin
 	self.skillsTab = new("SkillsTab", self)
 	self.calcsTab = new("CalcsTab", self)
 	self.compareTab = new("CompareTab", self)
+	self.aiChatTab = new("AIChatTab", self)
 
 	-- Load sections from the build file
 	self.savers = {
@@ -1232,6 +1237,8 @@ function buildMode:OnFrame(inputEvents)
 		self.calcsTab:Draw(tabViewPort, inputEvents)
 	elseif self.viewMode == "COMPARE" then
 		self.compareTab:Draw(tabViewPort, inputEvents)
+	elseif self.viewMode == "AI" then
+		self.aiChatTab:Draw(tabViewPort, inputEvents)
 	end
 
 	self.unsaved = self.modFlag or self.notesTab.modFlag or self.partyTab.modFlag or self.configTab.modFlag or self.treeTab.modFlag or self.treeTab.searchFlag or self.spec.modFlag or self.skillsTab.modFlag or self.itemsTab.modFlag or self.calcsTab.modFlag
