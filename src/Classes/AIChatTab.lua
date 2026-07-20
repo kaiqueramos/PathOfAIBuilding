@@ -85,6 +85,35 @@ local function translit(text)
 	text = text:gsub("[\192-\255]", function(b)
 		return LATIN1_TRANSLIT[b] or ""
 	end)
+	-- Finally: [U+XXXX] placeholders (SimpleGraphic converts UTF-8 to these)
+	text = text:gsub("%[U%+(%x+)%]", function(hex)
+		local code = tonumber(hex, 16)
+		-- Map common Latin-1 Supplement codepoints to ASCII
+		local map = {
+			[0xC0]=65,[0xC1]=65,[0xC2]=65,[0xC3]=65,[0xC4]=65,[0xC5]=65,[0xC6]=65, -- À-Å → A
+			[0xC7]=67, -- Ç → C
+			[0xC8]=69,[0xC9]=69,[0xCA]=69,[0xCB]=69, -- È-Ë → E
+			[0xCC]=73,[0xCD]=73,[0xCE]=73,[0xCF]=73, -- Ì-Ï → I
+			[0xD1]=78, -- Ñ → N
+			[0xD2]=79,[0xD3]=79,[0xD4]=79,[0xD5]=79,[0xD6]=79,[0xD8]=79, -- Ò-Ö,Ø → O
+			[0xD9]=85,[0xDA]=85,[0xDB]=85,[0xDC]=85, -- Ù-Ü → U
+			[0xDD]=89, -- Ý → Y
+			[0xDF]=115, -- ß → s (approximation)
+			[0xE0]=97,[0xE1]=97,[0xE2]=97,[0xE3]=97,[0xE4]=97,[0xE5]=97,[0xE6]=97, -- à-å → a
+			[0xE7]=99, -- ç → c
+			[0xE8]=101,[0xE9]=101,[0xEA]=101,[0xEB]=101, -- è-ë → e
+			[0xEC]=105,[0xED]=105,[0xEE]=105,[0xEF]=105, -- ì-ï → i
+			[0xF1]=110, -- ñ → n
+			[0xF2]=111,[0xF3]=111,[0xF4]=111,[0xF5]=111,[0xF6]=111,[0xF8]=111, -- ò-ö,ø → o
+			[0xF9]=117,[0xFA]=117,[0xFB]=117,[0xFC]=117, -- ù-ü → u
+			[0xFD]=121,[0xFF]=121, -- ý,ÿ → y
+		}
+		local ascii = map[code]
+		if ascii then
+			return string.char(ascii)
+		end
+		return ""  -- Drop unknown codepoints
+	end)
 	return text
 end
 
@@ -180,6 +209,18 @@ function AIChatTabClass:SendMessage(text)
 	self.controls.quickUpgrade.enabled = false
 	self.controls.quickTank.enabled = false
 
+	-- Build conversation history from messages (exclude current user message)
+	local history = {}
+	for i = 1, #self.messages - 1 do
+		local msg = self.messages[i]
+		if msg.role == "user" then
+			t_insert(history, { role = "user", content = msg.text })
+		elseif msg.role == "ai" then
+			t_insert(history, { role = "assistant", content = msg.full or msg.text })
+		end
+		-- Skip "system" messages (errors)
+	end
+
 	AIBridge:Ask(self.build, text, function(response, errMsg)
 		self.pending = false
 		self.controls.quickImprove.enabled = true
@@ -194,7 +235,7 @@ function AIChatTabClass:SendMessage(text)
 			self:StartStream(translit(response))
 			self.controls.status.label = "^2Ready"
 		end
-	end)
+	end, history)
 end
 
 --- Start streaming a response (progressive reveal)

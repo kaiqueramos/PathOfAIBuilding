@@ -142,9 +142,9 @@ end
 
 --- Send build state to LLM and get response
 -- @param build The active build object
--- @param userMessage The user's question/instruction
 -- @param callback function(response, errMsg) called with AI response or error
-function AIBridge:Ask(build, userMessage, callback)
+-- @param history optional array of prior {role, content} messages
+function AIBridge:Ask(build, userMessage, callback, history)
 	if self.pending then
 		callback(nil, "Request already in progress")
 		return
@@ -190,13 +190,25 @@ Only include actions you are confident about. If no concrete action applies, omi
 	local userPrompt = "Build state (JSON):\n" .. dkjson.encode(state, {indent = false}) ..
 		"\n\nPlayer question: " .. userMessage
 
+	-- Build messages array with conversation history
+	local messages = {
+		{ role = "system", content = systemPrompt },
+	}
+	
+	-- Add conversation history (if provided)
+	if history and #history > 0 then
+		for _, msg in ipairs(history) do
+			t_insert(messages, msg)
+		end
+	end
+	
+	-- Add current user message with build state
+	t_insert(messages, { role = "user", content = userPrompt })
+	
 	-- Request body for OpenAI-compatible API
 	local requestBody = dkjson.encode({
 		model = AIConfig:GetModel(),
-		messages = {
-			{ role = "system", content = systemPrompt },
-			{ role = "user", content = userPrompt },
-		},
+		messages = messages,
 		max_tokens = 2048,
 		temperature = 0.3,
 	}, { indent = false })
