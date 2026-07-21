@@ -329,6 +329,163 @@ function AIBridge:SerializeBuild(build)
 	return state
 end
 
+--- Extract mentions of known entities from AI response text
+-- @param text The AI response text
+-- @param state The serialized build state (contains reference menu)
+-- @return table Array of {type="gem"|"unique"|"node", name=string}
+function AIBridge:ExtractMentions(text, state)
+	local mentions = {}
+	local seen = {}
+	
+	-- Check gem names
+	if state.reference and state.reference.gemNames then
+		for _, gemName in ipairs(state.reference.gemNames) do
+			if text:find(gemName, 1, true) and not seen[gemName] then
+				t_insert(mentions, { type = "gem", name = gemName })
+				seen[gemName] = true
+			end
+		end
+	end
+	
+	-- Check unique names
+	if state.reference and state.reference.uniqueNames then
+		for _, names in pairs(state.reference.uniqueNames) do
+			for _, uniqueName in ipairs(names) do
+				if text:find(uniqueName, 1, true) and not seen[uniqueName] then
+					t_insert(mentions, { type = "unique", name = uniqueName })
+					seen[uniqueName] = true
+				end
+			end
+		end
+	end
+	
+	-- Check node names
+	if state.tree and state.tree.availableNodes then
+		for _, node in ipairs(state.tree.availableNodes) do
+			if text:find(node.name, 1, true) and not seen[node.name] then
+				t_insert(mentions, { type = "node", name = node.name })
+				seen[node.name] = true
+			end
+		end
+	end
+	
+	return mentions
+end
+
+--- Look up full details for a mentioned entity
+-- @param build The active build object
+-- @param mention {type="gem"|"unique"|"node", name=string}
+-- @return string Formatted detail text
+function AIBridge:LookupDetails(build, mention)
+	if mention.type == "gem" then
+		return self:LookupGemDetails(build, mention.name)
+	elseif mention.type == "unique" then
+		return self:LookupUniqueDetails(build, mention.name)
+	elseif mention.type == "node" then
+		return self:LookupNodeDetails(build, mention.name)
+	end
+	return ""
+end
+
+--- Look up gem details
+function AIBridge:LookupGemDetails(build, gemName)
+	if not build.data or not build.data.gems then
+		return ""
+	end
+	
+	for gemId, gemData in pairs(build.data.gems) do
+		if gemData.name == gemName then
+			local lines = { gemName .. ":" }
+			
+			-- Type and requirements
+			if gemData.grantedEffect then
+				if gemData.grantedEffect.support then
+					t_insert(lines, "  Support Gem")
+				else
+					t_insert(lines, "  Active Skill")
+				end
+			end
+			
+			if gemData.reqStr and gemData.reqStr > 0 then
+				t_insert(lines, "  Requires " .. gemData.reqStr .. " Str")
+			end
+			if gemData.reqDex and gemData.reqDex > 0 then
+				t_insert(lines, "  Requires " .. gemData.reqDex .. " Dex")
+			end
+			if gemData.reqInt and gemData.reqInt > 0 then
+				t_insert(lines, "  Requires " .. gemData.reqInt .. " Int")
+			end
+			
+			-- Tags
+			if gemData.tags and #gemData.tags > 0 then
+				t_insert(lines, "  Tags: " .. table.concat(gemData.tags, ", "))
+			end
+			
+			return table.concat(lines, "\n")
+		end
+	end
+	
+	return ""
+end
+
+--- Look up unique item details
+function AIBridge:LookupUniqueDetails(build, uniqueName)
+	if not build.data or not build.data.uniques then
+		return ""
+	end
+	
+	for _, uniques in pairs(build.data.uniques) do
+		for _, unique in ipairs(uniques) do
+			local raw = type(unique) == "string" and unique or (type(unique) == "table" and unique[1])
+			if raw then
+				local name = raw:match("^([^\n]+)")
+				if name == uniqueName then
+					-- Return first 10 lines of the raw item text
+					local lines = {}
+					local count = 0
+					for line in raw:gmatch("[^\n]+") do
+						t_insert(lines, "  " .. line)
+						count = count + 1
+						if count >= 10 then break end
+					end
+					return table.concat(lines, "\n")
+				end
+			end
+		end
+	end
+	
+	return ""
+end
+
+--- Look up passive node details
+function AIBridge:LookupNodeDetails(build, nodeName)
+	if not build.spec or not build.spec.nodes then
+		return ""
+	end
+	
+	for _, node in pairs(build.spec.nodes) do
+		if node.name == nodeName then
+			local lines = { nodeName .. " (" .. node.type .. "):" }
+			
+			-- Node stats (sd = stat descriptions)
+			if node.sd and #node.sd > 0 then
+				for _, stat in ipairs(node.sd) do
+					t_insert(lines, "  " .. stat)
+				end
+			end
+			
+			-- Path length if available
+			if node.path then
+				t_insert(lines, "  Path length: " .. #node.path .. " nodes")
+			end
+			
+			return table.concat(lines, "\n")
+		end
+	end
+	
+	return ""
+end
+
 --- Send build state to LLM and get response
 -- @param build The active build object
 -- @param callback function(response, errMsg) called with AI response or error
@@ -422,8 +579,25 @@ for the cluster's internal nodes. After adding skills, emit set_main_skill so DP
 Abyssal jewels: use equip_item with an abyssal slot name from state.abyssalSockets.
 Only include actions you are confident about.]]
 
-	local userPrompt = "Build state (JSON):\n" .. dkjson.encode(state, {indent = false}) ..
-		"\n\nPlayer question: " .. userMessage
+	-- Build user prompt with build state
+	local userPrompt = "Build state (JSON):\n" .. dkjson.encode(state, {indent = false})
+
+	-- Inject details for entities mentioned in the last AI response
+	if self.lastMentions and #self.lastMentions > 0 then
+		local details = {}
+		for _, mention in ipairs(self.lastMentions) do
+			local detail = self:LookupDetails(build, mention)
+			if detail ~= "" then
+				t_insert(details, detail)
+			end
+		end
+		if #details > 0 then
+			userPrompt = userPrompt .. "\n\nDetails of items mentioned in previous response:\n" .. table.concat(details, "\n\n")
+		end
+		self.lastMentions = nil  -- Clear after injection
+	end
+
+	userPrompt = userPrompt .. "\n\nPlayer question: " .. userMessage
 
 	-- Build messages array with conversation history
 	local messages = {
@@ -487,6 +661,10 @@ Only include actions you are confident about.]]
 		if parsed.choices and parsed.choices[1] and parsed.choices[1].message then
 			local content = parsed.choices[1].message.content
 			self.lastResponse = content
+			
+			-- Extract mentions from AI response for next query
+			self.lastMentions = self:ExtractMentions(content, state)
+			
 			callback(content, nil)
 		else
 			self.lastError = "No content in response"
