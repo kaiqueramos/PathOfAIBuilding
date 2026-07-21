@@ -61,6 +61,20 @@ function AIBridge:SerializeBuild(build)
 			end
 			state.meta.availableAscendancies = ascs
 		end
+
+		-- Secondary ascendancy (league-specific): only present if available in current league
+		if spec.tree.alternate_ascendancies then
+			local secAscs = {}
+			for ascId, ascClass in pairs(spec.tree.alternate_ascendancies) do
+				if ascClass.name then
+					t_insert(secAscs, ascClass.name)
+				end
+			end
+			state.meta.availableSecondaryAscendancies = secAscs
+			if spec.curSecondaryAscendClassId and spec.curSecondaryAscendClassId ~= 0 then
+				state.meta.secondaryAscendancyName = spec.curSecondaryAscendClassName
+			end
+		end
 	end
 
 	-- Passive points: used vs available
@@ -124,6 +138,18 @@ function AIBridge:SerializeBuild(build)
 				end
 			end
 		end
+
+		-- Abyssal sockets: expose slot names so AI can equip abyssal jewels
+		local abyssalSlots = {}
+		for slotName, slot in pairs(itemsTab.slots) do
+			if slotName:match("Abyssal Socket") then
+				local hasJewel = slot.selItemId and slot.selItemId > 0
+				t_insert(abyssalSlots, { slot = slotName, filled = hasJewel or false })
+			end
+		end
+		if #abyssalSlots > 0 then
+			state.abyssalSockets = abyssalSlots
+		end
 	end
 
 	-- Skills: socket groups with gems
@@ -131,11 +157,13 @@ function AIBridge:SerializeBuild(build)
 	if skillsTab then
 		local activeSet = skillsTab.skillSets[skillsTab.activeSkillSetId]
 		if activeSet and activeSet.socketGroupList then
+			local mainGroupIdx = build.mainSocketGroup or 1
 			for i, group in ipairs(activeSet.socketGroupList) do
 				if group.enabled and group.gemList and #group.gemList > 0 then
 					local skillEntry = {
 						label = group.label or ("Group " .. i),
 						slot = group.slot,
+						isMainSkill = (i == mainGroupIdx),
 						gems = {},
 					}
 					for _, gem in ipairs(group.gemList) do
@@ -145,6 +173,7 @@ function AIBridge:SerializeBuild(build)
 							quality = gem.quality or 0,
 							enabled = gem.enabled,
 							isSupport = gem.support or false,
+							skillPart = gem.skillPart,
 						})
 					end
 					t_insert(state.skills, skillEntry)
@@ -295,10 +324,16 @@ Supported action types:
 - {"type":"remove_tattoo","name":"<node name>"}  -- remove tattoo from a node
 - {"type":"set_mastery","name":"<mastery node name>","effect":<1-based index>}  -- select mastery effect by index
 - {"type":"set_mastery","name":"<mastery node name>","effectText":"<substring>"}  -- select mastery effect by description text
+- {"type":"set_main_skill","label":"<group name>"} or {"type":"set_main_skill","name":"<gem name>"}  -- set which skill DPS is calculated for (IMPORTANT after adding skills)
+- {"type":"set_secondary_ascendancy","name":"<name>"}  -- league-specific secondary ascendancy (only if meta.availableSecondaryAscendancies is present)
+- {"type":"set_skill_part","label":"<group name>","part":<number>}  -- set skill variant/stages (e.g. Vaal Blade Vortex stages)
 - {"type":"set_config","key":"<config key>","value":<bool or number>}
 
 Order matters: if you need more points to allocate a distant node, emit set_level FIRST,
-then the alloc_node actions. Only include actions you are confident about.]]
+then the alloc_node actions. For cluster jewels, emit equip_jewel FIRST, then alloc_node
+for the cluster's internal nodes. After adding skills, emit set_main_skill so DPS is correct.
+Abyssal jewels: use equip_item with an abyssal slot name from state.abyssalSockets.
+Only include actions you are confident about.]]
 
 	local userPrompt = "Build state (JSON):\n" .. dkjson.encode(state, {indent = false}) ..
 		"\n\nPlayer question: " .. userMessage
@@ -491,6 +526,12 @@ function AIBridge:ExecuteAction(build, action)
 		return self:ActionRemoveTattoo(build, action)
 	elseif actionType == "set_mastery" then
 		return self:ActionSetMastery(build, action)
+	elseif actionType == "set_main_skill" then
+		return self:ActionSetMainSkill(build, action)
+	elseif actionType == "set_secondary_ascendancy" then
+		return self:ActionSetSecondaryAscendancy(build, action)
+	elseif actionType == "set_skill_part" then
+		return self:ActionSetSkillPart(build, action)
 	else
 		return false, "Unknown action type: " .. tostring(actionType)
 	end
@@ -981,6 +1022,130 @@ function AIBridge:ActionSetMastery(build, action)
 	build.buildFlag = true
 
 	return true, "Set mastery '" .. (node.name or node.id) .. "' effect to: " .. table.concat(effect.sd, ", ")
+end
+
+--- Set the main skill for DPS calculation
+-- action = { label="<socket group label>" } or { name="<gem name>" }
+function AIBridge:ActionSetMainSkill(build, action)
+	local skillsTab = build.skillsTab
+	if not skillsTab then
+		return false, "Skills tab not available"
+	end
+	local skillSet = skillsTab.skillSets[skillsTab.activeSkillSetId]
+	if not skillSet then
+		return false, "No active skill set"
+	end
+
+	local target = (action.label or action.name or ""):lower()
+	if target == "" then
+		return false, "No skill label or gem name provided"
+	end
+
+	for i, group in ipairs(skillSet.socketGroupList) do
+		local match = (group.label or ""):lower() == target
+		if not match then
+			for _, gem in ipairs(group.gemList or {}) do
+				if (gem.nameSpec or ""):lower() == target then
+					match = true
+					break
+				end
+			end
+		end
+		if match then
+			build.mainSocketGroup = i
+			if action.skillIndex and group.displaySkillList and group.displaySkillList[action.skillIndex] then
+				group.mainActiveSkill = action.skillIndex
+			end
+			build.buildFlag = true
+			return true, "Set main skill to '" .. (group.label or target) .. "'"
+		end
+	end
+	return false, "Skill not found: " .. target
+end
+
+--- Set the secondary ascendancy (league-specific, e.g. Warden/Primalist/Warlock)
+-- action = { name="<secondary ascendancy name>" }
+function AIBridge:ActionSetSecondaryAscendancy(build, action)
+	local spec = build.spec
+	if not spec then
+		return false, "No passive tree spec"
+	end
+
+	-- Check if secondary ascendancies are available in this league
+	if not spec.tree.alternate_ascendancies then
+		return false, "Secondary ascendancies not available in current league"
+	end
+
+	local name = action.name
+	if not name then
+		return false, "No secondary ascendancy name provided"
+	end
+
+	-- Find the secondary ascendancy by name
+	local foundId
+	for ascId, ascClass in pairs(spec.tree.alternate_ascendancies) do
+		if ascClass.name and ascClass.name:lower() == name:lower() then
+			foundId = ascId
+			break
+		end
+	end
+
+	if not foundId then
+		return false, "Unknown secondary ascendancy: " .. name
+	end
+
+	spec:SelectSecondaryAscendClass(foundId)
+	build.treeTab.modFlag = true
+	build.buildFlag = true
+	return true, "Set secondary ascendancy to " .. name
+end
+
+--- Set the skill part/variant for a gem (e.g. Vaal Blade Vortex stages, Herald of Agony virulence)
+-- action = { label="<socket group label>", part=<number> } or { name="<gem name>", part=<number> }
+function AIBridge:ActionSetSkillPart(build, action)
+	local skillsTab = build.skillsTab
+	if not skillsTab then
+		return false, "Skills tab not available"
+	end
+	local skillSet = skillsTab.skillSets[skillsTab.activeSkillSetId]
+	if not skillSet then
+		return false, "No active skill set"
+	end
+
+	local target = (action.label or action.name or ""):lower()
+	if target == "" then
+		return false, "No skill label or gem name provided"
+	end
+
+	local part = tonumber(action.part)
+	if not part then
+		return false, "No skill part number provided"
+	end
+
+	for i, group in ipairs(skillSet.socketGroupList) do
+		local match = (group.label or ""):lower() == target
+		local gemIndex = nil
+		if not match then
+			for j, gem in ipairs(group.gemList or {}) do
+				if (gem.nameSpec or ""):lower() == target then
+					match = true
+					gemIndex = j
+					break
+				end
+			end
+		else
+			gemIndex = 1  -- Default to first gem if matched by label
+		end
+
+		if match and gemIndex and group.gemList[gemIndex] then
+			group.gemList[gemIndex].skillPart = part
+			skillsTab:ProcessSocketGroup(group)
+			skillsTab.modFlag = true
+			build.buildFlag = true
+			return true, "Set skill part to " .. part .. " for '" .. (group.label or target) .. "'"
+		end
+	end
+	return false, "Skill not found: " .. target
 end
 
 --- Find a passive node by ID or name
