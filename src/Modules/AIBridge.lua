@@ -29,7 +29,7 @@ function AIBridge:SerializeBuild(build)
 		tree = {},
 	}
 
-	-- Meta: class, ascendancy, level
+	-- Meta: class, ascendancy, level, available choices
 	local spec = build.spec
 	if spec then
 		state.meta.classId = spec.curClassId
@@ -39,6 +39,41 @@ function AIBridge:SerializeBuild(build)
 			state.meta.ascendancyName = spec.curAscendClassName
 		end
 		state.meta.level = build.characterLevel or 100
+
+		-- Available classes
+		if spec.tree and spec.tree.classes then
+			local classes = {}
+			for classId, class in pairs(spec.tree.classes) do
+				if class.name then
+					t_insert(classes, class.name)
+				end
+			end
+			state.meta.availableClasses = classes
+		end
+
+		-- Available ascendancies for current class
+		if spec.curClass and spec.curClass.classes then
+			local ascs = {}
+			for ascId, ascClass in pairs(spec.curClass.classes) do
+				if ascId ~= 0 and ascClass.name then
+					t_insert(ascs, ascClass.name)
+				end
+			end
+			state.meta.availableAscendancies = ascs
+		end
+	end
+
+	-- Passive points: used vs available
+	if spec and spec.CountAllocNodes then
+		local used, ascUsed = spec:CountAllocNodes()
+		local extra = build.calcsTab and build.calcsTab.mainOutput and build.calcsTab.mainOutput.ExtraPoints or 0
+		local level = build.characterLevel or 1
+		local totalMain = (level - 1) + 23 + extra  -- level points + quest points
+		state.tree.pointsUsed = used
+		state.tree.pointsTotal = totalMain
+		state.tree.pointsAvailable = math.max(totalMain - used, 0)
+		state.tree.ascendancyUsed = ascUsed
+		state.tree.ascendancyTotal = 8
 	end
 
 	-- Stats from mainOutput (the calculated values)
@@ -188,23 +223,41 @@ function AIBridge:Ask(build, userMessage, callback, history)
 
 	-- Build the prompt
 	local systemPrompt = [[You are an expert Path of Exile 1 build advisor integrated into Path of Building.
-You have access to the player's full build state (stats, items, skills, tree).
+You have access to the player's full build state (stats, items, skills, tree) AND you can
+DIRECTLY MODIFY the build by emitting actions. You are not just an advisor - you can act.
 Give specific, actionable advice with numbers. Reference actual stats from the build.
 When suggesting changes, explain the expected impact (e.g. "+15% DPS", "+200 life").
 Be concise. Use PoB color codes: ^2=green/good, ^1=red/bad, ^7=white, ^8=gray.
 If the user asks "how do I improve", focus on the top 3 highest-impact changes.
 Format responses for readability in a game tool UI.
 
-When you can make concrete changes to the build, end your message with an actions block
-on its own line, exactly like this (valid JSON array, no prose inside):
+The build state includes tree.pointsAvailable (free passive points), meta.availableClasses,
+meta.availableAscendancies, and tree.availableNodes (notables/keystones you can allocate).
+Use these to know what is actually possible right now.
+
+When the user asks you to make a change (allocate, level up, change class, add a skill, etc.),
+DO IT by emitting actions. Don't tell the user to do it manually - you can do it for them.
+End your message with an actions block on its own line, exactly like this (valid JSON array):
 <actions>
-[{"type":"alloc_node","name":"Resolute Technique"},{"type":"set_config","key":"conditionLowLife","value":true}]
+[{"type":"set_level","value":100},{"type":"alloc_node","name":"Resolute Technique"}]
 </actions>
+
 Supported action types:
-- {"type":"alloc_node","name":"<exact passive node name>"} or {"type":"alloc_node","id":<node id>}
+- {"type":"set_level","value":<1-100>}  -- change character level
+- {"type":"set_class","name":"<class name>"}  -- e.g. "Marauder", "Witch", "Scion"
+- {"type":"set_ascendancy","name":"<ascendancy>"}  -- e.g. "Inquisitor", "Necromancer"
+- {"type":"set_bandit","value":"None|Oak|Kraityn|Alira"}  -- None = kill all
+- {"type":"set_pantheon","major":"<god>","minor":"<god>"}  -- e.g. major="TheBrineKing", minor="Gruthkul"
+- {"type":"alloc_node","name":"<exact node name>"} or {"type":"alloc_node","id":<node id>}
+  (allocating a distant node auto-paths through intermediate nodes; needs enough points)
 - {"type":"dealloc_node","name":"..."} or {"type":"dealloc_node","id":...}
+- {"type":"add_skill","label":"<group name>","gems":[{"name":"Righteous Fire","level":20,"quality":0},{"name":"Efficacy"}]}
+- {"type":"remove_skill","label":"<group name>"} or {"type":"remove_skill","name":"<gem name>"}
+- {"type":"equip_item","slot":"<slot>","raw":"<full item text>"}
 - {"type":"set_config","key":"<config key>","value":<bool or number>}
-Only include actions you are confident about. If no concrete action applies, omit the block entirely.]]
+
+Order matters: if you need more points to allocate a distant node, emit set_level FIRST,
+then the alloc_node actions. Only include actions you are confident about.]]
 
 	local userPrompt = "Build state (JSON):\n" .. dkjson.encode(state, {indent = false}) ..
 		"\n\nPlayer question: " .. userMessage
@@ -376,6 +429,20 @@ function AIBridge:ExecuteAction(build, action)
 		return self:ActionDeallocNode(build, action)
 	elseif actionType == "set_config" then
 		return self:ActionSetConfig(build, action)
+	elseif actionType == "set_level" then
+		return self:ActionSetLevel(build, action)
+	elseif actionType == "set_class" then
+		return self:ActionSetClass(build, action)
+	elseif actionType == "set_ascendancy" then
+		return self:ActionSetAscendancy(build, action)
+	elseif actionType == "set_bandit" then
+		return self:ActionSetBandit(build, action)
+	elseif actionType == "set_pantheon" then
+		return self:ActionSetPantheon(build, action)
+	elseif actionType == "add_skill" then
+		return self:ActionAddSkill(build, action)
+	elseif actionType == "remove_skill" then
+		return self:ActionRemoveSkill(build, action)
 	else
 		return false, "Unknown action type: " .. tostring(actionType)
 	end
@@ -485,6 +552,200 @@ function AIBridge:ActionSetConfig(build, action)
 	configTab.modFlag = true
 
 	return true, "Set config " .. key .. " = " .. tostring(value)
+end
+
+--- Set the character level (1-100)
+function AIBridge:ActionSetLevel(build, action)
+	local level = tonumber(action.value)
+	if not level then
+		return false, "Invalid level value"
+	end
+	level = math.min(math.max(level, 1), 100)
+	build.characterLevel = level
+	build.characterLevelAutoMode = false
+	if build.controls and build.controls.characterLevel then
+		build.controls.characterLevel:SetText(level)
+	end
+	if build.configTab then
+		build.configTab:BuildModList()
+	end
+	return true, "Set character level to " .. level
+end
+
+--- Change the character class by name (e.g. "Marauder", "Witch", "Scion")
+function AIBridge:ActionSetClass(build, action)
+	local spec = build.spec
+	if not spec then
+		return false, "No passive tree spec"
+	end
+	local name = action.name
+	if not name then
+		return false, "No class name provided"
+	end
+	local classId = spec.tree.classNameMap[name]
+	if not classId then
+		return false, "Unknown class: " .. name
+	end
+	spec:SelectClass(classId)
+	build.treeTab.modFlag = true
+	build.buildFlag = true
+	return true, "Changed class to " .. name
+end
+
+--- Change the ascendancy class by name (e.g. "Inquisitor", "Necromancer")
+function AIBridge:ActionSetAscendancy(build, action)
+	local spec = build.spec
+	if not spec then
+		return false, "No passive tree spec"
+	end
+	local name = action.name
+	if not name then
+		return false, "No ascendancy name provided"
+	end
+	local curClass = spec.curClass
+	if not curClass or not curClass.classes then
+		return false, "No class selected"
+	end
+	local foundId
+	for ascId, ascClass in pairs(curClass.classes) do
+		if ascId ~= 0 and ascClass.name == name then
+			foundId = ascId
+			break
+		end
+	end
+	if not foundId then
+		return false, "Unknown ascendancy for " .. (spec.curClassName or "class") .. ": " .. name
+	end
+	spec:SelectAscendClass(foundId)
+	build.treeTab.modFlag = true
+	build.buildFlag = true
+	return true, "Changed ascendancy to " .. name
+end
+
+--- Set the bandit choice: "None" (kill all), "Oak", "Kraityn", "Alira"
+function AIBridge:ActionSetBandit(build, action)
+	local configTab = build.configTab
+	if not configTab then
+		return false, "Config tab not available"
+	end
+	local valid = { None = true, Oak = true, Kraityn = true, Alira = true }
+	local val = action.value
+	if not valid[val] then
+		return false, "Invalid bandit choice: " .. tostring(val) .. " (use None/Oak/Kraityn/Alira)"
+	end
+	configTab.input.bandit = val
+	configTab:BuildModList()
+	configTab.modFlag = true
+	return true, "Set bandit to " .. val
+end
+
+--- Set pantheon gods: { major="TheBrineKing", minor="Gruthkul" }
+function AIBridge:ActionSetPantheon(build, action)
+	local configTab = build.configTab
+	if not configTab then
+		return false, "Config tab not available"
+	end
+	local set = {}
+	if action.major then
+		configTab.input.pantheonMajorGod = action.major
+		t_insert(set, "major=" .. action.major)
+	end
+	if action.minor then
+		configTab.input.pantheonMinorGod = action.minor
+		t_insert(set, "minor=" .. action.minor)
+	end
+	if #set == 0 then
+		return false, "No pantheon gods provided (use major/minor)"
+	end
+	configTab:BuildModList()
+	configTab.modFlag = true
+	return true, "Set pantheon: " .. table.concat(set, ", ")
+end
+
+--- Add a skill (socket group) with gems.
+-- action = { label="Main", gems={ {name="Righteous Fire", level=20, quality=0}, ... } }
+-- or shorthand: action = { label="Main", gems={"Righteous Fire", "Efficacy"} }
+function AIBridge:ActionAddSkill(build, action)
+	local skillsTab = build.skillsTab
+	if not skillsTab then
+		return false, "Skills tab not available"
+	end
+	local skillSet = skillsTab.skillSets[skillsTab.activeSkillSetId]
+	if not skillSet then
+		return false, "No active skill set"
+	end
+	local gems = action.gems
+	if not gems or #gems == 0 then
+		return false, "No gems provided"
+	end
+
+	local newGroup = { label = action.label or "", enabled = true, gemList = {} }
+	for _, gem in ipairs(gems) do
+		local name, level, quality
+		if type(gem) == "string" then
+			name, level, quality = gem, 20, 0
+		else
+			name = gem.name
+			level = gem.level or 20
+			quality = gem.quality or 0
+		end
+		if name then
+			t_insert(newGroup.gemList, {
+				nameSpec = name,
+				level = level,
+				quality = quality,
+				enabled = true,
+				count = 1,
+				enableGlobal1 = true,
+				enableGlobal2 = false,
+			})
+		end
+	end
+
+	if #newGroup.gemList == 0 then
+		return false, "No valid gems to add"
+	end
+
+	t_insert(skillSet.socketGroupList, newGroup)
+	skillsTab:ProcessSocketGroup(newGroup)
+	skillsTab.modFlag = true
+	build.buildFlag = true
+
+	return true, "Added skill group '" .. (action.label or "unnamed") .. "' with " .. #newGroup.gemList .. " gem(s)"
+end
+
+--- Remove a skill (socket group) by label or by a gem name it contains
+function AIBridge:ActionRemoveSkill(build, action)
+	local skillsTab = build.skillsTab
+	if not skillsTab then
+		return false, "Skills tab not available"
+	end
+	local skillSet = skillsTab.skillSets[skillsTab.activeSkillSetId]
+	if not skillSet then
+		return false, "No active skill set"
+	end
+	local target = (action.label or action.name or ""):lower()
+	if target == "" then
+		return false, "No skill label or gem name provided"
+	end
+	for i, group in ipairs(skillSet.socketGroupList) do
+		local match = (group.label or ""):lower() == target
+		if not match then
+			for _, gem in ipairs(group.gemList or {}) do
+				if (gem.nameSpec or ""):lower() == target then
+					match = true
+					break
+				end
+			end
+		end
+		if match then
+			table.remove(skillSet.socketGroupList, i)
+			skillsTab.modFlag = true
+			build.buildFlag = true
+			return true, "Removed skill group '" .. (group.label or target) .. "'"
+		end
+	end
+	return false, "Skill not found: " .. target
 end
 
 --- Find a passive node by ID or name
