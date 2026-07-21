@@ -274,13 +274,18 @@ function AIBridge:SerializeBuild(build)
 	end
 
 	-- Unique item names by slot type
+	-- data.uniques[type] is an array of raw item strings; name = first line
 	if build.data and build.data.uniques then
 		local uniqueNames = {}
 		for slotType, uniques in pairs(build.data.uniques) do
 			local names = {}
 			for _, unique in ipairs(uniques) do
-				if unique.name then
-					t_insert(names, unique.name)
+				local raw = type(unique) == "string" and unique or (type(unique) == "table" and unique[1])
+				if raw then
+					local name = raw:match("^([^\n]+)")
+					if name and name ~= "" then
+						t_insert(names, name)
+					end
 				end
 			end
 			if #names > 0 then
