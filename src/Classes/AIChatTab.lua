@@ -191,7 +191,7 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 	end
 	self.controls.history.height = function()
 		local top = 52
-		local bottom = 80
+		local bottom = self.controls.applyActions.shown and 108 or 80  -- extra 28px for Apply button
 		return math.max(self.height - top - bottom, 100)
 	end
 	-- Make history read-only: block all text input
