@@ -6,17 +6,17 @@ local t_insert = table.insert
 local t_remove = table.remove
 local dkjson = require "dkjson"
 local AIConfig = LoadModule("Modules/AIConfig")
-
 local AIBridge = {
 	pending = false,
 	lastError = nil,
 	lastResponse = nil,
+	gemShortlistCache = nil,
 }
 
 --- Serialize the current build state into a compact JSON table
 -- @param build The active build object (main.modes["BUILD"])
 -- @return table Serialized build state
-function AIBridge:SerializeBuild(build)
+function AIBridge:SerializeBuild(build, forceRefresh)
 	if not build then
 		return nil, "No active build"
 	end
@@ -327,12 +327,6 @@ function AIBridge:SerializeBuild(build)
 		end
 		state.reference.itemBases = baseNames
 	end
-
-	-- Gem shortlist: top support gems by DPS gain (computed via simulation)
-	local gemShortlist = self:ComputeGemShortlist(build, 10)
-	if #gemShortlist > 0 then
-		state.gemShortlist = gemShortlist
-	end
 	return state
 end
 
@@ -496,8 +490,14 @@ end
 -- @param build The active build object
 -- @param limit Max number of gems to return (default 10)
 -- @return table Array of {name, dpsGain, dpsGainPct, type} sorted by gain
-function AIBridge:ComputeGemShortlist(build, limit)
+function AIBridge:ComputeGemShortlist(build, limit, forceRefresh)
 	limit = limit or 10
+	
+	-- Return cached result if available and not forcing refresh
+	if self.gemShortlistCache and not forceRefresh then
+		return self.gemShortlistCache
+	end
+	
 	local startTime = GetTime()
 	
 	local skillsTab = build.skillsTab
@@ -587,6 +587,8 @@ function AIBridge:ComputeGemShortlist(build, limit)
 		dbg:close()
 	end
 	
+	-- Cache the result
+	self.gemShortlistCache = results
 	return results
 end
 
@@ -613,6 +615,9 @@ function AIBridge:Ask(build, userMessage, callback, history)
 		callback(nil, serErr)
 		return
 	end
+
+	-- Compute gem shortlist (cached; recomputed only after build changes)
+	state.gemShortlist = self:ComputeGemShortlist(build, 10, false)
 
 	-- Debug: log reference menu size to file
 	if state.reference then
@@ -857,6 +862,8 @@ function AIBridge:ExecuteActions(build, actions)
 
 	-- Trigger a full rebuild after all actions
 	build.buildFlag = true
+	-- Invalidate gem shortlist cache (build changed)
+	self.gemShortlistCache = nil
 
 	return results
 end
