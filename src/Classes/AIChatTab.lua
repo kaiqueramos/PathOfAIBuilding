@@ -127,6 +127,7 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 	self.streaming = false
 	self.streamMsgIndex = nil
 	self.streamPos = 0
+	self.pendingActions = nil  -- actions parsed from last AI response
 
 	-- === TOP: header + build summary ===
 	self.controls.header = new("LabelControl", {"TOPLEFT",self,"TOPLEFT"}, {8, 8, 0, 16}, "^7AI Build Advisor")
@@ -174,6 +175,12 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 	self.controls.quickTank = new("ButtonControl", {"LEFT",self.controls.quickUpgrade,"RIGHT"}, {6, 0, 150, 20}, "Can I tank?", function()
 		self:SendMessage("Analyze my defenses. What can I tank and what will kill me?")
 	end)
+
+	-- Apply button (hidden until actions are available)
+	self.controls.applyActions = new("ButtonControl", {"BOTTOMLEFT",self.controls.quickImprove,"TOPLEFT"}, {0, -6, 220, 22}, "^2Apply Suggested Changes", function()
+		self:ApplyPendingActions()
+	end)
+	self.controls.applyActions.shown = false
 
 	-- === MIDDLE: chat history fills remaining space (READ-ONLY) ===
 	self.controls.history = new("EditControl", {"TOPLEFT",self.controls.summary,"BOTTOMLEFT"}, {0, 8, 0, 0}, "", nil, "^%C\t\n", nil, nil, 16, true)
@@ -230,10 +237,16 @@ function AIChatTabClass:SendMessage(text)
 		if errMsg then
 			self:AddMessage("system", "Error: " .. errMsg)
 			self.controls.status.label = "^1Request failed"
+			self.controls.applyActions.shown = false
 		else
-			-- Start streaming the response (transliterate accented chars)
-			self:StartStream(translit(response))
-			self.controls.status.label = "^2Ready"
+			-- Transliterate, then split display text from actions block
+			local cleaned = translit(response)
+			local displayText, actions = AIBridge:ParseActions(cleaned)
+			self.pendingActions = actions
+			self.controls.applyActions.shown = (actions ~= nil and #actions > 0)
+			self:StartStream(displayText)
+			self.controls.status.label = self.controls.applyActions.shown
+				and "^2Ready - actions available below" or "^2Ready"
 		end
 	end, history)
 end
@@ -300,6 +313,36 @@ function AIChatTabClass:RefreshHistory()
 	self.controls.history:SetText(table.concat(lines, "\n"))
 	self.controls.history.caret = #self.controls.history.buf
 	self.controls.history:ScrollCaretIntoView()
+end
+
+--- Apply the pending actions parsed from the last AI response
+function AIChatTabClass:ApplyPendingActions()
+	if not self.pendingActions or #self.pendingActions == 0 then
+		return
+	end
+
+	local results = AIBridge:ExecuteActions(self.build, self.pendingActions)
+
+	-- Build a summary of what happened
+	local lines = { "^7--- Applied changes ---" }
+	local okCount, failCount = 0, 0
+	for i, result in ipairs(results) do
+		if result.ok then
+			okCount = okCount + 1
+			t_insert(lines, "^2[OK] " .. result.msg)
+		else
+			failCount = failCount + 1
+			t_insert(lines, "^1[FAIL] " .. result.msg)
+		end
+	end
+	t_insert(lines, string.format("^7%d succeeded, %d failed", okCount, failCount))
+
+	self:AddMessage("system", table.concat(lines, "\n"))
+
+	-- Clear pending actions and hide the button
+	self.pendingActions = nil
+	self.controls.applyActions.shown = false
+	self.controls.status.label = "^2Changes applied"
 end
 
 --- Load/Save (no persistence for chat history - session only)
