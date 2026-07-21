@@ -241,12 +241,13 @@ function AIChatTabClass:SendMessage(text)
 			self.controls.status.label = "^1Request failed"
 			self.controls.applyActions.shown = false
 		else
-			-- Transliterate, then split display text from actions block
-			local cleaned = translit(response)
-			local displayText, actions = AIBridge:ParseActions(cleaned)
+			-- Parse actions FIRST (before translit to avoid corrupting JSON)
+			local displayText, actions = AIBridge:ParseActions(response)
 			self.pendingActions = actions
 			self.controls.applyActions.shown = (actions ~= nil and #actions > 0)
-			self:StartStream(displayText)
+			ConPrintf("[AIChat] Parsed %d actions, shown=%s", actions and #actions or 0, tostring(self.controls.applyActions.shown))
+			-- Transliterate only the display text
+			self:StartStream(translit(displayText))
 			self.controls.status.label = self.controls.applyActions.shown
 				and "^2Ready - actions available below" or "^2Ready"
 		end
