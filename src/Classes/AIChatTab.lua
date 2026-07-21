@@ -176,13 +176,12 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 		self:SendMessage("Analyze my defenses. What can I tank and what will kill me?")
 	end)
 
-	-- Apply button (hidden until actions are available)
-	self.controls.applyActions = new("ButtonControl", {"BOTTOMLEFT",self.controls.quickImprove,"TOPLEFT"}, {0, -6, 220, 22}, "^2Apply Suggested Changes", function()
+	-- Apply button (top-right, always visible above chat, hidden until actions available)
+	self.controls.applyActions = new("ButtonControl", {"TOPRIGHT",self,"TOPRIGHT"}, {-8, 8, 220, 22}, "^2Apply Suggested Changes", function()
 		ConPrintf("[AIChat] Apply button clicked!")
 		self:ApplyPendingActions()
 	end)
 	self.controls.applyActions.shown = false
-	ConPrintf("[AIChat] Apply button created, shown=%s", tostring(self.controls.applyActions.shown))
 
 	-- === MIDDLE: chat history fills remaining space (READ-ONLY) ===
 	self.controls.history = new("EditControl", {"TOPLEFT",self.controls.summary,"BOTTOMLEFT"}, {0, 8, 0, 0}, "", nil, "^%C\t\n", nil, nil, 16, true)
@@ -191,7 +190,7 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 	end
 	self.controls.history.height = function()
 		local top = 52
-		local bottom = self.controls.applyActions.shown and 108 or 80  -- extra 28px for Apply button
+		local bottom = 80
 		return math.max(self.height - top - bottom, 100)
 	end
 	-- Make history read-only: block all text input
