@@ -178,9 +178,11 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 
 	-- Apply button (hidden until actions are available)
 	self.controls.applyActions = new("ButtonControl", {"BOTTOMLEFT",self.controls.quickImprove,"TOPLEFT"}, {0, -6, 220, 22}, "^2Apply Suggested Changes", function()
+		ConPrintf("[AIChat] Apply button clicked!")
 		self:ApplyPendingActions()
 	end)
 	self.controls.applyActions.shown = false
+	ConPrintf("[AIChat] Apply button created, shown=%s", tostring(self.controls.applyActions.shown))
 
 	-- === MIDDLE: chat history fills remaining space (READ-ONLY) ===
 	self.controls.history = new("EditControl", {"TOPLEFT",self.controls.summary,"BOTTOMLEFT"}, {0, 8, 0, 0}, "", nil, "^%C\t\n", nil, nil, 16, true)
@@ -317,16 +319,24 @@ end
 
 --- Apply the pending actions parsed from the last AI response
 function AIChatTabClass:ApplyPendingActions()
+	ConPrintf("[AIChat] ApplyPendingActions called")
+	ConPrintf("[AIChat] pendingActions: %s", tostring(self.pendingActions))
+	ConPrintf("[AIChat] build: %s", tostring(self.build))
+	
 	if not self.pendingActions or #self.pendingActions == 0 then
+		ConPrintf("[AIChat] No pending actions to apply")
 		return
 	end
 
+	ConPrintf("[AIChat] Executing %d actions", #self.pendingActions)
 	local results = AIBridge:ExecuteActions(self.build, self.pendingActions)
+	ConPrintf("[AIChat] ExecuteActions returned %d results", #results)
 
 	-- Build a summary of what happened
 	local lines = { "^7--- Applied changes ---" }
 	local okCount, failCount = 0, 0
 	for i, result in ipairs(results) do
+		ConPrintf("[AIChat] Action %d: ok=%s msg=%s", i, tostring(result.ok), result.msg or "nil")
 		if result.ok then
 			okCount = okCount + 1
 			t_insert(lines, "^2[OK] " .. result.msg)
@@ -343,6 +353,7 @@ function AIChatTabClass:ApplyPendingActions()
 	self.pendingActions = nil
 	self.controls.applyActions.shown = false
 	self.controls.status.label = "^2Changes applied"
+	ConPrintf("[AIChat] Apply complete: %d ok, %d failed", okCount, failCount)
 end
 
 --- Load/Save (no persistence for chat history - session only)
