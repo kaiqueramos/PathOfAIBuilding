@@ -673,6 +673,7 @@ function buildMode:Init(dbFileName, buildName, buildXML, convertBuild, importLin
 	end
 
 	-- Build calculation output tables
+	wipeGlobalCache()
 	self.outputRevision = 1
 	self.calcsTab:BuildOutput()
 	self:RefreshStatList()

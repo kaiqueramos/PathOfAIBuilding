@@ -118,6 +118,7 @@ function main:Init()
 	self.showFlavourText = true
 	self.showAnimations = true
 	self.showAllItemAffixes = true
+	self.disableScrollControlInteraction = false
 	self.errorReadingSettings = false
 	
 	if not SetDPIScaleOverridePercent then SetDPIScaleOverridePercent = function(scale) end end
@@ -636,6 +637,9 @@ function main:LoadSettings(ignoreBuild)
 				if node.attrib.showAllItemAffixes then
 					self.showAllItemAffixes = node.attrib.showAllItemAffixes == "true"
 				end
+				if node.attrib.disableScrollControlInteraction then
+					self.disableScrollControlInteraction = node.attrib.disableScrollControlInteraction == "true"
+				end
 				if node.attrib.dpiScaleOverridePercent then
 					self.dpiScaleOverridePercent = tonumber(node.attrib.dpiScaleOverridePercent) or 0
 					SetDPIScaleOverridePercent(self.dpiScaleOverridePercent)
@@ -770,6 +774,7 @@ function main:SaveSettings()
 		showFlavourText = tostring(self.showFlavourText),
 		showAnimations = tostring(self.showAnimations),
 		showAllItemAffixes = tostring(self.showAllItemAffixes),
+		disableScrollControlInteraction = tostring(self.disableScrollControlInteraction),
 		dpiScaleOverridePercent = tostring(self.dpiScaleOverridePercent),
 	} })
 	local res, errMsg = common.xml.SaveXMLFile(setXML, self.userPath.."Settings.xml")
@@ -857,6 +862,7 @@ function main:OpenOptionsPopup(savedState)
 		showFlavourText = self.showFlavourText,
 		showAnimations = self.showAnimations,
 		showAllItemAffixes = self.showAllItemAffixes,
+		disableScrollControlInteraction = self.disableScrollControlInteraction,
 		dpiScaleOverridePercent = self.dpiScaleOverridePercent
 	}
 
@@ -1033,7 +1039,13 @@ function main:OpenOptionsPopup(savedState)
 	controls.showAllItemAffixes = new("CheckBoxControl", { "TOPLEFT", controls.sectionAnchor, "TOPLEFT" }, { currentX + defaultLabelPlacementX, currentY, 20 }, "^7Show all item affixes sliders:", function(state)
 		self.showAllItemAffixes = state
 	end)
-	controls.showAllItemAffixes.tooltipText = "Display all item affix slots as a stacked list instead of hiding them in dropdowns"
+	controls.showAllItemAffixes.tooltipText = "Display all item affix slots as a stacked list instead of hiding them in dropdowns."
+
+	nextRow()
+	controls.disableScrollControlInteraction = new("CheckBoxControl", { "TOPLEFT", controls.sectionAnchor, "TOPLEFT" }, { currentX + defaultLabelPlacementX, currentY, 20 }, "^7Disable control scroll interaction:", function(state)
+		self.disableScrollControlInteraction = state
+	end)
+	controls.disableScrollControlInteraction.tooltipText = "Disable changing the values in controls such as dropdowns or numeric inputs when using the scroll wheel."
 
 	nextRow()
 
@@ -1143,6 +1155,7 @@ function main:OpenOptionsPopup(savedState)
 	controls.showFlavourText.state = self.showFlavourText
 	controls.showAnimations.state = self.showAnimations
 	controls.showAllItemAffixes.state = self.showAllItemAffixes
+	controls.disableScrollControlInteraction.state = self.disableScrollControlInteraction
 
 	-- Adjust height in case of two-column layout
 	currentY = m_max(leftColumnMaxY, currentY)
@@ -1203,6 +1216,7 @@ function main:OpenOptionsPopup(savedState)
 		self.showFlavourText = savedState.showFlavourText
 		self.showAnimations = savedState.showAnimations
 		self.showAllItemAffixes = savedState.showAllItemAffixes
+		self.disableScrollControlInteraction = savedState.disableScrollControlInteraction
 		self.dpiScaleOverridePercent = savedState.dpiScaleOverridePercent
 		SetDPIScaleOverridePercent(self.dpiScaleOverridePercent)
 		main:ClosePopup()
