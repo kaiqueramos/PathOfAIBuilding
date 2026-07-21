@@ -201,19 +201,22 @@ function AIBridge:SerializeBuild(build)
 		state.tree.allocatedNodes = nodeIds
 	end
 
-	-- Available nodes for allocation (notables and keystones only, to keep it concise)
+	-- Available nodes for allocation (only reachable ones with a valid path)
+	-- Excludes anoint-only nodes and disconnected nodes
 	if spec and spec.nodes then
 		local availableNodes = {}
 		for nodeId, node in pairs(spec.nodes) do
-			if (node.type == "Notable" or node.type == "Keystone") and not node.alloc then
+			if (node.type == "Notable" or node.type == "Keystone") and not node.alloc and node.path then
 				t_insert(availableNodes, {
 					id = nodeId,
 					name = node.name,
 					type = node.type,
+					pathLength = #node.path,
 				})
 			end
 		end
-		-- Limit to 50 nodes to avoid overwhelming the LLM
+		-- Sort by path length (closest first) and limit to 50
+		table.sort(availableNodes, function(a, b) return a.pathLength < b.pathLength end)
 		if #availableNodes > 50 then
 			availableNodes = {unpack(availableNodes, 1, 50)}
 		end
@@ -304,6 +307,24 @@ function AIBridge:SerializeBuild(build)
 		end
 		table.sort(configKeys)
 		state.reference.configKeys = configKeys
+	end
+
+	-- Item base names by slot type (for crafting/equipping)
+	if build.data and build.data.itemBaseLists then
+		local baseNames = {}
+		for slotType, bases in pairs(build.data.itemBaseLists) do
+			local names = {}
+			for _, base in ipairs(bases) do
+				if base.name then
+					t_insert(names, base.name)
+				end
+			end
+			if #names > 0 then
+				table.sort(names)
+				baseNames[slotType] = names
+			end
+		end
+		state.reference.itemBases = baseNames
 	end
 	return state
 end
