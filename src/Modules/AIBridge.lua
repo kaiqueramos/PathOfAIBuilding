@@ -327,7 +327,7 @@ function AIBridge:Ask(build, userMessage, callback, history)
 		return
 	end
 
-	-- Debug: log reference menu size
+	-- Debug: log reference menu size to file
 	if state.reference then
 		local gemCount = state.reference.gemNames and #state.reference.gemNames or 0
 		local uniqueCount = 0
@@ -337,7 +337,11 @@ function AIBridge:Ask(build, userMessage, callback, history)
 			end
 		end
 		local configCount = state.reference.configKeys and #state.reference.configKeys or 0
-		ConPrintf("[AIBridge] Reference menu: %d gems, %d uniques, %d config keys", gemCount, uniqueCount, configCount)
+		local dbg = io.open("ai_debug.log", "a")
+		if dbg then
+			dbg:write(string.format("[AIBridge] Reference menu: %d gems, %d uniques, %d config keys\n", gemCount, uniqueCount, configCount))
+			dbg:close()
+		end
 	end
 
 	self.pending = true
