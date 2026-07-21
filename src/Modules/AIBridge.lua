@@ -256,6 +256,50 @@ function AIBridge:SerializeBuild(build)
 		state.tree.masteries = masteries
 	end
 
+
+	-- Reference menu: compact list of available gems, uniques, config keys
+	-- Gives the AI awareness of what exists without sending full stats
+	state.reference = {}
+
+	-- Gem names (all gems in the game data)
+	if build.data and build.data.gems then
+		local gemNames = {}
+		for gemId, gemData in pairs(build.data.gems) do
+			if gemData.name and not gemData.unsupported then
+				t_insert(gemNames, gemData.name)
+			end
+		end
+		table.sort(gemNames)
+		state.reference.gemNames = gemNames
+	end
+
+	-- Unique item names by slot type
+	if build.data and build.data.uniques then
+		local uniqueNames = {}
+		for slotType, uniques in pairs(build.data.uniques) do
+			local names = {}
+			for _, unique in ipairs(uniques) do
+				if unique.name then
+					t_insert(names, unique.name)
+				end
+			end
+			if #names > 0 then
+				table.sort(names)
+				uniqueNames[slotType] = names
+			end
+		end
+		state.reference.uniqueNames = uniqueNames
+	end
+
+	-- Config keys (valid configuration options)
+	if build.configTab and build.configTab.varControls then
+		local configKeys = {}
+		for var, _ in pairs(build.configTab.varControls) do
+			t_insert(configKeys, var)
+		end
+		table.sort(configKeys)
+		state.reference.configKeys = configKeys
+	end
 	return state
 end
 
@@ -281,6 +325,19 @@ function AIBridge:Ask(build, userMessage, callback, history)
 	if not state then
 		callback(nil, serErr)
 		return
+	end
+
+	-- Debug: log reference menu size
+	if state.reference then
+		local gemCount = state.reference.gemNames and #state.reference.gemNames or 0
+		local uniqueCount = 0
+		if state.reference.uniqueNames then
+			for _, names in pairs(state.reference.uniqueNames) do
+				uniqueCount = uniqueCount + #names
+			end
+		end
+		local configCount = state.reference.configKeys and #state.reference.configKeys or 0
+		ConPrintf("[AIBridge] Reference menu: %d gems, %d uniques, %d config keys", gemCount, uniqueCount, configCount)
 	end
 
 	self.pending = true
