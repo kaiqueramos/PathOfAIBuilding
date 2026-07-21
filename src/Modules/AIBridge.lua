@@ -326,6 +326,12 @@ function AIBridge:SerializeBuild(build)
 		end
 		state.reference.itemBases = baseNames
 	end
+
+	-- Gem shortlist: top support gems by DPS gain (computed via simulation)
+	local gemShortlist = self:ComputeGemShortlist(build, 10)
+	if #gemShortlist > 0 then
+		state.gemShortlist = gemShortlist
+	end
 	return state
 end
 
@@ -483,6 +489,104 @@ function AIBridge:LookupNodeDetails(build, nodeName)
 	end
 	
 	return ""
+end
+
+--- Compute gem shortlist: simulate each support gem and measure DPS gain
+-- @param build The active build object
+-- @param limit Max number of gems to return (default 10)
+-- @return table Array of {name, dpsGain, dpsGainPct, type} sorted by gain
+function AIBridge:ComputeGemShortlist(build, limit)
+	limit = limit or 10
+	local startTime = GetTime()
+	
+	local skillsTab = build.skillsTab
+	local calcsTab = build.calcsTab
+	if not skillsTab or not calcsTab or not build.data or not build.data.gems then
+		return {}
+	end
+	
+	-- Find the main socket group
+	local mainGroupIdx = build.mainSocketGroup or 1
+	local skillSet = skillsTab.skillSets[skillsTab.activeSkillSetId]
+	if not skillSet or not skillSet.socketGroupList[mainGroupIdx] then
+		return {}
+	end
+	local mainGroup = skillSet.socketGroupList[mainGroupIdx]
+	
+	-- Get current DPS
+	calcsTab:BuildOutput()
+	local baseDPS = calcsTab.mainOutput.CombinedDPS or calcsTab.mainOutput.TotalDPS or 0
+	if baseDPS == 0 then
+		return {}
+	end
+	
+	-- Collect gems already in the group
+	local existingGems = {}
+	for _, gem in ipairs(mainGroup.gemList) do
+		if gem.gemId then
+			existingGems[gem.gemId] = true
+		end
+	end
+	
+	-- Test each support gem
+	local results = {}
+	for gemId, gemData in pairs(build.data.gems) do
+		-- Only test support gems not already in the group
+		if gemData.grantedEffect and gemData.grantedEffect.support and not existingGems[gemId] then
+			-- Temporarily add the gem
+			local testGem = {
+				nameSpec = gemData.name,
+				gemId = gemId,
+				level = 20,
+				quality = 0,
+				enabled = true,
+				count = 1,
+				enableGlobal1 = true,
+				enableGlobal2 = false,
+			}
+			t_insert(mainGroup.gemList, testGem)
+			skillsTab:ProcessSocketGroup(mainGroup)
+			
+			-- Recalculate
+			calcsTab:BuildOutput()
+			local newDPS = calcsTab.mainOutput.CombinedDPS or calcsTab.mainOutput.TotalDPS or 0
+			local gain = newDPS - baseDPS
+			local gainPct = (gain / baseDPS) * 100
+			
+			-- Remove the test gem
+			t_remove(mainGroup.gemList)
+			skillsTab:ProcessSocketGroup(mainGroup)
+			
+			-- Store result if positive gain
+			if gain > 0 then
+				t_insert(results, {
+					name = gemData.name,
+					dpsGain = gain,
+					dpsGainPct = gainPct,
+					type = "support",
+				})
+			end
+		end
+	end
+	
+	-- Restore original calculation
+	calcsTab:BuildOutput()
+	
+	-- Sort by gain descending and limit
+	table.sort(results, function(a, b) return a.dpsGain > b.dpsGain end)
+	if #results > limit then
+		results = {unpack(results, 1, limit)}
+	end
+	
+	-- Log timing
+	local elapsed = GetTime() - startTime
+	local dbg = io.open("ai_debug.log", "a")
+	if dbg then
+		dbg:write(string.format("[AIBridge] Gem shortlist: %d supports tested, %d with gain, %.1f ms\n", #results, #results, elapsed))
+		dbg:close()
+	end
+	
+	return results
 end
 
 --- Send build state to LLM and get response
