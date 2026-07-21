@@ -336,43 +336,42 @@ end
 function AIBridge:ExtractMentions(text, state)
 	local mentions = {}
 	local seen = {}
+	local textLower = text:lower()
 	
-	-- Check gem names
+	-- Check gem names (case-insensitive)
 	if state.reference and state.reference.gemNames then
 		for _, gemName in ipairs(state.reference.gemNames) do
-			if text:find(gemName, 1, true) and not seen[gemName] then
+			if textLower:find(gemName:lower(), 1, true) and not seen[gemName:lower()] then
 				t_insert(mentions, { type = "gem", name = gemName })
-				seen[gemName] = true
+				seen[gemName:lower()] = true
 			end
 		end
 	end
 	
-	-- Check unique names
+	-- Check unique names (case-insensitive)
 	if state.reference and state.reference.uniqueNames then
 		for _, names in pairs(state.reference.uniqueNames) do
 			for _, uniqueName in ipairs(names) do
-				if text:find(uniqueName, 1, true) and not seen[uniqueName] then
+				if textLower:find(uniqueName:lower(), 1, true) and not seen[uniqueName:lower()] then
 					t_insert(mentions, { type = "unique", name = uniqueName })
-					seen[uniqueName] = true
+					seen[uniqueName:lower()] = true
 				end
 			end
 		end
 	end
 	
-	-- Check node names
+	-- Check node names (case-insensitive)
 	if state.tree and state.tree.availableNodes then
 		for _, node in ipairs(state.tree.availableNodes) do
-			if text:find(node.name, 1, true) and not seen[node.name] then
+			if textLower:find(node.name:lower(), 1, true) and not seen[node.name:lower()] then
 				t_insert(mentions, { type = "node", name = node.name })
-				seen[node.name] = true
+				seen[node.name:lower()] = true
 			end
 		end
 	end
 	
 	return mentions
 end
-
---- Look up full details for a mentioned entity
 -- @param build The active build object
 -- @param mention {type="gem"|"unique"|"node", name=string}
 -- @return string Formatted detail text
@@ -394,7 +393,7 @@ function AIBridge:LookupGemDetails(build, gemName)
 	end
 	
 	for gemId, gemData in pairs(build.data.gems) do
-		if gemData.name == gemName then
+		if gemData.name and gemData.name:lower() == gemName:lower() then
 			local lines = { gemName .. ":" }
 			
 			-- Type and requirements
@@ -439,7 +438,7 @@ function AIBridge:LookupUniqueDetails(build, uniqueName)
 			local raw = type(unique) == "string" and unique or (type(unique) == "table" and unique[1])
 			if raw then
 				local name = raw:match("^([^\n]+)")
-				if name == uniqueName then
+				if name and name:lower() == uniqueName:lower() then
 					-- Return first 10 lines of the raw item text
 					local lines = {}
 					local count = 0
@@ -464,7 +463,7 @@ function AIBridge:LookupNodeDetails(build, nodeName)
 	end
 	
 	for _, node in pairs(build.spec.nodes) do
-		if node.name == nodeName then
+		if node.name and node.name:lower() == nodeName:lower() then
 			local lines = { nodeName .. " (" .. node.type .. "):" }
 			
 			-- Node stats (sd = stat descriptions)
