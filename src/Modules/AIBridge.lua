@@ -3,6 +3,7 @@
 -- Uses PoB's existing lcurl subprocess pattern for async HTTP
 
 local t_insert = table.insert
+local t_remove = table.remove
 local dkjson = require "dkjson"
 local AIConfig = LoadModule("Modules/AIConfig")
 
