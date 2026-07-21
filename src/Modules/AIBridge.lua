@@ -191,6 +191,42 @@ function AIBridge:SerializeBuild(build)
 		state.tree.availableNodes = availableNodes
 	end
 
+	-- Jewel sockets: allocated sockets and what's in them
+	if spec and spec.allocNodes then
+		local jewelSockets = {}
+		for nodeId, node in pairs(spec.allocNodes) do
+			if node.type == "Socket" then
+				local jewelId = spec.jewels and spec.jewels[nodeId]
+				local jewel
+				if jewelId and jewelId > 0 and itemsTab and itemsTab.items[jewelId] then
+					local item = itemsTab.items[jewelId]
+					jewel = item.name or item.baseName or "Jewel"
+				end
+				t_insert(jewelSockets, { nodeId = nodeId, jewel = jewel })
+			end
+		end
+		state.tree.jewelSockets = jewelSockets
+	end
+
+	-- Masteries: allocated mastery nodes and their selected effect
+	if spec and spec.allocNodes then
+		local masteries = {}
+		for nodeId, node in pairs(spec.allocNodes) do
+			if node.type == "Mastery" then
+				local effectId = spec.masterySelections and spec.masterySelections[nodeId]
+				local effectText
+				if effectId and spec.tree.masteryEffects and spec.tree.masteryEffects[effectId] then
+					local eff = spec.tree.masteryEffects[effectId]
+					if eff.sd then
+						effectText = table.concat(eff.sd, ", ")
+					end
+				end
+				t_insert(masteries, { id = nodeId, name = node.name, effect = effectText })
+			end
+		end
+		state.tree.masteries = masteries
+	end
+
 	return state
 end
 
@@ -254,6 +290,11 @@ Supported action types:
 - {"type":"add_skill","label":"<group name>","gems":[{"name":"Righteous Fire","level":20,"quality":0},{"name":"Efficacy"}]}
 - {"type":"remove_skill","label":"<group name>"} or {"type":"remove_skill","name":"<gem name>"}
 - {"type":"equip_item","slot":"<slot>","raw":"<full item text>"}
+- {"type":"equip_jewel","raw":"<jewel item text>","nodeId":<socket node id>}  -- equip jewel in tree socket (omit nodeId for first empty socket)
+- {"type":"apply_tattoo","name":"<node name>","tattoo":"<tattoo name>"}  -- apply tattoo to a node
+- {"type":"remove_tattoo","name":"<node name>"}  -- remove tattoo from a node
+- {"type":"set_mastery","name":"<mastery node name>","effect":<1-based index>}  -- select mastery effect by index
+- {"type":"set_mastery","name":"<mastery node name>","effectText":"<substring>"}  -- select mastery effect by description text
 - {"type":"set_config","key":"<config key>","value":<bool or number>}
 
 Order matters: if you need more points to allocate a distant node, emit set_level FIRST,
@@ -389,7 +430,6 @@ function AIBridge:ParseActions(content)
 	local displayText = content:gsub("<actions>.-</actions>", ""):gsub("%s+$", "")
 	return displayText, actions
 end
-
 --- Execute a list of actions on the build.
 -- Each action is a table: { type = "...", ... }
 -- Supported types:
@@ -443,6 +483,14 @@ function AIBridge:ExecuteAction(build, action)
 		return self:ActionAddSkill(build, action)
 	elseif actionType == "remove_skill" then
 		return self:ActionRemoveSkill(build, action)
+	elseif actionType == "equip_jewel" then
+		return self:ActionEquipJewel(build, action)
+	elseif actionType == "apply_tattoo" then
+		return self:ActionApplyTattoo(build, action)
+	elseif actionType == "remove_tattoo" then
+		return self:ActionRemoveTattoo(build, action)
+	elseif actionType == "set_mastery" then
+		return self:ActionSetMastery(build, action)
 	else
 		return false, "Unknown action type: " .. tostring(actionType)
 	end
@@ -746,6 +794,193 @@ function AIBridge:ActionRemoveSkill(build, action)
 		end
 	end
 	return false, "Skill not found: " .. target
+end
+
+--- Equip a jewel into a passive tree socket.
+-- action = { raw="<jewel item text>", nodeId=<socket node id> }
+-- If nodeId is omitted, uses the first empty allocated socket.
+function AIBridge:ActionEquipJewel(build, action)
+	local spec = build.spec
+	local itemsTab = build.itemsTab
+	if not spec or not itemsTab then
+		return false, "Build spec or items tab not available"
+	end
+	local raw = action.raw
+	if not raw or raw == "" then
+		return false, "No jewel raw string provided"
+	end
+
+	-- Create the jewel item
+	local item = new("Item", raw)
+	if not item or not item.baseName then
+		return false, "Invalid jewel item data"
+	end
+	itemsTab:AddItem(item, true)
+
+	-- Determine target socket node
+	local nodeId = action.nodeId
+	if not nodeId then
+		-- Find first empty allocated socket
+		for id, node in pairs(spec.allocNodes) do
+			if node.type == "Socket" and (not spec.jewels[id] or spec.jewels[id] == 0) then
+				nodeId = id
+				break
+			end
+		end
+	end
+	if not nodeId then
+		return false, "No available jewel socket found (allocate a socket node first)"
+	end
+	if not spec.nodes[nodeId] or spec.nodes[nodeId].type ~= "Socket" then
+		return false, "Node " .. tostring(nodeId) .. " is not a jewel socket"
+	end
+
+	spec.jewels[nodeId] = item.id
+	spec:BuildClusterJewelGraphs()
+	itemsTab:PopulateSlots()
+	itemsTab:AddUndoState()
+	build.buildFlag = true
+
+	return true, "Equipped jewel '" .. (item.name or item.baseName) .. "' in socket " .. nodeId
+end
+
+--- Apply a tattoo to a passive tree node.
+-- action = { name="<node name>", tattoo="<tattoo name>" }  or  { id=<node id>, tattoo="..." }
+function AIBridge:ActionApplyTattoo(build, action)
+	local spec = build.spec
+	if not spec then
+		return false, "No passive tree spec"
+	end
+	local node = self:FindNode(spec, action)
+	if not node then
+		return false, "Node not found: " .. tostring(action.name or action.id)
+	end
+
+	local tattooName = action.tattoo
+	if not tattooName then
+		return false, "No tattoo name provided"
+	end
+
+	-- Find the tattoo in the tree's tattoo nodes by display name
+	local tattooNodes = spec.tree.tattoo and spec.tree.tattoo.nodes
+	if not tattooNodes then
+		return false, "No tattoo data available in this tree version"
+	end
+	local tattooNode
+	local target = tattooName:lower()
+	for _, tn in pairs(tattooNodes) do
+		if tn.dn and tn.dn:lower() == target then
+			tattooNode = tn
+			break
+		end
+	end
+	if not tattooNode then
+		return false, "Tattoo not found: " .. tattooName
+	end
+
+	-- Apply the tattoo (mirrors TreeTab:addModifier)
+	local newTattooNode = copyTable(tattooNode, true)
+	newTattooNode.id = node.id
+	spec.hashOverrides[node.id] = newTattooNode
+	spec:ReplaceNode(node, newTattooNode)
+	spec:BuildAllDependsAndPaths()
+	build.treeTab.modFlag = true
+	build.buildFlag = true
+
+	return true, "Applied tattoo '" .. tattooName .. "' to node '" .. (node.name or node.id) .. "'"
+end
+
+--- Remove a tattoo from a passive tree node.
+-- action = { name="<node name>" }  or  { id=<node id> }
+function AIBridge:ActionRemoveTattoo(build, action)
+	local spec = build.spec
+	if not spec then
+		return false, "No passive tree spec"
+	end
+	local node = self:FindNode(spec, action)
+	if not node then
+		return false, "Node not found: " .. tostring(action.name or action.id)
+	end
+	if not spec.hashOverrides[node.id] then
+		return true, "Node has no tattoo: " .. (node.name or node.id)
+	end
+
+	-- Remove the tattoo (mirrors TreeTab:RemoveTattooFromNode)
+	spec.tree.nodes[node.id].isTattoo = false
+	spec.hashOverrides[node.id] = nil
+	spec:ReplaceNode(node, spec.tree.nodes[node.id])
+	spec:BuildAllDependsAndPaths()
+	build.treeTab.modFlag = true
+	build.buildFlag = true
+
+	return true, "Removed tattoo from node '" .. (node.name or node.id) .. "'"
+end
+
+--- Select a mastery effect for a mastery node.
+-- action = { name="<mastery node name>", effect=<effect index 1-based> }
+-- or       { name="<mastery node name>", effectText="<substring of effect description>" }
+function AIBridge:ActionSetMastery(build, action)
+	local spec = build.spec
+	if not spec then
+		return false, "No passive tree spec"
+	end
+	local node = self:FindNode(spec, action)
+	if not node then
+		return false, "Mastery node not found: " .. tostring(action.name or action.id)
+	end
+	if node.type ~= "Mastery" then
+		return false, "Node is not a mastery: " .. (node.name or node.id)
+	end
+	if not node.masteryEffects or #node.masteryEffects == 0 then
+		return false, "Mastery has no selectable effects: " .. (node.name or node.id)
+	end
+
+	-- Resolve the effect
+	local effectId
+	if action.effect and type(action.effect) == "number" then
+		local idx = action.effect
+		if idx < 1 or idx > #node.masteryEffects then
+			return false, "Effect index out of range (1-" .. #node.masteryEffects .. ")"
+		end
+		effectId = node.masteryEffects[idx].effect
+	elseif action.effectText then
+		local target = action.effectText:lower()
+		for _, me in ipairs(node.masteryEffects) do
+			local eff = spec.tree.masteryEffects[me.effect]
+			if eff and eff.sd then
+				local desc = table.concat(eff.sd, " "):lower()
+				if desc:find(target, 1, true) then
+					effectId = me.effect
+					break
+				end
+			end
+		end
+		if not effectId then
+			return false, "No mastery effect matches text: " .. action.effectText
+		end
+	else
+		return false, "Provide 'effect' (index) or 'effectText' (description substring)"
+	end
+
+	local effect = spec.tree.masteryEffects[effectId]
+	if not effect then
+		return false, "Invalid mastery effect id: " .. tostring(effectId)
+	end
+
+	-- Apply the effect (mirrors TreeTab:SaveMasteryPopup)
+	node.sd = effect.sd
+	node.allMasteryOptions = false
+	node.reminderText = { "Tip: Right click to select a different effect" }
+	spec.tree:ProcessStats(node)
+	spec.masterySelections[node.id] = effect.id
+	if not node.alloc then
+		spec:AllocNode(node)
+	end
+	spec:AddUndoState()
+	build.treeTab.modFlag = true
+	build.buildFlag = true
+
+	return true, "Set mastery '" .. (node.name or node.id) .. "' effect to: " .. table.concat(effect.sd, ", ")
 end
 
 --- Find a passive node by ID or name
