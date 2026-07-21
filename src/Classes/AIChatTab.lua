@@ -107,10 +107,21 @@ local function translit(text)
 			[0xF2]=111,[0xF3]=111,[0xF4]=111,[0xF5]=111,[0xF6]=111,[0xF8]=111, -- ò-ö,ø → o
 			[0xF9]=117,[0xFA]=117,[0xFB]=117,[0xFC]=117, -- ù-ü → u
 			[0xFD]=121,[0xFF]=121, -- ý,ÿ → y
+			-- Common symbols
+			[0x2192]="->", -- → arrow
+			[0x2265]=">=", -- ≥ greater or equal
+			[0x2264]="<=", -- ≤ less or equal
+			[0x00D7]="x", -- × multiplication
+			[0x00F7]="/", -- ÷ division
+			[0x00B1]="+/-", -- ± plus-minus
+			[0x2248]="~", -- ≈ approximately
+			[0x2191]="^", -- ↑ up arrow
+			[0x2193]="v", -- ↓ down arrow
+			[0xFFFD]="", -- replacement character (drop it)
 		}
 		local ascii = map[code]
 		if ascii then
-			return string.char(ascii)
+			return ascii
 		end
 		return ""  -- Drop unknown codepoints
 	end)
