@@ -25,6 +25,15 @@ describe("AI unique shortlist", function()
 		local bridge = LoadModule("Modules/AIBridge")
 		bridge.uniqueShortlistCache = nil
 
+		local state = assert(bridge:SerializeBuild(build))
+		local output = build.calcsTab.mainOutput
+		assert.is_number(state.stats.TotalEHP)
+		assert.are.equal(output.TotalEHP, state.stats.TotalEHP)
+		for _, damageType in ipairs({ "Physical", "Fire", "Cold", "Lightning", "Chaos" }) do
+			local stat = damageType .. "MaximumHitTaken"
+			assert.are.equal(output[stat], state.stats[stat])
+		end
+
 		local amulets = {}
 		for index = 1, 45 do
 			table.insert(amulets, uniqueRaw(string.format("Weak Candidate %02d", index), "Amber Amulet", "+1 to Strength"))

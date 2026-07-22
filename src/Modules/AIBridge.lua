@@ -96,7 +96,7 @@ function AIBridge:SerializeBuild(build, forceRefresh)
 	local output = build.calcsTab and build.calcsTab.mainOutput
 	if output then
 		local statKeys = {
-			"Life", "EnergyShield", "Mana", "Armour", "Evasion",
+			"Life", "LifeUnreserved", "EnergyShield", "Mana", "Ward", "Armour", "Evasion",
 			"FireResist", "ColdResist", "LightningResist", "ChaosResist",
 			"TotalDPS", "CombinedDPS", "AverageHit", "AverageDamage",
 			"Speed", "CritChance", "CritMultiplier", "HitChance",
@@ -104,13 +104,21 @@ function AIBridge:SerializeBuild(build, forceRefresh)
 			"Str", "Dex", "Int",
 			"LifeRegen", "EnergyShieldRegen", "ManaRegen",
 			"LifeLeechGainRate", "ManaLeechGainRate",
-			"BlockChance", "SpellBlockChance",
-			"EffectiveMovementSpeedMod",
+			"BlockChance", "SpellBlockChance", "EffectiveBlockChance", "EffectiveSpellBlockChance",
+			"AttackDodgeChance", "SpellDodgeChance", "EffectiveSpellSuppressionChance",
+			"MeleeAvoidChance", "SpellAvoidChance", "ProjectileAvoidChance",
+			"PhysicalDamageReduction", "EffectiveMovementSpeedMod",
+			"TotalEHP", "TotalNumberOfHits", "SecondMinimalMaximumHitTaken",
+			"PhysicalMaximumHitTaken", "FireMaximumHitTaken", "ColdMaximumHitTaken",
+			"LightningMaximumHitTaken", "ChaosMaximumHitTaken",
 			"TotalDotDPS", "WithImpaleDPS",
 		}
 		for _, key in ipairs(statKeys) do
-			if output[key] then
-				state.stats[key] = output[key]
+			local value = output[key]
+			local isFinite = type(value) ~= "number"
+				or (value == value and value ~= math.huge and value ~= -math.huge)
+			if value ~= nil and isFinite then
+				state.stats[key] = value
 			end
 		end
 		-- Minion stats if present
@@ -1201,6 +1209,9 @@ function AIBridge:GetBuildSummary(build)
 		t_insert(parts, string.format("%.0f DPS", state.stats.CombinedDPS))
 	elseif state.stats.TotalDPS and state.stats.TotalDPS > 0 then
 		t_insert(parts, string.format("%.0f DPS", state.stats.TotalDPS))
+	end
+	if state.stats.TotalEHP and state.stats.TotalEHP > 0 then
+		t_insert(parts, string.format("%.0f EHP", state.stats.TotalEHP))
 	end
 	if state.tree.keystones and #state.tree.keystones > 0 then
 		t_insert(parts, "Keystones: " .. table.concat(state.tree.keystones, ", "))
