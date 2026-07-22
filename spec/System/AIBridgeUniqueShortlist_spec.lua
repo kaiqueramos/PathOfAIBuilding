@@ -31,8 +31,14 @@ describe("AI unique shortlist", function()
 		end
 		local strongRaw = uniqueRaw("Strong Candidate", "Onyx Amulet", "+1 to Level of all Skill Gems")
 		local lifeRaw = uniqueRaw("Life Candidate", "Amber Amulet", "+5000 to maximum Life")
+		local balancedRaw = uniqueRaw(
+			"Balanced Candidate",
+			"Onyx Amulet",
+			"+1 to Level of all Skill Gems\n+1000 to maximum Life"
+		)
 		table.insert(amulets, strongRaw)
 		table.insert(amulets, lifeRaw)
+		table.insert(amulets, balancedRaw)
 		table.insert(amulets, uniqueRaw("Unavailable Candidate", "Onyx Amulet", "+10 to Level of all Skill Gems", "Source: No longer obtainable"))
 		local originalUniques = build.data.uniques
 		build.data.uniques = { amulet = amulets }
@@ -61,8 +67,13 @@ describe("AI unique shortlist", function()
 		end
 		local strongResult = findResult("Strong Candidate")
 		local lifeResult = findResult("Life Candidate")
+		local balancedResult = findResult("Balanced Candidate")
 		assert.is_not_nil(strongResult)
 		assert.is_not_nil(lifeResult)
+		assert.is_not_nil(balancedResult)
+		assert.is_true(balancedResult.dpsGainPct > 0)
+		assert.is_true(balancedResult.ehpGainPct > 0)
+		assert.is_true(balancedResult.balancedGainPct > 0)
 		assert.is_nil(findResult("Unavailable Candidate"))
 
 		local calcFunc, baseOutput = build.calcsTab:GetMiscCalculator()

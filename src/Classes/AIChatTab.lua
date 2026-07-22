@@ -76,7 +76,29 @@ local LATIN1_TRANSLIT = {
 	["\253"] = "y", ["\255"] = "y",
 }
 
+-- UTF-8 punctuation and symbols that use two or three bytes. Replace these before
+-- the Latin-1 fallback, otherwise each byte reaches SimpleGraphic separately.
+local UTF8_SYMBOL_TRANSLIT = {
+	["\194\177"] = "+/-", -- ±
+	["\195\151"] = "x", -- ×
+	["\195\183"] = "/", -- ÷
+	["\226\128\147"] = "-", -- en dash
+	["\226\128\148"] = "--", -- em dash
+	["\226\128\152"] = "'", ["\226\128\153"] = "'", -- curly single quotes
+	["\226\128\156"] = '"', ["\226\128\157"] = '"', -- curly double quotes
+	["\226\128\162"] = "-", -- bullet
+	["\226\134\145"] = "^", -- ↑
+	["\226\134\146"] = "->", -- →
+	["\226\134\147"] = "v", -- ↓
+	["\226\137\136"] = "~", -- ≈
+	["\226\137\164"] = "<=", -- ≤
+	["\226\137\165"] = ">=", -- ≥
+}
+
 local function translit(text)
+	for sequence, replacement in pairs(UTF8_SYMBOL_TRANSLIT) do
+		text = text:gsub(sequence, replacement)
+	end
 	-- First: UTF-8 multi-byte sequences
 	text = text:gsub("\195[\128-\191]", function(seq)
 		return UTF8_TRANSLIT[seq] or ""
@@ -85,6 +107,8 @@ local function translit(text)
 	text = text:gsub("[\192-\255]", function(b)
 		return LATIN1_TRANSLIT[b] or ""
 	end)
+	-- Drop orphaned UTF-8 continuation bytes instead of rendering [U+FFFD].
+	text = text:gsub("[\128-\191]", "")
 	-- Finally: [U+XXXX] placeholders (SimpleGraphic converts UTF-8 to these)
 	text = text:gsub("%[U%+(%x+)%]", function(hex)
 		local code = tonumber(hex, 16)

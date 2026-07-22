@@ -844,6 +844,10 @@ function AIBridge:ComputeUniqueShortlist(build, limit, forceRefresh)
 						local dpsGainPct = baseDPS > 0 and (dpsGain / baseDPS) * 100 or 0
 						local ehpGain = newEHP - baseEHP
 						local ehpGainPct = baseEHP > 0 and (ehpGain / baseEHP) * 100 or 0
+						local balancedGainPct = 0
+						if dpsGainPct > 0 and ehpGainPct > 0 then
+							balancedGainPct = math.min(dpsGainPct, ehpGainPct)
+						end
 
 						if dpsGain > 0 or ehpGain > 0 then
 							t_insert(results, {
@@ -853,6 +857,7 @@ function AIBridge:ComputeUniqueShortlist(build, limit, forceRefresh)
 								dpsGainPct = dpsGainPct,
 								ehpGain = ehpGain,
 								ehpGainPct = ehpGainPct,
+								balancedGainPct = balancedGainPct,
 							})
 						end
 					end
@@ -861,20 +866,99 @@ function AIBridge:ComputeUniqueShortlist(build, limit, forceRefresh)
 		end
 	end
 
-	table.sort(results, function(a, b)
-		local aScore = a.dpsGain > 0 and a.dpsGain or a.ehpGain
-		local bScore = b.dpsGain > 0 and b.dpsGain or b.ehpGain
-		return aScore > bScore
-	end)
+	local function positivePct(value)
+		return value > 0 and value or 0
+	end
 
-	local slotCounts = {}
-	local limited = {}
+	local function generalScore(result)
+		return math.max(positivePct(result.dpsGainPct), positivePct(result.ehpGainPct))
+	end
+
+	local resultsBySlot = {}
 	for _, result in ipairs(results) do
-		slotCounts[result.slot] = (slotCounts[result.slot] or 0) + 1
-		if slotCounts[result.slot] <= limit then
-			t_insert(limited, result)
+		resultsBySlot[result.slot] = resultsBySlot[result.slot] or {}
+		t_insert(resultsBySlot[result.slot], result)
+	end
+
+	local limited = {}
+	for _, slotResults in pairs(resultsBySlot) do
+		local selected = {}
+		local selectedCount = 0
+
+		local function selectBest(predicate, score)
+			if selectedCount >= limit then
+				return
+			end
+			local best
+			local bestScore
+			for _, result in ipairs(slotResults) do
+				if not selected[result] and predicate(result) then
+					local resultScore = score(result)
+					if not best or resultScore > bestScore
+						or (resultScore == bestScore and result.name < best.name) then
+						best = result
+						bestScore = resultScore
+					end
+				end
+			end
+			if best then
+				selected[best] = true
+				selectedCount = selectedCount + 1
+				t_insert(limited, best)
+			end
+		end
+
+		-- Preserve all three useful upgrade objectives per slot: balanced, DPS, and EHP.
+		selectBest(function(result)
+			return result.balancedGainPct > 0
+		end, function(result)
+			return result.balancedGainPct
+		end)
+		selectBest(function(result)
+			return result.dpsGainPct > 0
+		end, function(result)
+			return result.dpsGainPct
+		end)
+		selectBest(function(result)
+			return result.ehpGainPct > 0
+		end, function(result)
+			return result.ehpGainPct
+		end)
+
+		table.sort(slotResults, function(a, b)
+			local aScore = generalScore(a)
+			local bScore = generalScore(b)
+			if aScore == bScore then
+				return a.name < b.name
+			end
+			return aScore > bScore
+		end)
+		for _, result in ipairs(slotResults) do
+			if selectedCount >= limit then
+				break
+			end
+			if not selected[result] then
+				selected[result] = true
+				selectedCount = selectedCount + 1
+				t_insert(limited, result)
+			end
 		end
 	end
+
+	table.sort(limited, function(a, b)
+		if a.balancedGainPct ~= b.balancedGainPct then
+			return a.balancedGainPct > b.balancedGainPct
+		end
+		local aScore = generalScore(a)
+		local bScore = generalScore(b)
+		if aScore ~= bScore then
+			return aScore > bScore
+		end
+		if a.slot ~= b.slot then
+			return a.slot < b.slot
+		end
+		return a.name < b.name
+	end)
 
 	local elapsed = GetTime() - startTime
 	local itemCountAfter = #itemsTab.itemOrderList
@@ -953,6 +1037,12 @@ When suggesting changes, explain the expected impact (e.g. "+15% DPS", "+200 lif
 Be concise. Use PoB color codes: ^2=green/good, ^1=red/bad, ^7=white, ^8=gray.
 If the user asks "how do I improve", focus on the top 3 highest-impact changes.
 Format responses for readability in a game tool UI.
+
+The simulated uniqueShortlist is a preselected sample, not an exhaustive proof about every
+unique in the catalog. If no entry improves both DPS and EHP, say "none among the tested
+candidates", never "no unique exists". balancedGainPct is positive only when both metrics improve.
+If the build has no configured main skill or has near-zero DPS/EHP, state that upgrade analysis
+is not meaningful yet and ask the player to load/configure the intended build before concluding.
 
 The build state includes tree.pointsAvailable (free passive points), meta.availableClasses,
 meta.availableAscendancies, and tree.availableNodes (notables/keystones you can allocate).
