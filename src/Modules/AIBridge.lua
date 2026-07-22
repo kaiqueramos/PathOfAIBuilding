@@ -594,36 +594,212 @@ function AIBridge:ComputeGemShortlist(build, limit, forceRefresh)
 	return results
 end
 
---- Compute unique item shortlist: simulate equipping uniques and measure DPS/EHP gain
+local UNIQUE_RELEVANCE_RULES = {
+	{ "to level of all skill gems", 45 },
+	{ "to level of all ", 25 },
+	{ "to level of socketed", 20 },
+	{ "more damage", 18 },
+	{ "damage over time multiplier", 18 },
+	{ "reservation efficiency", 16 },
+	{ "maximum resistance", 16 },
+	{ "spell suppression", 16 },
+	{ "maximum life", 14 },
+	{ "maximum energy shield", 14 },
+	{ "critical strike multiplier", 12 },
+	{ "chance to block", 10 },
+	{ "movement speed", 8 },
+	{ "increased damage", 6 },
+}
+
+local function addKeywordScore(score, text, keywords, weight)
+	for _, keyword in ipairs(keywords) do
+		if text:find(keyword, 1, true) then
+			return score + weight
+		end
+	end
+	return score
+end
+
+local function activeUniqueModText(item)
+	local lines = {}
+	local modLineGroups = {
+		item.implicitModLines,
+		item.enchantModLines,
+		item.explicitModLines,
+		item.scourgeModLines,
+		item.crucibleModLines,
+	}
+	for _, modLines in ipairs(modLineGroups) do
+		if modLines then
+			for _, modLine in ipairs(modLines) do
+				if item:CheckModLineVariant(modLine) then
+					t_insert(lines, (modLine.line or ""):lower())
+				end
+			end
+		end
+	end
+	return table.concat(lines, "\n")
+end
+
+local function scoreUniqueCandidate(item, baseOutput, mainSkill)
+	local text = activeUniqueModText(item)
+	local score = 0
+	for _, rule in ipairs(UNIQUE_RELEVANCE_RULES) do
+		if text:find(rule[1], 1, true) then
+			score = score + rule[2]
+		end
+	end
+
+	local skillFlags = mainSkill and mainSkill.skillFlags or {}
+	local skillTypes = mainSkill and mainSkill.skillTypes or {}
+	score = addKeywordScore(score, text, { "{tags:resource}", "life", "energy shield" }, 8)
+	score = addKeywordScore(score, text, { "{tags:defences}", "armour", "evasion" }, 5)
+	score = addKeywordScore(score, text, { "{tags:resistance}", "resistance" }, 6)
+	score = addKeywordScore(score, text, { "{tags:attribute}", "attributes" }, 3)
+
+	if skillFlags.attack then
+		score = addKeywordScore(score, text, { "{tags:attack", "attack damage", "attack speed" }, 18)
+	end
+	if skillFlags.spell then
+		score = addKeywordScore(score, text, { "{tags:caster", "spell damage", "cast speed" }, 18)
+	end
+	if skillFlags.minion then
+		score = addKeywordScore(score, text, { "minion" }, 24)
+	end
+	if skillFlags.melee then
+		score = addKeywordScore(score, text, { "melee" }, 10)
+	end
+	if skillFlags.projectile then
+		score = addKeywordScore(score, text, { "projectile" }, 10)
+	end
+	if skillFlags.totem then
+		score = addKeywordScore(score, text, { "totem" }, 12)
+	end
+	if skillFlags.trap then
+		score = addKeywordScore(score, text, { "trap" }, 12)
+	end
+	if skillFlags.mine then
+		score = addKeywordScore(score, text, { "mine" }, 12)
+	end
+
+	if SkillType and skillTypes[SkillType.Fire] then
+		score = addKeywordScore(score, text, { "fire damage", "burning damage", "fire skill gems" }, 18)
+	end
+	if SkillType and skillTypes[SkillType.Cold] then
+		score = addKeywordScore(score, text, { "cold damage", "cold skill gems" }, 18)
+	end
+	if SkillType and skillTypes[SkillType.Lightning] then
+		score = addKeywordScore(score, text, { "lightning damage", "lightning skill gems" }, 18)
+	end
+	if SkillType and skillTypes[SkillType.Chaos] then
+		score = addKeywordScore(score, text, { "chaos damage", "chaos skill gems", "poison" }, 18)
+	end
+	if SkillType and skillTypes[SkillType.Physical] then
+		score = addKeywordScore(score, text, { "physical damage", "physical skill gems", "bleed" }, 18)
+	end
+	if SkillType and skillTypes[SkillType.DamageOverTime] then
+		score = addKeywordScore(score, text, { "damage over time", "burning damage", "poison", "bleed" }, 18)
+	end
+	if (baseOutput.CritChance or 0) > 5 then
+		score = addKeywordScore(score, text, { "{tags:critical}", "critical strike" }, 8)
+	end
+
+	if (baseOutput.FireResist or 0) < 75 then
+		score = addKeywordScore(score, text, { "fire resistance" }, 12)
+	end
+	if (baseOutput.ColdResist or 0) < 75 then
+		score = addKeywordScore(score, text, { "cold resistance" }, 12)
+	end
+	if (baseOutput.LightningResist or 0) < 75 then
+		score = addKeywordScore(score, text, { "lightning resistance" }, 12)
+	end
+	if (baseOutput.ChaosResist or 0) < 0 then
+		score = addKeywordScore(score, text, { "chaos resistance" }, 12)
+	end
+
+	if skillFlags.attack and item.weaponData and item.weaponData[1] then
+		local weapon = item.weaponData[1]
+		local weaponDPS = (weapon.PhysicalDPS or 0) + (weapon.ElementalDPS or 0) + (weapon.ChaosDPS or 0)
+		score = score + math.min(weaponDPS / 20, 25)
+	end
+	return score
+end
+
+local function preselectUniqueCandidates(itemsTab, uniques, slotName, baseOutput, mainSkill, maxCandidates)
+	local candidates = {}
+	for _, unique in ipairs(uniques) do
+		local raw = type(unique) == "string" and unique or (type(unique) == "table" and unique[1])
+		if raw and not raw:lower():find("source: no longer obtainable", 1, true) then
+			local item = new("Item", raw)
+			if item and item.baseName and itemsTab:IsItemValidForSlot(item, slotName) then
+				item:BuildModList()
+				t_insert(candidates, {
+					item = item,
+					score = scoreUniqueCandidate(item, baseOutput, mainSkill),
+				})
+			end
+		end
+	end
+
+	table.sort(candidates, function(a, b)
+		if a.score == b.score then
+			return (a.item.name or a.item.baseName) < (b.item.name or b.item.baseName)
+		end
+		return a.score > b.score
+	end)
+	if #candidates <= maxCandidates then
+		return candidates, #candidates
+	end
+
+	-- Keep mostly high-affinity items, plus a deterministic sample of the tail so
+	-- unusual build-enabling uniques are not excluded solely by the heuristic.
+	local selected = {}
+	local explorationCount = math.min(10, math.floor(maxCandidates / 4))
+	local rankedCount = maxCandidates - explorationCount
+	for index = 1, rankedCount do
+		t_insert(selected, candidates[index])
+	end
+	local remainingCount = #candidates - rankedCount
+	for index = 1, explorationCount do
+		local candidateIndex = rankedCount + math.ceil(index * remainingCount / explorationCount)
+		t_insert(selected, candidates[candidateIndex])
+	end
+	return selected, #candidates
+end
+
+--- Compute unique item shortlist using PoB's non-mutating item calculator
 -- @param build The active build object
 -- @param limit Max number of uniques per slot to return (default 3)
 -- @return table Array of {slot, name, dpsGain, dpsGainPct, ehpGain, ehpGainPct} sorted by gain
 function AIBridge:ComputeUniqueShortlist(build, limit, forceRefresh)
 	limit = limit or 3
-	
-	-- Return cached result if available
+
 	if self.uniqueShortlistCache and not forceRefresh then
 		return self.uniqueShortlistCache
 	end
-	
+
 	local startTime = GetTime()
-	local maxTestPerType = 40  -- Cap uniques tested per type to avoid freezing
-	
+	local maxTestPerType = 40
 	local itemsTab = build.itemsTab
 	local calcsTab = build.calcsTab
 	if not itemsTab or not calcsTab or not build.data or not build.data.uniques then
 		return {}
 	end
-	
-	-- Get current DPS and EHP
+
+	-- BuildOutput refreshes GetMiscCalculator(). The returned calculator applies
+	-- repItem in an isolated calculation environment without touching itemsTab.
 	calcsTab:BuildOutput()
-	local baseDPS = calcsTab.mainOutput.CombinedDPS or calcsTab.mainOutput.TotalDPS or 0
-	local baseEHP = calcsTab.mainOutput.Life or 0
+	local calcFunc, baseOutput = calcsTab:GetMiscCalculator()
+	if not calcFunc or not baseOutput then
+		return {}
+	end
+	local baseDPS = baseOutput.CombinedDPS or baseOutput.TotalDPS or 0
+	local baseEHP = baseOutput.TotalEHP or 0
 	if baseDPS == 0 and baseEHP == 0 then
 		return {}
 	end
-	
-	-- Map slot names to unique types
+	local mainSkill = calcsTab.mainEnv and calcsTab.mainEnv.player and calcsTab.mainEnv.player.mainSkill
+
 	local slotToType = {
 		["Weapon 1"] = {"axe", "bow", "claw", "dagger", "mace", "staff", "sword", "wand"},
 		["Weapon 2"] = {"shield", "quiver"},
@@ -636,76 +812,61 @@ function AIBridge:ComputeUniqueShortlist(build, limit, forceRefresh)
 		["Ring 2"] = {"ring"},
 		["Belt"] = {"belt"},
 	}
-	
+
 	local results = {}
-	
-	-- Test uniques for each equipped slot
-	for slotName, slot in pairs(itemsTab.slots) do
+	local candidateCount = 0
+	local testedCount = 0
+	local itemCountBefore = #itemsTab.itemOrderList
+	for slotName in pairs(itemsTab.slots) do
 		local uniqueTypes = slotToType[slotName]
 		if uniqueTypes then
-			-- Get current item in slot
-			local currentItemId = slot.selItemId
-			
-			-- Test each unique type for this slot
 			for _, uniqueType in ipairs(uniqueTypes) do
 				local uniques = build.data.uniques[uniqueType]
 				if uniques then
-					local tested = 0
-					for _, unique in ipairs(uniques) do
-						if tested >= maxTestPerType then break end
-						tested = tested + 1
-						local raw = type(unique) == "string" and unique or (type(unique) == "table" and unique[1])
-						if raw then
-							-- Create item from raw
-							local item = new("Item", raw)
-							if item and item.baseName then
-								-- Temporarily equip
-								itemsTab:AddItem(item, true)
-								slot:SetSelItemId(item.id)
-								
-								-- Recalculate
-								calcsTab:BuildOutput()
-								local newDPS = calcsTab.mainOutput.CombinedDPS or calcsTab.mainOutput.TotalDPS or 0
-								local newEHP = calcsTab.mainOutput.Life or 0
-								
-								local dpsGain = newDPS - baseDPS
-								local dpsGainPct = baseDPS > 0 and (dpsGain / baseDPS) * 100 or 0
-								local ehpGain = newEHP - baseEHP
-								local ehpGainPct = baseEHP > 0 and (ehpGain / baseEHP) * 100 or 0
-								
-								-- Restore original item
-								slot:SetSelItemId(currentItemId or 0)
-								
-								-- Store result if positive gain
-								if dpsGain > 0 or ehpGain > 0 then
-									t_insert(results, {
-										slot = slotName,
-										name = item.name or item.baseName,
-										dpsGain = dpsGain,
-										dpsGainPct = dpsGainPct,
-										ehpGain = ehpGain,
-										ehpGainPct = ehpGainPct,
-									})
-								end
-							end
+					local candidates, availableCount = preselectUniqueCandidates(
+						itemsTab,
+						uniques,
+						slotName,
+						baseOutput,
+						mainSkill,
+						maxTestPerType
+					)
+					candidateCount = candidateCount + availableCount
+					for _, candidate in ipairs(candidates) do
+						testedCount = testedCount + 1
+						local output = calcFunc({
+							repSlotName = slotName,
+							repItem = candidate.item,
+						}, false)
+						local newDPS = output.CombinedDPS or output.TotalDPS or 0
+						local newEHP = output.TotalEHP or 0
+						local dpsGain = newDPS - baseDPS
+						local dpsGainPct = baseDPS > 0 and (dpsGain / baseDPS) * 100 or 0
+						local ehpGain = newEHP - baseEHP
+						local ehpGainPct = baseEHP > 0 and (ehpGain / baseEHP) * 100 or 0
+
+						if dpsGain > 0 or ehpGain > 0 then
+							t_insert(results, {
+								slot = slotName,
+								name = candidate.item.name or candidate.item.baseName,
+								dpsGain = dpsGain,
+								dpsGainPct = dpsGainPct,
+								ehpGain = ehpGain,
+								ehpGainPct = ehpGainPct,
+							})
 						end
 					end
 				end
 			end
 		end
 	end
-	
-	-- Restore original calculation
-	calcsTab:BuildOutput()
-	
-	-- Sort by DPS gain (or EHP if no DPS) and limit per slot
+
 	table.sort(results, function(a, b)
 		local aScore = a.dpsGain > 0 and a.dpsGain or a.ehpGain
 		local bScore = b.dpsGain > 0 and b.dpsGain or b.ehpGain
 		return aScore > bScore
 	end)
-	
-	-- Limit to top N per slot
+
 	local slotCounts = {}
 	local limited = {}
 	for _, result in ipairs(results) do
@@ -714,16 +875,22 @@ function AIBridge:ComputeUniqueShortlist(build, limit, forceRefresh)
 			t_insert(limited, result)
 		end
 	end
-	
-	-- Log timing and cache result
+
 	local elapsed = GetTime() - startTime
+	local itemCountAfter = #itemsTab.itemOrderList
 	local dbg = io.open("ai_debug.log", "a")
 	if dbg then
-		dbg:write(string.format("[AIBridge] Unique shortlist: %d results, %.1f ms\n", #limited, elapsed))
+		dbg:write(string.format(
+			"[AIBridge] Unique shortlist: %d results, %d/%d candidates tested, items %+d, %.1f ms\n",
+			#limited,
+			testedCount,
+			candidateCount,
+			itemCountAfter - itemCountBefore,
+			elapsed
+		))
 		dbg:close()
 	end
 	self.uniqueShortlistCache = limited
-	
 	return limited
 end
 
