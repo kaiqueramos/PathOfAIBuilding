@@ -21,7 +21,7 @@ o trabalho pesado: calcular, comparar, buscar no trade, sugerir upgrades.
 - [x] Fingerprint do build para invalidar caches e respostas obsoletas
 - [x] Roteamento local por intenção, contexto seletivo e histórico limitado a 12.000 caracteres
 - [x] Lotes de ações pré-validados em clone, rebuild completo e diff real após Apply
-- [ ] Escalonamento: permitir que a IA solicite contexto adicional antes de responder
+- [x] Escalonamento híbrido: IA pode solicitar contexto adicional uma única vez
 - [ ] Trade real com preço e orçamento
 - [ ] Otimização de árvore
 - [ ] Geração completa de build
@@ -91,7 +91,10 @@ o trabalho pesado: calcular, comparar, buscar no trade, sugerir upgrades.
 - Shortlists caros são calculados somente para intenção de gems, itens ou melhoria geral
 - Histórico enviado ao modelo preserva apenas as mensagens mais recentes dentro de 12.000 caracteres
 - Cada resposta, shortlist e lote de ações fica vinculado ao fingerprint exato do build
-- Pendente: permitir que a própria IA peça blocos omitidos e refazer a chamada uma única vez
+- O estado inclui um manifesto compacto dos contextos omitidos: gems, uniques, tree e config
+- A IA pode responder com `<context_request>`; o bridge valida e refaz a pergunta uma única vez
+- O retry reutiliza o mesmo histórico, recalcula somente os escopos pedidos e revalida o fingerprint
+- Respostas intermediárias com ações, escopos desconhecidos ou pedidos malformados são rejeitadas
 
 ---
 

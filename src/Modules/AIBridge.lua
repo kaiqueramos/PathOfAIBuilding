@@ -22,6 +22,14 @@ local AIBridge = {
 local HISTORY_CHAR_BUDGET = 12000
 AIBridge.HISTORY_CHAR_BUDGET = HISTORY_CHAR_BUDGET
 
+local CONTEXT_SCOPE_ORDER = { "gems", "uniques", "tree", "config" }
+local CONTEXT_SCOPE_DESCRIPTIONS = {
+	gems = "gem catalog and simulated support-gem DPS upgrades",
+	uniques = "unique catalog, item bases, and simulated DPS/EHP upgrades",
+	tree = "reachable notable and keystone allocation candidates",
+	config = "current calculation settings and available configuration keys",
+}
+
 local function containsAny(text, terms)
 	for _, rawTerm in ipairs(terms) do
 		local isPrefix = rawTerm:sub(-1) == "*"
@@ -463,10 +471,21 @@ function AIBridge:SerializeBuild(build, context)
 		state.reference.uniqueNames = uniqueNames
 	end
 
-	-- Config keys (valid configuration options)
-	if includeConfigReference and build.configTab and build.configTab.varControls then
+	-- Current config values and valid configuration keys
+	if includeConfigReference and build.configTab then
+		state.config = {}
+		for key, value in pairs(build.configTab.input or {}) do
+			local valueType = type(value)
+			local isFinite = valueType ~= "number"
+				or (value == value and value ~= math.huge and value ~= -math.huge)
+			if (valueType == "boolean" or valueType == "number" or valueType == "string")
+				and isFinite then
+				state.config[key] = value
+			end
+		end
+
 		local configKeys = {}
-		for var, _ in pairs(build.configTab.varControls) do
+		for var in pairs(build.configTab.varControls or {}) do
 			t_insert(configKeys, var)
 		end
 		table.sort(configKeys)
@@ -1221,10 +1240,165 @@ function AIBridge:ComputeUniqueShortlist(build, limit, forceRefresh, fingerprint
 	return limited
 end
 
+local function isContextScopeIncluded(context, scope)
+	if scope == "gems" then
+		return context.includeGemShortlist and context.includeGemReference
+	elseif scope == "uniques" then
+		return context.includeUniqueShortlist
+			and context.includeUniqueReference
+			and context.includeItemBases
+	elseif scope == "tree" then
+		return context.includeTreeCandidates
+	elseif scope == "config" then
+		return context.includeConfigReference
+	end
+	return false
+end
+
+--- Validate and normalize an AI context scope array.
+-- @param scopes Array of scope names
+-- @param currentContext Optional current inclusion flags; already-included scopes are removed
+-- @return table|nil normalizedScopes
+-- @return string|nil error
+function AIBridge:ValidateContextScopes(scopes, currentContext)
+	if type(scopes) ~= "table" then
+		return nil, "Context request must be a JSON array"
+	end
+	local length = #scopes
+	if length == 0 then
+		return nil, "Context request cannot be empty"
+	end
+	if length > #CONTEXT_SCOPE_ORDER then
+		return nil, "Context request contains too many scopes"
+	end
+
+	local keyCount = 0
+	for key in pairs(scopes) do
+		if type(key) ~= "number" or key < 1 or key > length or key ~= math.floor(key) then
+			return nil, "Context request must be a dense JSON array"
+		end
+		keyCount = keyCount + 1
+	end
+	if keyCount ~= length then
+		return nil, "Context request must be a dense JSON array"
+	end
+
+	local normalized = {}
+	local seen = {}
+	for index, rawScope in ipairs(scopes) do
+		if type(rawScope) ~= "string" or rawScope == "" then
+			return nil, "Context scope " .. index .. " must be a non-empty string"
+		end
+		local scope = rawScope:lower()
+		if not CONTEXT_SCOPE_DESCRIPTIONS[scope] then
+			return nil, "Unknown context scope: " .. rawScope
+		end
+		if not seen[scope] then
+			seen[scope] = true
+			if not currentContext or not isContextScopeIncluded(currentContext, scope) then
+				t_insert(normalized, scope)
+			end
+		end
+	end
+	if #normalized == 0 then
+		return nil, "Requested context is already included"
+	end
+	return normalized
+end
+
+--- Expand deterministic context flags with scopes explicitly requested by the AI.
+function AIBridge:ApplyContextScopes(context, scopes)
+	for _, scope in ipairs(scopes or {}) do
+		if scope == "gems" then
+			context.includeGemShortlist = true
+			context.includeGemReference = true
+		elseif scope == "uniques" then
+			context.includeUniqueShortlist = true
+			context.includeUniqueReference = true
+			context.includeItemBases = true
+		elseif scope == "tree" then
+			context.includeTreeCandidates = true
+		elseif scope == "config" then
+			context.includeConfigReference = true
+		end
+	end
+	return context
+end
+
+--- Describe included and requestable context without sending the omitted data itself.
+function AIBridge:BuildContextManifest(context, escalated)
+	local included = {}
+	local available = {}
+	for _, scope in ipairs(CONTEXT_SCOPE_ORDER) do
+		if isContextScopeIncluded(context, scope) then
+			t_insert(included, scope)
+		else
+			t_insert(available, {
+				scope = scope,
+				provides = CONTEXT_SCOPE_DESCRIPTIONS[scope],
+			})
+		end
+	end
+	return included, available, escalated and 0 or 1
+end
+
+--- Parse a response that consists only of a structured context request.
+-- Valid form: <context_request>["gems","tree"]</context_request>
+-- @return string displayText
+-- @return table|nil scopes
+-- @return string|nil error
+function AIBridge:ParseContextRequest(content)
+	if type(content) ~= "string" then
+		return content, nil, "AI response content must be a string"
+	end
+	local lower = content:lower()
+	local hasMarker = lower:find("<context_request", 1, true)
+		or lower:find("</context_request", 1, true)
+	if not hasMarker then
+		return content, nil, nil
+	end
+
+	local hasOpen = content:find("<context_request>", 1, true)
+	local hasClose = content:find("</context_request>", 1, true)
+	if not hasOpen or not hasClose then
+		return content, nil, "Malformed context_request tags"
+	end
+
+	local prefix, block, suffix = content:match(
+		"^(.-)<context_request>%s*(.-)%s*</context_request>(.-)$"
+	)
+	if not block then
+		return content, nil, "Malformed context_request block"
+	end
+	if (prefix .. suffix):find("%S") then
+		return content, nil, "Context request must not include text or actions"
+	end
+
+	local decoded, _, decodeError = dkjson.decode(block, 1, dkjson.null)
+	if decodeError or type(decoded) ~= "table" then
+		return content, nil, "Invalid context request JSON"
+	end
+	local scopes, scopeError = self:ValidateContextScopes(decoded)
+	if not scopes then
+		return content, nil, scopeError
+	end
+	return "", scopes, nil
+end
+
 --- Build only the optional state required by the current question.
 -- @return table|nil state, table|string contextOrError
-function AIBridge:BuildQuestionState(build, userMessage, fingerprint)
+function AIBridge:BuildQuestionState(build, userMessage, fingerprint, requestedScopes, escalated)
 	local context = self:ClassifyQuestion(userMessage)
+	local normalizedScopes = {}
+	if requestedScopes then
+		local scopeError
+		normalizedScopes, scopeError = self:ValidateContextScopes(requestedScopes, context)
+		if not normalizedScopes then
+			return nil, scopeError
+		end
+		self:ApplyContextScopes(context, normalizedScopes)
+	end
+
 	local state, err = self:SerializeBuild(build, context)
 	if not state then
 		return nil, err
@@ -1237,6 +1411,8 @@ function AIBridge:BuildQuestionState(build, userMessage, fingerprint)
 		state.uniqueShortlist = self:ComputeUniqueShortlist(build, 3, false, fingerprint)
 	end
 
+	local includedContexts, availableContexts, escalationRemaining =
+		self:BuildContextManifest(context, escalated)
 	state.context = {
 		intents = context.intents,
 		gemShortlist = context.includeGemShortlist,
@@ -1246,6 +1422,11 @@ function AIBridge:BuildQuestionState(build, userMessage, fingerprint)
 		uniqueReference = context.includeUniqueReference,
 		itemBases = context.includeItemBases,
 		configReference = context.includeConfigReference,
+		includedContexts = includedContexts,
+		availableContexts = availableContexts,
+		requestedContexts = normalizedScopes,
+		escalated = escalated or false,
+		escalationRemaining = escalationRemaining,
 	}
 	return state, context
 end
@@ -1260,7 +1441,6 @@ function AIBridge:Ask(build, userMessage, callback, history)
 		return
 	end
 
-	-- Validate config
 	local ok, err = AIConfig:Validate()
 	if not ok then
 		callback(nil, err)
@@ -1274,7 +1454,6 @@ function AIBridge:Ask(build, userMessage, callback, history)
 	end
 	self:SyncBuildFingerprint(requestFingerprint)
 
-	-- Build only the question-relevant optional context and simulations.
 	local state, contextOrErr = self:BuildQuestionState(build, userMessage, requestFingerprint)
 	if not state then
 		callback(nil, contextOrErr)
@@ -1282,37 +1461,29 @@ function AIBridge:Ask(build, userMessage, callback, history)
 	end
 	local context = contextOrErr
 
-	-- Debug: log reference menu size to file
-	if state.reference then
-		local gemCount = state.reference.gemNames and #state.reference.gemNames or 0
-		local uniqueCount = 0
-		if state.reference.uniqueNames then
-			for _, names in pairs(state.reference.uniqueNames) do
-				uniqueCount = uniqueCount + #names
-			end
-		end
-		local configCount = state.reference.configKeys and #state.reference.configKeys or 0
-		local dbg = io.open("ai_debug.log", "a")
-		if dbg then
-			dbg:write(string.format("[AIBridge] Reference menu: %d gems, %d uniques, %d config keys\n", gemCount, uniqueCount, configCount))
-			dbg:close()
-		end
-	end
-
 	self.pending = true
 	self.lastError = nil
 
-	-- Build the prompt
 	local systemPrompt = [[You are an expert Path of Exile 1 build advisor integrated into Path of Building.
-You have access to the player's current core build state and the optional context relevant to
-this question. You can DIRECTLY MODIFY the build by emitting actions; you are not just an advisor.
+You have access to the player's current core build state and selected optional context.
+You can DIRECTLY MODIFY the build by emitting actions; you are not just an advisor.
 Give specific, actionable advice with numbers. Reference actual stats from the build.
 When suggesting changes, explain the expected impact (e.g. "+15% DPS", "+200 life").
 Be concise. Use PoB color codes: ^2=green/good, ^1=red/bad, ^7=white, ^8=gray.
 If the user asks "how do I improve", focus on the top 3 highest-impact changes.
 Format responses for readability in a game tool UI.
-state.context declares which optional sections were calculated. A missing shortlist, reference
-catalog, or tree.availableNodes means it was not needed for this question, not that none exist.
+
+state.context declares which optional sections are included and lists omitted sections in
+availableContexts. Missing data does not mean that no candidates exist.
+If omitted context is required for a reliable answer and escalationRemaining is 1, respond ONLY
+with one valid JSON array inside this exact block:
+<context_request>
+["gems","tree"]
+</context_request>
+Allowed scopes are: "gems", "uniques", "tree", and "config". Request only the smallest set needed.
+Never include prose or an <actions> block with a context request. The bridge will obtain the
+requested PoB data and repeat the original question automatically. If escalationRemaining is 0,
+do not request more context; answer from the available evidence and state any limitation.
 
 The simulated uniqueShortlist is a preselected sample, not an exhaustive proof about every
 unique in the catalog. If no entry improves both DPS and EHP, say "none among the tested
@@ -1342,14 +1513,14 @@ Supported action types:
 - {"type":"add_skill","label":"<group name>","gems":[{"name":"Righteous Fire","level":20,"quality":0},{"name":"Efficacy"}]}
 - {"type":"remove_skill","label":"<group name>"} or {"type":"remove_skill","name":"<gem name>"}
 - {"type":"equip_item","slot":"<slot>","raw":"<full item text>"}
-- {"type":"equip_jewel","raw":"<jewel item text>","nodeId":<socket node id>}  -- equip jewel in tree socket (omit nodeId for first empty socket)
-- {"type":"apply_tattoo","name":"<node name>","tattoo":"<tattoo name>"}  -- apply tattoo to a node
-- {"type":"remove_tattoo","name":"<node name>"}  -- remove tattoo from a node
-- {"type":"set_mastery","name":"<mastery node name>","effect":<1-based index>}  -- select mastery effect by index
-- {"type":"set_mastery","name":"<mastery node name>","effectText":"<substring>"}  -- select mastery effect by description text
-- {"type":"set_main_skill","label":"<group name>"} or {"type":"set_main_skill","name":"<gem name>"}  -- set which skill DPS is calculated for (IMPORTANT after adding skills)
-- {"type":"set_secondary_ascendancy","name":"<name>"}  -- league-specific secondary ascendancy (only if meta.availableSecondaryAscendancies is present)
-- {"type":"set_skill_part","label":"<group name>","part":<number>}  -- set skill variant/stages (e.g. Vaal Blade Vortex stages)
+- {"type":"equip_jewel","raw":"<jewel item text>","nodeId":<socket node id>}
+- {"type":"apply_tattoo","name":"<node name>","tattoo":"<tattoo name>"}
+- {"type":"remove_tattoo","name":"<node name>"}
+- {"type":"set_mastery","name":"<mastery node name>","effect":<1-based index>}
+- {"type":"set_mastery","name":"<mastery node name>","effectText":"<substring>"}
+- {"type":"set_main_skill","label":"<group name>"} or {"type":"set_main_skill","name":"<gem name>"}
+- {"type":"set_secondary_ascendancy","name":"<name>"}
+- {"type":"set_skill_part","label":"<group name>","part":<number>}
 - {"type":"set_config","key":"<config key>","value":<bool or number>}
 
 Order matters: if you need more points to allocate a distant node, emit set_level FIRST,
@@ -1358,126 +1529,207 @@ for the cluster's internal nodes. After adding skills, emit set_main_skill so DP
 Abyssal jewels: use equip_item with an abyssal slot name from state.abyssalSockets.
 Only include actions you are confident about.]]
 
-	-- Build user prompt with build state
-	local stateJson = dkjson.encode(state, {indent = false})
-	local userPrompt = "Build state (JSON):\n" .. stateJson
-
-	-- Inject details for entities mentioned in the last AI response
+	local detailSections = {}
 	if self.lastMentions and #self.lastMentions > 0 then
-		local details = {}
 		for _, mention in ipairs(self.lastMentions) do
 			local detail = self:LookupDetails(build, mention)
 			if detail ~= "" then
-				t_insert(details, detail)
+				t_insert(detailSections, detail)
 			end
 		end
-		if #details > 0 then
-			userPrompt = userPrompt .. "\n\nDetails of items mentioned in previous response:\n" .. table.concat(details, "\n\n")
-		end
-		self.lastMentions = nil  -- Clear after injection
 	end
+	self.lastMentions = nil
+	self.lastMentionsFingerprint = nil
+	local mentionDetails = #detailSections > 0
+		and table.concat(detailSections, "\n\n")
+		or nil
 
-	userPrompt = userPrompt .. "\n\nPlayer question: " .. userMessage
-
-	-- Build messages array with conversation history
-	local messages = {
-		{ role = "system", content = systemPrompt },
-	}
-	
 	local trimmedHistory, historyChars, historyDropped = self:TrimHistory(history)
-	for _, msg in ipairs(trimmedHistory) do
-		t_insert(messages, msg)
-	end
-	
-	-- Add current user message with build state
-	t_insert(messages, { role = "user", content = userPrompt })
-	
-	-- Request body for OpenAI-compatible API
-	local requestBody = dkjson.encode({
-		model = AIConfig:GetModel(),
-		messages = messages,
-		max_tokens = 2048,
-		temperature = 0.3,
-	}, { indent = false })
-
-	local dbg = io.open("ai_debug.log", "a")
-	if dbg then
-		dbg:write(string.format(
-			"[AIBridge] Context: %s, state %d bytes, history %d chars/%d dropped, request %d bytes\n",
-			table.concat(context.intents, ","),
-			#stateJson,
-			historyChars,
-			historyDropped,
-			#requestBody
-		))
-		dbg:close()
-	end
-
 	local endpoint = AIConfig:GetEndpoint()
 	local url = endpoint .. "/chat/completions"
+	local header = "Content-Type: application/json\r\n"
+		.. "Authorization: Bearer " .. AIConfig:GetAPIKey()
 
-	local header = "Content-Type: application/json\r\n" ..
-		"Authorization: Bearer " .. AIConfig:GetAPIKey()
-
-	-- Use PoB's async HTTP (subprocess with lcurl)
-	launch:DownloadPage(url, function(response, errMsg)
+	local function fail(message)
 		self.pending = false
+		self.lastError = message
+		callback(nil, message)
+	end
 
-		if errMsg then
-			self.lastError = errMsg
-			callback(nil, "API request failed: " .. errMsg)
+	local function complete(content, finalState)
+		self.pending = false
+		self.lastError = nil
+		self.lastResponse = content
+		self.lastMentions = self:ExtractMentions(content, finalState)
+		self.lastMentionsFingerprint = requestFingerprint
+		callback(content, nil, requestFingerprint)
+	end
+
+	local function buildRequest(currentState)
+		local stateJson, stateEncodeError = dkjson.encode(currentState, { indent = false })
+		if not stateJson then
+			return nil, nil, "Could not encode build state: " .. tostring(stateEncodeError)
+		end
+		local userPrompt = "Build state (JSON):\n" .. stateJson
+		if mentionDetails then
+			userPrompt = userPrompt
+				.. "\n\nDetails of items mentioned in previous response:\n"
+				.. mentionDetails
+		end
+		userPrompt = userPrompt .. "\n\nPlayer question: " .. userMessage
+
+		local messages = {
+			{ role = "system", content = systemPrompt },
+		}
+		for _, msg in ipairs(trimmedHistory) do
+			t_insert(messages, msg)
+		end
+		t_insert(messages, { role = "user", content = userPrompt })
+
+		local requestBody, requestEncodeError = dkjson.encode({
+			model = AIConfig:GetModel(),
+			messages = messages,
+			max_tokens = 2048,
+			temperature = 0.3,
+		}, { indent = false })
+		if not requestBody then
+			return nil, nil, "Could not encode API request: " .. tostring(requestEncodeError)
+		end
+		return requestBody, stateJson, nil
+	end
+
+	local sendRequest
+	sendRequest = function(currentState, currentContext, expansionsUsed)
+		local requestBody, stateJson, requestError = buildRequest(currentState)
+		if not requestBody then
+			fail(requestError)
 			return
 		end
 
-		local body = response.body
-		if not body or body == "" then
-			self.lastError = "Empty response"
-			callback(nil, "Empty response from API")
-			return
+		local requested = currentState.context and currentState.context.requestedContexts or {}
+		local contextLabel = table.concat(currentContext.intents or {}, ",")
+		if #requested > 0 then
+			contextLabel = contextLabel .. "+" .. table.concat(requested, ",")
+		end
+		local dbg = io.open("ai_debug.log", "a")
+		if dbg then
+			dbg:write(string.format(
+				"[AIBridge] Context attempt %d: %s, state %d bytes, history %d chars/%d dropped, request %d bytes\n",
+				expansionsUsed + 1,
+				contextLabel,
+				#stateJson,
+				historyChars,
+				historyDropped,
+				#requestBody
+			))
+			dbg:close()
 		end
 
-		local parsed = dkjson.decode(body)
-		if not parsed then
-			self.lastError = "Invalid JSON response"
-			callback(nil, "Invalid JSON response from API")
-			return
-		end
+		launch:DownloadPage(url, function(response, errMsg)
+			if errMsg then
+				fail("API request failed: " .. errMsg)
+				return
+			end
 
-		if parsed.error then
-			self.lastError = parsed.error.message or "Unknown API error"
-			callback(nil, "API error: " .. self.lastError)
-			return
-		end
+			local body = response and response.body
+			if not body or body == "" then
+				fail("Empty response from API")
+				return
+			end
 
-		if parsed.choices and parsed.choices[1] and parsed.choices[1].message then
+			local parsed, _, parseError = dkjson.decode(body)
+			if parseError or not parsed then
+				fail("Invalid JSON response from API")
+				return
+			end
+			if parsed.error then
+				fail("API error: " .. (parsed.error.message or "Unknown API error"))
+				return
+			end
+			if not parsed.choices or not parsed.choices[1] or not parsed.choices[1].message then
+				fail("No content in API response")
+				return
+			end
+
 			local content = parsed.choices[1].message.content
-			local currentFingerprint, fingerprintErr = self:GetBuildFingerprint(build)
+			if type(content) ~= "string" or content == "" then
+				fail("No content in API response")
+				return
+			end
+
+			local currentFingerprint, currentFingerprintError = self:GetBuildFingerprint(build)
 			if not currentFingerprint then
-				self.lastError = fingerprintErr
-				callback(nil, fingerprintErr)
+				fail(currentFingerprintError)
 				return
 			end
 			if currentFingerprint ~= requestFingerprint then
-				self.lastError = "Build changed while the AI was responding"
-				callback(nil, self.lastError)
+				fail("Build changed while the AI was responding")
 				return
 			end
 
-			self.lastResponse = content
-			
-			-- Extract mentions from AI response for next query
-			self.lastMentions = self:ExtractMentions(content, state)
-			self.lastMentionsFingerprint = requestFingerprint
-			
-			callback(content, nil, requestFingerprint)
-		else
-			self.lastError = "No content in response"
-			callback(nil, "No content in API response")
-		end
-	end, {
-		header = header,
-		body = requestBody,
-	})
+			local lowerContent = content:lower()
+			local hasContextMarker = lowerContent:find("<context_request", 1, true)
+				or lowerContent:find("</context_request", 1, true)
+			local hasActionMarker = lowerContent:find("<actions", 1, true)
+				or lowerContent:find("</actions", 1, true)
+			if hasContextMarker and hasActionMarker then
+				fail("AI cannot return actions while requesting additional context")
+				return
+			end
+
+			local _, requestedScopes, contextRequestError = self:ParseContextRequest(content)
+			if contextRequestError then
+				fail("Invalid AI context request: " .. contextRequestError)
+				return
+			end
+			if requestedScopes then
+				if expansionsUsed >= 1 then
+					fail("AI requested additional context more than once")
+					return
+				end
+
+				local missingScopes, scopeError =
+					self:ValidateContextScopes(requestedScopes, currentContext)
+				if not missingScopes then
+					fail("Invalid AI context request: " .. scopeError)
+					return
+				end
+
+				local expandedState, expandedContextOrError = self:BuildQuestionState(
+					build,
+					userMessage,
+					requestFingerprint,
+					missingScopes,
+					true
+				)
+				if not expandedState then
+					fail("Could not expand AI context: " .. tostring(expandedContextOrError))
+					return
+				end
+
+				local expandedFingerprint, expandedFingerprintError =
+					self:GetBuildFingerprint(build)
+				if not expandedFingerprint then
+					fail(expandedFingerprintError)
+					return
+				end
+				if expandedFingerprint ~= requestFingerprint then
+					fail("Build changed while preparing additional AI context")
+					return
+				end
+
+				sendRequest(expandedState, expandedContextOrError, expansionsUsed + 1)
+				return
+			end
+
+			complete(content, currentState)
+		end, {
+			header = header,
+			body = requestBody,
+		})
+	end
+
+	sendRequest(state, context, 0)
 end
 
 --- Get a quick summary of the build for display
