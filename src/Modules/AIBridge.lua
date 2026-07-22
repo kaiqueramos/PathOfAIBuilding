@@ -533,8 +533,8 @@ function AIBridge:ComputeGemShortlist(build, limit, forceRefresh)
 	-- Test each support gem
 	local results = {}
 	for gemId, gemData in pairs(build.data.gems) do
-		-- Only test support gems not already in the group
-		if gemData.grantedEffect and gemData.grantedEffect.support and not existingGems[gemId] then
+		-- Only test support gems not already in the group, and not legacy (standard-only)
+		if gemData.grantedEffect and gemData.grantedEffect.support and not existingGems[gemId] and not gemData.grantedEffect.legacy then
 			-- Temporarily add the gem
 			local testGem = {
 				nameSpec = gemData.name,
