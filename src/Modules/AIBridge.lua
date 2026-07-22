@@ -168,12 +168,13 @@ function AIBridge:SerializeBuild(build, forceRefresh)
 						gems = {},
 					}
 					for _, gem in ipairs(group.gemList) do
+						local gemName = (gem.gemData and gem.gemData.name) or gem.nameSpec or "Unknown"
 						t_insert(skillEntry.gems, {
-							name = gem.name or gem.baseName or "Unknown",
+							name = gemName,
 							level = gem.level or 20,
 							quality = gem.quality or 0,
 							enabled = gem.enabled,
-							isSupport = gem.support or false,
+							isSupport = (gem.gemData and gem.gemData.grantedEffect and gem.gemData.grantedEffect.support) or false,
 							skillPart = gem.skillPart,
 						})
 					end
