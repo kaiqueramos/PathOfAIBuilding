@@ -163,6 +163,7 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 	self.streamMsgIndex = nil
 	self.streamPos = 0
 	self.pendingActions = nil  -- actions parsed from last AI response
+	self.pendingActionsFingerprint = nil
 
 	-- === TOP: header + build summary ===
 	self.controls.header = new("LabelControl", {"TOPLEFT",self,"TOPLEFT"}, {8, 8, 0, 16}, "^7AI Build Advisor")
@@ -247,6 +248,10 @@ function AIChatTabClass:SendMessage(text)
 	self.controls.send.enabled = false
 	self.pending = true
 	self.controls.status.label = "^7Thinking..."
+	-- A new request supersedes any unapplied actions from the previous response.
+	self.pendingActions = nil
+	self.pendingActionsFingerprint = nil
+	self.controls.applyActions.shown = false
 
 	self.controls.quickImprove.enabled = false
 	self.controls.quickUpgrade.enabled = false
@@ -264,7 +269,7 @@ function AIChatTabClass:SendMessage(text)
 		-- Skip "system" messages (errors)
 	end
 
-	AIBridge:Ask(self.build, text, function(response, errMsg)
+	AIBridge:Ask(self.build, text, function(response, errMsg, responseFingerprint)
 		self.pending = false
 		self.controls.quickImprove.enabled = true
 		self.controls.quickUpgrade.enabled = true
@@ -272,12 +277,15 @@ function AIChatTabClass:SendMessage(text)
 
 		if errMsg then
 			self:AddMessage("system", "Error: " .. errMsg)
+			self.pendingActions = nil
+			self.pendingActionsFingerprint = nil
 			self.controls.status.label = "^1Request failed"
 			self.controls.applyActions.shown = false
 		else
 			-- Parse actions FIRST (before translit to avoid corrupting JSON)
 			local displayText, actions = AIBridge:ParseActions(response)
 			self.pendingActions = actions
+			self.pendingActionsFingerprint = actions and #actions > 0 and responseFingerprint or nil
 			self.controls.applyActions.shown = (actions ~= nil and #actions > 0)
 			ConPrintf("[AIChat] Parsed %d actions, shown=%s", actions and #actions or 0, tostring(self.controls.applyActions.shown))
 			-- Transliterate only the display text
@@ -363,6 +371,24 @@ function AIChatTabClass:ApplyPendingActions()
 		return
 	end
 
+	local currentFingerprint, fingerprintErr = AIBridge:GetBuildFingerprint(self.build)
+	if not currentFingerprint then
+		self:AddMessage("system", "Could not verify build state: " .. (fingerprintErr or "unknown error"))
+		self.pendingActions = nil
+		self.pendingActionsFingerprint = nil
+		self.controls.applyActions.shown = false
+		self.controls.status.label = "^1Build verification failed"
+		return
+	end
+	if not self.pendingActionsFingerprint or currentFingerprint ~= self.pendingActionsFingerprint then
+		self:AddMessage("system", "Build changed since this suggestion. Ask again before applying it.")
+		self.pendingActions = nil
+		self.pendingActionsFingerprint = nil
+		self.controls.applyActions.shown = false
+		self.controls.status.label = "^1Build changed - ask again"
+		return
+	end
+
 	ConPrintf("[AIChat] Executing %d actions", #self.pendingActions)
 	local results = AIBridge:ExecuteActions(self.build, self.pendingActions)
 	ConPrintf("[AIChat] ExecuteActions returned %d results", #results)
@@ -386,6 +412,7 @@ function AIChatTabClass:ApplyPendingActions()
 
 	-- Clear pending actions and hide the button
 	self.pendingActions = nil
+	self.pendingActionsFingerprint = nil
 	self.controls.applyActions.shown = false
 	self.controls.status.label = "^2Changes applied"
 	ConPrintf("[AIChat] Apply complete: %d ok, %d failed", okCount, failCount)

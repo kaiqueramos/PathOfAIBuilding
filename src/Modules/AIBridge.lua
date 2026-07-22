@@ -5,13 +5,18 @@
 local t_insert = table.insert
 local t_remove = table.remove
 local dkjson = require "dkjson"
+local sha1 = require "sha1"
 local AIConfig = LoadModule("Modules/AIConfig")
 local AIBridge = {
 	pending = false,
 	lastError = nil,
 	lastResponse = nil,
 	gemShortlistCache = nil,
+	gemShortlistFingerprint = nil,
 	uniqueShortlistCache = nil,
+	uniqueShortlistFingerprint = nil,
+	activeBuildFingerprint = nil,
+	lastMentionsFingerprint = nil,
 }
 
 --- Serialize the current build state into a compact JSON table
@@ -340,6 +345,47 @@ function AIBridge:SerializeBuild(build, forceRefresh)
 	return state
 end
 
+--- Create a local identity for the exact build input state.
+-- SaveDB is PoB's canonical serialization; only its digest is retained.
+-- @param build The active build object
+-- @return string|nil fingerprint, string|nil error
+function AIBridge:GetBuildFingerprint(build)
+	if not build or type(build.SaveDB) ~= "function" then
+		return nil, "Active build cannot be fingerprinted"
+	end
+
+	local ok, snapshot = pcall(build.SaveDB, build, "AI fingerprint")
+	if not ok or not snapshot then
+		return nil, "Could not snapshot the active build"
+	end
+
+	return sha1(tostring(build) .. "\0" .. snapshot)
+end
+
+--- Clear every cached value that belongs to a specific build state.
+function AIBridge:InvalidateBuildContext()
+	self.gemShortlistCache = nil
+	self.gemShortlistFingerprint = nil
+	self.uniqueShortlistCache = nil
+	self.uniqueShortlistFingerprint = nil
+	self.lastMentions = nil
+	self.lastMentionsFingerprint = nil
+	self.activeBuildFingerprint = nil
+end
+
+--- Switch the bridge to a build state, invalidating data from the previous one.
+-- @param fingerprint Current build fingerprint
+-- @return boolean changed Whether the active state changed
+function AIBridge:SyncBuildFingerprint(fingerprint)
+	if self.activeBuildFingerprint == fingerprint then
+		return false
+	end
+
+	self:InvalidateBuildContext()
+	self.activeBuildFingerprint = fingerprint
+	return true
+end
+
 --- Extract mentions of known entities from AI response text
 -- @param text The AI response text
 -- @param state The serialized build state (contains reference menu)
@@ -499,12 +545,21 @@ end
 --- Compute gem shortlist: simulate each support gem and measure DPS gain
 -- @param build The active build object
 -- @param limit Max number of gems to return (default 10)
+-- @param forceRefresh Ignore a matching cache when true
+-- @param fingerprint Optional precomputed build fingerprint
 -- @return table Array of {name, dpsGain, dpsGainPct, type} sorted by gain
-function AIBridge:ComputeGemShortlist(build, limit, forceRefresh)
+function AIBridge:ComputeGemShortlist(build, limit, forceRefresh, fingerprint)
 	limit = limit or 10
-	
-	-- Return cached result if available and not forcing refresh
-	if self.gemShortlistCache and not forceRefresh then
+	fingerprint = fingerprint or self:GetBuildFingerprint(build)
+
+	if fingerprint and self.gemShortlistFingerprint ~= fingerprint then
+		self.gemShortlistCache = nil
+		self.gemShortlistFingerprint = nil
+	end
+
+	-- Return cached results only for the exact build state that produced them.
+	if self.gemShortlistCache and fingerprint
+		and self.gemShortlistFingerprint == fingerprint and not forceRefresh then
 		return self.gemShortlistCache
 	end
 	
@@ -597,8 +652,9 @@ function AIBridge:ComputeGemShortlist(build, limit, forceRefresh)
 		dbg:close()
 	end
 	
-	-- Cache the result
+	-- Cache the result with the build state that produced it.
 	self.gemShortlistCache = results
+	self.gemShortlistFingerprint = fingerprint
 	return results
 end
 
@@ -778,11 +834,20 @@ end
 --- Compute unique item shortlist using PoB's non-mutating item calculator
 -- @param build The active build object
 -- @param limit Max number of uniques per slot to return (default 3)
+-- @param forceRefresh Ignore a matching cache when true
+-- @param fingerprint Optional precomputed build fingerprint
 -- @return table Array of {slot, name, dpsGain, dpsGainPct, ehpGain, ehpGainPct} sorted by gain
-function AIBridge:ComputeUniqueShortlist(build, limit, forceRefresh)
+function AIBridge:ComputeUniqueShortlist(build, limit, forceRefresh, fingerprint)
 	limit = limit or 3
+	fingerprint = fingerprint or self:GetBuildFingerprint(build)
 
-	if self.uniqueShortlistCache and not forceRefresh then
+	if fingerprint and self.uniqueShortlistFingerprint ~= fingerprint then
+		self.uniqueShortlistCache = nil
+		self.uniqueShortlistFingerprint = nil
+	end
+
+	if self.uniqueShortlistCache and fingerprint
+		and self.uniqueShortlistFingerprint == fingerprint and not forceRefresh then
 		return self.uniqueShortlistCache
 	end
 
@@ -983,12 +1048,13 @@ function AIBridge:ComputeUniqueShortlist(build, limit, forceRefresh)
 		dbg:close()
 	end
 	self.uniqueShortlistCache = limited
+	self.uniqueShortlistFingerprint = fingerprint
 	return limited
 end
 
 --- Send build state to LLM and get response
 -- @param build The active build object
--- @param callback function(response, errMsg) called with AI response or error
+-- @param callback function(response, errMsg, fingerprint) called with the result
 -- @param history optional array of prior {role, content} messages
 function AIBridge:Ask(build, userMessage, callback, history)
 	if self.pending then
@@ -1003,6 +1069,13 @@ function AIBridge:Ask(build, userMessage, callback, history)
 		return
 	end
 
+	local requestFingerprint, fingerprintErr = self:GetBuildFingerprint(build)
+	if not requestFingerprint then
+		callback(nil, fingerprintErr)
+		return
+	end
+	self:SyncBuildFingerprint(requestFingerprint)
+
 	-- Serialize build
 	local state, serErr = self:SerializeBuild(build)
 	if not state then
@@ -1011,10 +1084,10 @@ function AIBridge:Ask(build, userMessage, callback, history)
 	end
 
 	-- Compute gem shortlist (cached; recomputed only after build changes)
-	state.gemShortlist = self:ComputeGemShortlist(build, 10, false)
+	state.gemShortlist = self:ComputeGemShortlist(build, 10, false, requestFingerprint)
 
 	-- Compute unique shortlist (cached; recomputed only after build changes)
-	state.uniqueShortlist = self:ComputeUniqueShortlist(build, 3, false)
+	state.uniqueShortlist = self:ComputeUniqueShortlist(build, 3, false, requestFingerprint)
 
 	-- Debug: log reference menu size to file
 	if state.reference then
@@ -1172,12 +1245,25 @@ Only include actions you are confident about.]]
 
 		if parsed.choices and parsed.choices[1] and parsed.choices[1].message then
 			local content = parsed.choices[1].message.content
+			local currentFingerprint, fingerprintErr = self:GetBuildFingerprint(build)
+			if not currentFingerprint then
+				self.lastError = fingerprintErr
+				callback(nil, fingerprintErr)
+				return
+			end
+			if currentFingerprint ~= requestFingerprint then
+				self.lastError = "Build changed while the AI was responding"
+				callback(nil, self.lastError)
+				return
+			end
+
 			self.lastResponse = content
 			
 			-- Extract mentions from AI response for next query
 			self.lastMentions = self:ExtractMentions(content, state)
+			self.lastMentionsFingerprint = requestFingerprint
 			
-			callback(content, nil)
+			callback(content, nil, requestFingerprint)
 		else
 			self.lastError = "No content in response"
 			callback(nil, "No content in API response")
@@ -1268,9 +1354,8 @@ function AIBridge:ExecuteActions(build, actions)
 
 	-- Trigger a full rebuild after all actions
 	build.buildFlag = true
-	-- Invalidate shortlist caches (build changed)
-	self.gemShortlistCache = nil
-	self.uniqueShortlistCache = nil
+	-- Every action changes the state identity; no cached advice remains valid.
+	self:InvalidateBuildContext()
 
 	return results
 end
