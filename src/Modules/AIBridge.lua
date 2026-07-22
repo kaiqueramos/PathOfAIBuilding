@@ -19,13 +19,160 @@ local AIBridge = {
 	lastMentionsFingerprint = nil,
 }
 
---- Serialize the current build state into a compact JSON table
+local HISTORY_CHAR_BUDGET = 12000
+AIBridge.HISTORY_CHAR_BUDGET = HISTORY_CHAR_BUDGET
+
+local function containsAny(text, terms)
+	for _, rawTerm in ipairs(terms) do
+		local isPrefix = rawTerm:sub(-1) == "*"
+		local term = isPrefix and rawTerm:sub(1, -2) or rawTerm
+		if term:find(" ", 1, true) then
+			if text:find(term, 1, true) then
+				return true
+			end
+		else
+			local escaped = term:gsub("([^%w])", "%%%1")
+			local pattern = "%f[%w]" .. escaped .. (isPrefix and "" or "%f[%W]")
+			if text:find(pattern) then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+--- Classify a question locally so expensive context is built only when useful.
+-- Input typed in the PoB UI is already transliterated to ASCII.
+-- @param userMessage Player question
+-- @return table Context inclusion flags and ordered intent names
+function AIBridge:ClassifyQuestion(userMessage)
+	local text = (userMessage or ""):lower()
+	local general = containsAny(text, {
+		"how do i improve", "improve this build", "top 3", "next upgrade", "best upgrade",
+		"como melhorar", "como melhoro", "melhorar esta build", "proximo upgrade", "melhor upgrade",
+	})
+	local gems = containsAny(text, {
+		"gem", "gems", "support", "supports", "skill gem", "socket link", "link", "links",
+		"gema", "gemas", "suporte", "suportes", "habilidade",
+	})
+	local items = containsAny(text, {
+		"unique", "uniques", "item", "items", "gear", "equipment", "equipamento", "equipamentos",
+		"unico", "unicos", "rare", "rares", "weapon", "weapons", "arma", "armas",
+		"amulet", "anel", "ring", "belt", "cinto", "helmet", "capacete", "gloves", "luvas",
+		"boots", "botas", "shield", "escudo", "quiver", "aljava", "flask", "frasco",
+		"jewel", "joia",
+	})
+	local tree = containsAny(text, {
+		"tree", "passive", "node", "nodes", "notable", "keystone", "mastery", "allocate",
+		"deallocate", "pathing", "arvore", "passiva", "nodo", "nodos", "maestria",
+		"alocar", "realocar", "desalocar",
+	})
+	local config = containsAny(text, {
+		"config", "configuration", "boss config", "boss setting", "set boss", "enemy condition",
+		"condition", "conditions", "bandit", "pantheon",
+		"configuracao", "condicao", "condicoes", "bandido", "distancia",
+	})
+	local defense = containsAny(text, {
+		"defense", "defences", "defensive", "tank", "ehp", "life", "energy shield", "armour",
+		"evasion", "resist*", "suppression", "block", "max hit", "survivability",
+		"defesa", "defensiva", "aguent*", "vida", "resistencia", "resistencias", "supressao", "bloqueio",
+	})
+	local offense = containsAny(text, {
+		"dps", "damage", "damage over time", "crit*", "damage low", "dano", "dano baixo",
+	})
+	local broadImprovement = containsAny(text, {
+		"upgrade", "upgrades", "improve", "improvement", "melhorar", "melhoria", "melhorias",
+	})
+	if broadImprovement and not (gems or items or tree or config) then
+		general = true
+	end
+
+	local intents = {}
+	local function addIntent(enabled, name)
+		if enabled then
+			t_insert(intents, name)
+		end
+	end
+	addIntent(general, "improve")
+	addIntent(gems, "gems")
+	addIntent(items, "items")
+	addIntent(tree, "tree")
+	addIntent(config, "config")
+	addIntent(defense, "defense")
+	addIntent(offense, "offense")
+	if #intents == 0 then
+		t_insert(intents, "compact")
+	end
+
+	return {
+		intents = intents,
+		includeGemShortlist = general or gems,
+		includeUniqueShortlist = general or items,
+		includeTreeCandidates = general or tree,
+		includeGemReference = gems and not general,
+		includeUniqueReference = items and not general,
+		includeItemBases = items and not general,
+		includeConfigReference = config,
+	}
+end
+
+--- Keep the newest contiguous conversation history within a character budget.
+-- @param history Array of {role, content}
+-- @param budget Optional character budget
+-- @return table trimmedHistory, number usedChars, number droppedMessages
+function AIBridge:TrimHistory(history, budget)
+	budget = budget or HISTORY_CHAR_BUDGET
+	if not history or #history == 0 or budget <= 0 then
+		return {}, 0, history and #history or 0
+	end
+
+	local trimmed = {}
+	local used = 0
+	for index = #history, 1, -1 do
+		local message = history[index]
+		local content = type(message.content) == "string" and message.content or ""
+		local remaining = budget - used
+		if #content <= remaining then
+			t_insert(trimmed, 1, { role = message.role, content = content })
+			used = used + #content
+		elseif #trimmed == 0 then
+			local prefix = "[...earlier content truncated...]\n"
+			local keep = remaining - #prefix
+			if keep > 0 then
+				t_insert(trimmed, 1, {
+					role = message.role,
+					content = prefix .. content:sub(-keep),
+				})
+				used = budget
+			end
+			break
+		else
+			break
+		end
+	end
+
+	return trimmed, used, #history - #trimmed
+end
+
+
+--- Serialize the current build state into a compact JSON table.
+-- Optional reference catalogs and tree candidates are controlled by context.
+-- Omitting context preserves the legacy full serialization contract.
 -- @param build The active build object (main.modes["BUILD"])
+-- @param context Optional inclusion flags from ClassifyQuestion
 -- @return table Serialized build state
-function AIBridge:SerializeBuild(build, forceRefresh)
+function AIBridge:SerializeBuild(build, context)
 	if not build then
 		return nil, "No active build"
 	end
+
+	local fullContext = context == nil
+	context = context or {}
+	local includeTreeCandidates = fullContext or context.includeTreeCandidates
+	local includeGemReference = fullContext or context.includeGemReference
+	local includeUniqueReference = fullContext or context.includeUniqueReference
+	local includeConfigReference = fullContext or context.includeConfigReference
+	local includeItemBases = fullContext or context.includeItemBases
 
 	local state = {
 		version = 1,
@@ -219,7 +366,7 @@ function AIBridge:SerializeBuild(build, forceRefresh)
 
 	-- Available nodes for allocation (only reachable ones with a valid path)
 	-- Excludes anoint-only nodes and disconnected nodes
-	if spec and spec.nodes then
+	if includeTreeCandidates and spec and spec.nodes then
 		local availableNodes = {}
 		for nodeId, node in pairs(spec.nodes) do
 			if (node.type == "Notable" or node.type == "Keystone") and not node.alloc and node.path then
@@ -276,12 +423,13 @@ function AIBridge:SerializeBuild(build, forceRefresh)
 	end
 
 
-	-- Reference menu: compact list of available gems, uniques, config keys
-	-- Gives the AI awareness of what exists without sending full stats
-	state.reference = {}
+	-- Reference catalogs are optional; most questions only need the compact core state.
+	if includeGemReference or includeUniqueReference or includeConfigReference or includeItemBases then
+		state.reference = {}
+	end
 
 	-- Gem names (all gems in the game data)
-	if build.data and build.data.gems then
+	if includeGemReference and build.data and build.data.gems then
 		local gemNames = {}
 		for gemId, gemData in pairs(build.data.gems) do
 			if gemData.name and not gemData.unsupported then
@@ -294,7 +442,7 @@ function AIBridge:SerializeBuild(build, forceRefresh)
 
 	-- Unique item names by slot type
 	-- data.uniques[type] is an array of raw item strings; name = first line
-	if build.data and build.data.uniques then
+	if includeUniqueReference and build.data and build.data.uniques then
 		local uniqueNames = {}
 		for slotType, uniques in pairs(build.data.uniques) do
 			local names = {}
@@ -316,7 +464,7 @@ function AIBridge:SerializeBuild(build, forceRefresh)
 	end
 
 	-- Config keys (valid configuration options)
-	if build.configTab and build.configTab.varControls then
+	if includeConfigReference and build.configTab and build.configTab.varControls then
 		local configKeys = {}
 		for var, _ in pairs(build.configTab.varControls) do
 			t_insert(configKeys, var)
@@ -326,7 +474,7 @@ function AIBridge:SerializeBuild(build, forceRefresh)
 	end
 
 	-- Item base names by slot type (for crafting/equipping)
-	if build.data and build.data.itemBaseLists then
+	if includeItemBases and build.data and build.data.itemBaseLists then
 		local baseNames = {}
 		for slotType, bases in pairs(build.data.itemBaseLists) do
 			local names = {}
@@ -404,6 +552,17 @@ function AIBridge:ExtractMentions(text, state)
 			end
 		end
 	end
+
+	-- Shortlists remain mention-aware even when the full reference catalog is omitted.
+	if state.gemShortlist then
+		for _, result in ipairs(state.gemShortlist) do
+			local name = result.name
+			if name and textLower:find(name:lower(), 1, true) and not seen[name:lower()] then
+				t_insert(mentions, { type = "gem", name = name })
+				seen[name:lower()] = true
+			end
+		end
+	end
 	
 	-- Check unique names (case-insensitive)
 	if state.reference and state.reference.uniqueNames then
@@ -413,6 +572,16 @@ function AIBridge:ExtractMentions(text, state)
 					t_insert(mentions, { type = "unique", name = uniqueName })
 					seen[uniqueName:lower()] = true
 				end
+			end
+		end
+	end
+
+	if state.uniqueShortlist then
+		for _, result in ipairs(state.uniqueShortlist) do
+			local name = result.name
+			if name and textLower:find(name:lower(), 1, true) and not seen[name:lower()] then
+				t_insert(mentions, { type = "unique", name = name })
+				seen[name:lower()] = true
 			end
 		end
 	end
@@ -1052,6 +1221,35 @@ function AIBridge:ComputeUniqueShortlist(build, limit, forceRefresh, fingerprint
 	return limited
 end
 
+--- Build only the optional state required by the current question.
+-- @return table|nil state, table|string contextOrError
+function AIBridge:BuildQuestionState(build, userMessage, fingerprint)
+	local context = self:ClassifyQuestion(userMessage)
+	local state, err = self:SerializeBuild(build, context)
+	if not state then
+		return nil, err
+	end
+
+	if context.includeGemShortlist then
+		state.gemShortlist = self:ComputeGemShortlist(build, 10, false, fingerprint)
+	end
+	if context.includeUniqueShortlist then
+		state.uniqueShortlist = self:ComputeUniqueShortlist(build, 3, false, fingerprint)
+	end
+
+	state.context = {
+		intents = context.intents,
+		gemShortlist = context.includeGemShortlist,
+		uniqueShortlist = context.includeUniqueShortlist,
+		treeCandidates = context.includeTreeCandidates,
+		gemReference = context.includeGemReference,
+		uniqueReference = context.includeUniqueReference,
+		itemBases = context.includeItemBases,
+		configReference = context.includeConfigReference,
+	}
+	return state, context
+end
+
 --- Send build state to LLM and get response
 -- @param build The active build object
 -- @param callback function(response, errMsg, fingerprint) called with the result
@@ -1076,18 +1274,13 @@ function AIBridge:Ask(build, userMessage, callback, history)
 	end
 	self:SyncBuildFingerprint(requestFingerprint)
 
-	-- Serialize build
-	local state, serErr = self:SerializeBuild(build)
+	-- Build only the question-relevant optional context and simulations.
+	local state, contextOrErr = self:BuildQuestionState(build, userMessage, requestFingerprint)
 	if not state then
-		callback(nil, serErr)
+		callback(nil, contextOrErr)
 		return
 	end
-
-	-- Compute gem shortlist (cached; recomputed only after build changes)
-	state.gemShortlist = self:ComputeGemShortlist(build, 10, false, requestFingerprint)
-
-	-- Compute unique shortlist (cached; recomputed only after build changes)
-	state.uniqueShortlist = self:ComputeUniqueShortlist(build, 3, false, requestFingerprint)
+	local context = contextOrErr
 
 	-- Debug: log reference menu size to file
 	if state.reference then
@@ -1111,13 +1304,15 @@ function AIBridge:Ask(build, userMessage, callback, history)
 
 	-- Build the prompt
 	local systemPrompt = [[You are an expert Path of Exile 1 build advisor integrated into Path of Building.
-You have access to the player's full build state (stats, items, skills, tree) AND you can
-DIRECTLY MODIFY the build by emitting actions. You are not just an advisor - you can act.
+You have access to the player's current core build state and the optional context relevant to
+this question. You can DIRECTLY MODIFY the build by emitting actions; you are not just an advisor.
 Give specific, actionable advice with numbers. Reference actual stats from the build.
 When suggesting changes, explain the expected impact (e.g. "+15% DPS", "+200 life").
 Be concise. Use PoB color codes: ^2=green/good, ^1=red/bad, ^7=white, ^8=gray.
 If the user asks "how do I improve", focus on the top 3 highest-impact changes.
 Format responses for readability in a game tool UI.
+state.context declares which optional sections were calculated. A missing shortlist, reference
+catalog, or tree.availableNodes means it was not needed for this question, not that none exist.
 
 The simulated uniqueShortlist is a preselected sample, not an exhaustive proof about every
 unique in the catalog. If no entry improves both DPS and EHP, say "none among the tested
@@ -1125,9 +1320,8 @@ candidates", never "no unique exists". balancedGainPct is positive only when bot
 If the build has no configured main skill or has near-zero DPS/EHP, state that upgrade analysis
 is not meaningful yet and ask the player to load/configure the intended build before concluding.
 
-The build state includes tree.pointsAvailable (free passive points), meta.availableClasses,
-meta.availableAscendancies, and tree.availableNodes (notables/keystones you can allocate).
-Use these to know what is actually possible right now.
+When state.context.treeCandidates is true, tree.availableNodes contains reachable notables and
+keystones. Use tree.pointsAvailable and these candidates to know what can be allocated now.
 
 When the user asks you to make a change (allocate, level up, change class, add a skill, etc.),
 DO IT by emitting actions. Don't tell the user to do it manually - you can do it for them.
@@ -1165,7 +1359,8 @@ Abyssal jewels: use equip_item with an abyssal slot name from state.abyssalSocke
 Only include actions you are confident about.]]
 
 	-- Build user prompt with build state
-	local userPrompt = "Build state (JSON):\n" .. dkjson.encode(state, {indent = false})
+	local stateJson = dkjson.encode(state, {indent = false})
+	local userPrompt = "Build state (JSON):\n" .. stateJson
 
 	-- Inject details for entities mentioned in the last AI response
 	if self.lastMentions and #self.lastMentions > 0 then
@@ -1189,11 +1384,9 @@ Only include actions you are confident about.]]
 		{ role = "system", content = systemPrompt },
 	}
 	
-	-- Add conversation history (if provided)
-	if history and #history > 0 then
-		for _, msg in ipairs(history) do
-			t_insert(messages, msg)
-		end
+	local trimmedHistory, historyChars, historyDropped = self:TrimHistory(history)
+	for _, msg in ipairs(trimmedHistory) do
+		t_insert(messages, msg)
 	end
 	
 	-- Add current user message with build state
@@ -1206,6 +1399,19 @@ Only include actions you are confident about.]]
 		max_tokens = 2048,
 		temperature = 0.3,
 	}, { indent = false })
+
+	local dbg = io.open("ai_debug.log", "a")
+	if dbg then
+		dbg:write(string.format(
+			"[AIBridge] Context: %s, state %d bytes, history %d chars/%d dropped, request %d bytes\n",
+			table.concat(context.intents, ","),
+			#stateJson,
+			historyChars,
+			historyDropped,
+			#requestBody
+		))
+		dbg:close()
+	end
 
 	local endpoint = AIConfig:GetEndpoint()
 	local url = endpoint .. "/chat/completions"
@@ -1278,7 +1484,7 @@ end
 -- @param build The active build object
 -- @return string Human-readable build summary
 function AIBridge:GetBuildSummary(build)
-	local state = self:SerializeBuild(build)
+	local state = self:SerializeBuild(build, {})
 	if not state then
 		return "No active build"
 	end

@@ -13,6 +13,17 @@ o trabalho pesado: calcular, comparar, buscar no trade, sugerir upgrades.
 
 ---
 
+## Estado atual — 2026-07-22
+
+- [x] Bridge Lua, configuração local, chat integrado e 18 ações aplicáveis
+- [x] Serialização do build com DPS, EHP, max hits e defesas calculadas pelo PoB
+- [x] Shortlists de gems e uniques simulados sem mutar o build
+- [x] Fingerprint do build para invalidar caches e respostas obsoletas
+- [x] Roteamento local por intenção, contexto seletivo e histórico limitado a 12.000 caracteres
+- [ ] Trade real com preço e orçamento
+- [ ] Otimização de árvore
+- [ ] Geração completa de build
+
 ## Fase 1 — Ponte IA ↔ PoB (fundação)
 
 **Objetivo:** A IA consegue ler o estado completo do build e executar ações.
@@ -29,7 +40,7 @@ o trabalho pesado: calcular, comparar, buscar no trade, sugerir upgrades.
   - `build.itemsTab` → itens equipados
   - `build.treeTab` → árvore passiva
   - `build.skillsTab` → gems/skills
-- Formato: JSON compacto, ~2-5KB por build
+- Formato: núcleo JSON compacto; catálogos e candidatos volumosos entram somente sob demanda
 
 ### 1.2 AIBridge.lua (execução de ações)
 - Receber lista de ações da IA e executar no PoB:
@@ -73,9 +84,12 @@ o trabalho pesado: calcular, comparar, buscar no trade, sugerir upgrades.
 | "O que falta pra endgame?" | Checklist: resists cap, life, damage floor, utility |
 
 ### 2.3 Contexto automático
-- A IA SEMPRE recebe o estado atual do build (serializado)
-- Não precisa explicar "sou um X com Y" — a IA já sabe
-- Histórico da conversa mantém contexto de decisões anteriores
+- A IA sempre recebe o núcleo atual do build: meta, stats, itens equipados, skills e tree alocada
+- Um roteador local e determinístico classifica a pergunta antes de montar o contexto
+- Catálogos de gems, uniques, configs, bases e nós candidatos entram somente quando relevantes
+- Shortlists caros são calculados somente para intenção de gems, itens ou melhoria geral
+- Histórico enviado ao modelo preserva apenas as mensagens mais recentes dentro de 12.000 caracteres
+- Cada resposta, shortlist e lote de ações fica vinculado ao fingerprint exato do build
 
 ---
 
@@ -162,7 +176,7 @@ o trabalho pesado: calcular, comparar, buscar no trade, sugerir upgrades.
 - **Decisão:** Começar com B (simples), migrar pra A se precisar de mais controle
 
 ### Formato de comunicação
-- Build state → JSON (~2-5KB)
+- Build state → JSON seletivo: núcleo compacto + blocos opcionais por intenção
 - Ações → JSON array de operações
 - Respostas → Markdown com cores do PoB
 
