@@ -1537,6 +1537,583 @@ function AIBridge:ParseActions(content)
 	local displayText = content:gsub("<actions>.-</actions>", ""):gsub("%s+$", "")
 	return displayText, actions
 end
+
+local SUPPORTED_ACTION_TYPES = {
+	equip_item = true,
+	alloc_node = true,
+	dealloc_node = true,
+	set_config = true,
+	set_level = true,
+	set_class = true,
+	set_ascendancy = true,
+	set_bandit = true,
+	set_pantheon = true,
+	add_skill = true,
+	remove_skill = true,
+	equip_jewel = true,
+	apply_tattoo = true,
+	remove_tattoo = true,
+	set_mastery = true,
+	set_main_skill = true,
+	set_secondary_ascendancy = true,
+	set_skill_part = true,
+}
+
+local function isNonEmptyString(value)
+	return type(value) == "string" and value ~= ""
+end
+
+local function isInteger(value)
+	return type(value) == "number" and value == math.floor(value)
+end
+
+local function hasNodeSelector(action)
+	return isInteger(action.id) or isNonEmptyString(action.name)
+end
+
+--- Validate an action's structure without touching the build.
+-- Semantic validation happens against an isolated CompareEntry during preflight.
+-- @param action Action table
+-- @return boolean valid
+-- @return string|nil error
+function AIBridge:ValidateActionShape(action)
+	if type(action) ~= "table" then
+		return false, "Action must be an object"
+	end
+	local actionType = action.type
+	if not isNonEmptyString(actionType) then
+		return false, "Action type is required"
+	end
+	if not SUPPORTED_ACTION_TYPES[actionType] then
+		return false, "Unknown action type: " .. actionType
+	end
+
+	if actionType == "equip_item" then
+		if not isNonEmptyString(action.raw) then
+			return false, "equip_item requires a non-empty raw item string"
+		end
+		if action.slot ~= nil and not isNonEmptyString(action.slot) then
+			return false, "equip_item slot must be a non-empty string"
+		end
+	elseif actionType == "alloc_node" or actionType == "dealloc_node"
+		or actionType == "remove_tattoo" then
+		if not hasNodeSelector(action) then
+			return false, actionType .. " requires a numeric id or node name"
+		end
+	elseif actionType == "set_config" then
+		if not isNonEmptyString(action.key) then
+			return false, "set_config requires a key"
+		end
+		local valueType = type(action.value)
+		if valueType ~= "boolean" and valueType ~= "number" then
+			return false, "set_config value must be boolean or number"
+		end
+	elseif actionType == "set_level" then
+		local level = tonumber(action.value)
+		if not level or level ~= math.floor(level) or level < 1 or level > 100 then
+			return false, "set_level value must be an integer between 1 and 100"
+		end
+	elseif actionType == "set_class" or actionType == "set_ascendancy"
+		or actionType == "set_secondary_ascendancy" then
+		if not isNonEmptyString(action.name) then
+			return false, actionType .. " requires a name"
+		end
+	elseif actionType == "set_bandit" then
+		if not isNonEmptyString(action.value) then
+			return false, "set_bandit requires a value"
+		end
+	elseif actionType == "set_pantheon" then
+		if action.major ~= nil and not isNonEmptyString(action.major) then
+			return false, "set_pantheon major must be a non-empty string"
+		end
+		if action.minor ~= nil and not isNonEmptyString(action.minor) then
+			return false, "set_pantheon minor must be a non-empty string"
+		end
+		if action.major == nil and action.minor == nil then
+			return false, "set_pantheon requires major or minor"
+		end
+	elseif actionType == "add_skill" then
+		if type(action.gems) ~= "table" or #action.gems == 0 then
+			return false, "add_skill requires a non-empty gems array"
+		end
+		if action.label ~= nil and type(action.label) ~= "string" then
+			return false, "add_skill label must be a string"
+		end
+		for index, gem in ipairs(action.gems) do
+			if type(gem) == "string" then
+				if gem == "" then
+					return false, "add_skill gem " .. index .. " is empty"
+				end
+			elseif type(gem) == "table" then
+				if not isNonEmptyString(gem.name) then
+					return false, "add_skill gem " .. index .. " requires a name"
+				end
+				if gem.level ~= nil and not tonumber(gem.level) then
+					return false, "add_skill gem " .. index .. " has an invalid level"
+				end
+				if gem.quality ~= nil and not tonumber(gem.quality) then
+					return false, "add_skill gem " .. index .. " has an invalid quality"
+				end
+			else
+				return false, "add_skill gem " .. index .. " must be a string or object"
+			end
+		end
+	elseif actionType == "remove_skill" or actionType == "set_main_skill"
+		or actionType == "set_skill_part" then
+		if not isNonEmptyString(action.label) and not isNonEmptyString(action.name) then
+			return false, actionType .. " requires a label or gem name"
+		end
+		if actionType == "set_main_skill" and action.skillIndex ~= nil
+			and (not isInteger(action.skillIndex) or action.skillIndex < 1) then
+			return false, "set_main_skill skillIndex must be a positive integer"
+		end
+		if actionType == "set_skill_part" then
+			local part = tonumber(action.part)
+			if not part or part ~= math.floor(part) or part < 1 then
+				return false, "set_skill_part requires a positive integer part number"
+			end
+		end
+	elseif actionType == "equip_jewel" then
+		if not isNonEmptyString(action.raw) then
+			return false, "equip_jewel requires a non-empty raw item string"
+		end
+		if action.nodeId ~= nil and not isInteger(action.nodeId) then
+			return false, "equip_jewel nodeId must be an integer"
+		end
+	elseif actionType == "apply_tattoo" then
+		if not hasNodeSelector(action) then
+			return false, "apply_tattoo requires a numeric id or node name"
+		end
+		if not isNonEmptyString(action.tattoo) then
+			return false, "apply_tattoo requires a tattoo name"
+		end
+	elseif actionType == "set_mastery" then
+		if not hasNodeSelector(action) then
+			return false, "set_mastery requires a numeric id or node name"
+		end
+		if action.effect ~= nil and (not isInteger(action.effect) or action.effect < 1) then
+			return false, "set_mastery effect must be a positive integer"
+		end
+		if action.effect == nil and not isNonEmptyString(action.effectText) then
+			return false, "set_mastery requires an effect index or effectText"
+		end
+	end
+
+	return true
+end
+
+--- Run PoB's complete synchronous calculation cycle.
+-- @param build Build or CompareEntry
+-- @return boolean success
+-- @return string|nil error
+function AIBridge:RebuildBuild(build)
+	if not build or not build.calcsTab then
+		return false, "Calculation tab not available"
+	end
+	local ok, err = pcall(function()
+		wipeGlobalCache()
+		build.outputRevision = (build.outputRevision or 0) + 1
+		build.calcsTab:BuildOutput()
+		build.buildFlag = false
+		if build.RefreshStatList then
+			build:RefreshStatList()
+		end
+	end)
+	if not ok then
+		return false, tostring(err)
+	end
+	return true
+end
+
+local function finiteMetric(value)
+	if type(value) ~= "number" or value ~= value
+		or value == math.huge or value == -math.huge then
+		return 0
+	end
+	return value
+end
+
+--- Capture the calculated values shown in the action diff.
+-- @param build Active build or CompareEntry
+-- @return table|nil metrics
+-- @return string|nil error
+function AIBridge:CaptureBuildMetrics(build)
+	local output = build and build.calcsTab and build.calcsTab.mainOutput
+	if not output then
+		return nil, "Calculated output not available"
+	end
+
+	local dps = finiteMetric(output.CombinedDPS)
+	if dps <= 0 then
+		dps = finiteMetric(output.TotalDPS)
+	end
+	if dps <= 0 and output.Minion then
+		dps = finiteMetric(output.Minion.CombinedDPS or output.Minion.TotalDPS)
+	end
+
+	local pointsUsed, ascendancyPointsUsed = 0, 0
+	if build.spec and build.spec.CountAllocNodes then
+		local countOk, used, ascUsed = pcall(build.spec.CountAllocNodes, build.spec)
+		if countOk then
+			pointsUsed = tonumber(used) or 0
+			ascendancyPointsUsed = tonumber(ascUsed) or 0
+		end
+	end
+
+	return {
+		dps = dps,
+		ehp = finiteMetric(output.TotalEHP),
+		maxHits = {
+			physical = finiteMetric(output.PhysicalMaximumHitTaken),
+			fire = finiteMetric(output.FireMaximumHitTaken),
+			cold = finiteMetric(output.ColdMaximumHitTaken),
+			lightning = finiteMetric(output.LightningMaximumHitTaken),
+			chaos = finiteMetric(output.ChaosMaximumHitTaken),
+		},
+		pointsUsed = pointsUsed,
+		ascendancyPointsUsed = ascendancyPointsUsed,
+	}
+end
+
+local function formatMetricNumber(value)
+	local absolute = math.abs(value)
+	if absolute >= 1000000000 then
+		return string.format("%.2fB", value / 1000000000)
+	elseif absolute >= 1000000 then
+		return string.format("%.2fM", value / 1000000)
+	elseif absolute >= 1000 then
+		return string.format("%.1fk", value / 1000)
+	end
+	return string.format("%.0f", value)
+end
+
+local function formatMetricChange(label, beforeValue, afterValue)
+	local delta = afterValue - beforeValue
+	if math.abs(delta) < 0.000001 then
+		return string.format("^7%s: %s -> %s (^8no change^7)",
+			label, formatMetricNumber(beforeValue), formatMetricNumber(afterValue))
+	end
+	local colour = delta > 0 and "^2" or "^1"
+	local change
+	if math.abs(beforeValue) > 0.000001 then
+		change = string.format("%s%+.1f%%^7", colour, delta / math.abs(beforeValue) * 100)
+	else
+		change = colour .. (delta > 0 and "+" or "") .. formatMetricNumber(delta) .. "^7"
+	end
+	return string.format("^7%s: %s -> %s (%s)",
+		label, formatMetricNumber(beforeValue), formatMetricNumber(afterValue), change)
+end
+
+--- Format before/after metrics from real PoB calculations.
+-- @return table Array of display lines
+function AIBridge:FormatMetricDiff(before, after)
+	if not before or not after then
+		return {}
+	end
+	local lines = {
+		"^7--- Real PoB diff ---",
+		formatMetricChange("DPS", before.dps, after.dps),
+		formatMetricChange("EHP", before.ehp, after.ehp),
+	}
+	local maxHitLabels = {
+		{ "Physical max hit", "physical" },
+		{ "Fire max hit", "fire" },
+		{ "Cold max hit", "cold" },
+		{ "Lightning max hit", "lightning" },
+		{ "Chaos max hit", "chaos" },
+	}
+	for _, entry in ipairs(maxHitLabels) do
+		local beforeValue = before.maxHits[entry[2]] or 0
+		local afterValue = after.maxHits[entry[2]] or 0
+		if beforeValue ~= 0 or afterValue ~= 0 then
+			t_insert(lines, formatMetricChange(entry[1], beforeValue, afterValue))
+		end
+	end
+	local pointDelta = after.pointsUsed - before.pointsUsed
+	t_insert(lines, string.format("^7Passive points used: %d -> %d (%+d)",
+		before.pointsUsed, after.pointsUsed, pointDelta))
+	local ascDelta = after.ascendancyPointsUsed - before.ascendancyPointsUsed
+	t_insert(lines, string.format("^7Ascendancy points used: %d -> %d (%+d)",
+		before.ascendancyPointsUsed, after.ascendancyPointsUsed, ascDelta))
+	return lines
+end
+
+--- Validate a complete action batch against an isolated build clone.
+-- Earlier simulated actions may satisfy dependencies of later actions.
+-- @param build Active build
+-- @param actions Action array
+-- @param snapshotXml Canonical SaveDB snapshot
+-- @return table preflight report
+function AIBridge:PreflightActions(build, actions, snapshotXml)
+	if type(actions) ~= "table" or #actions == 0 then
+		return {
+			ok = false,
+			phase = "validation",
+			results = { { ok = false, msg = "No actions to apply" } },
+		}
+	end
+
+	for index, action in ipairs(actions) do
+		local valid, validationError = self:ValidateActionShape(action)
+		if not valid then
+			return {
+				ok = false,
+				phase = "validation",
+				results = { {
+					ok = false,
+					index = index,
+					msg = string.format("Action %d invalid: %s", index, validationError),
+				} },
+			}
+		end
+	end
+
+	if not isNonEmptyString(snapshotXml) then
+		return {
+			ok = false,
+			phase = "snapshot",
+			results = { { ok = false, msg = "Could not snapshot the current build" } },
+		}
+	end
+
+	local cloneOk, shadowBuild = pcall(new, "CompareEntry", snapshotXml, "AI action preflight")
+	if not cloneOk or not shadowBuild or not shadowBuild.calcsTab or not shadowBuild.spec then
+		return {
+			ok = false,
+			phase = "preflight",
+			results = { {
+				ok = false,
+				msg = "Could not create an isolated build for preflight: " .. tostring(shadowBuild),
+			} },
+		}
+	end
+
+	local simulatedResults = {}
+	for index, action in ipairs(actions) do
+		local callOk, actionOk, actionMsg = pcall(self.ExecuteAction, self, shadowBuild, action)
+		if not callOk then
+			return {
+				ok = false,
+				phase = "preflight",
+				results = { {
+					ok = false,
+					index = index,
+					msg = string.format("Action %d crashed during preflight: %s", index, tostring(actionOk)),
+				} },
+			}
+		end
+		if not actionOk then
+			return {
+				ok = false,
+				phase = "preflight",
+				results = { {
+					ok = false,
+					index = index,
+					msg = string.format("Action %d failed preflight: %s", index, actionMsg or "unknown error"),
+				} },
+			}
+		end
+		t_insert(simulatedResults, { ok = true, index = index, msg = actionMsg or "OK" })
+	end
+
+	local rebuilt, rebuildError = self:RebuildBuild(shadowBuild)
+	if not rebuilt then
+		return {
+			ok = false,
+			phase = "preflight",
+			results = { {
+				ok = false,
+				msg = "Preflight calculation failed: " .. (rebuildError or "unknown error"),
+			} },
+		}
+	end
+	local previewMetrics, metricsError = self:CaptureBuildMetrics(shadowBuild)
+	if not previewMetrics then
+		return {
+			ok = false,
+			phase = "preflight",
+			results = { { ok = false, msg = metricsError or "Could not capture preview metrics" } },
+		}
+	end
+
+	return {
+		ok = true,
+		phase = "preflight",
+		results = simulatedResults,
+		after = previewMetrics,
+	}
+end
+
+--- Preflight, apply, fully rebuild, and measure an action batch.
+-- @param build Active build
+-- @param actions Action array
+-- @param expectedFingerprint Fingerprint attached to the AI response
+-- @return table report
+function AIBridge:ApplyActionBatch(build, actions, expectedFingerprint)
+	if not build then
+		return {
+			ok = false,
+			applied = false,
+			results = { { ok = false, msg = "No active build" } },
+		}
+	end
+	if not expectedFingerprint then
+		return {
+			ok = false,
+			applied = false,
+			results = { { ok = false, msg = "Missing build fingerprint; ask again before applying" } },
+		}
+	end
+
+	local currentFingerprint, fingerprintError = self:GetBuildFingerprint(build)
+	if not currentFingerprint then
+		return {
+			ok = false,
+			applied = false,
+			results = { {
+				ok = false,
+				msg = "Could not verify build state: " .. (fingerprintError or "unknown error"),
+			} },
+		}
+	end
+	if currentFingerprint ~= expectedFingerprint then
+		return {
+			ok = false,
+			applied = false,
+			results = { {
+				ok = false,
+				msg = "Build changed since this suggestion. Ask again before applying it.",
+			} },
+		}
+	end
+
+	local rebuilt, rebuildError
+	if build.buildFlag then
+		rebuilt, rebuildError = self:RebuildBuild(build)
+		if not rebuilt then
+			return {
+				ok = false,
+				applied = false,
+				results = { {
+					ok = false,
+					msg = "Could not calculate current build: " .. tostring(rebuildError),
+				} },
+			}
+		end
+		currentFingerprint, fingerprintError = self:GetBuildFingerprint(build)
+		if not currentFingerprint or currentFingerprint ~= expectedFingerprint then
+			return {
+				ok = false,
+				applied = false,
+				results = { {
+					ok = false,
+					msg = "Build changed while preparing the action batch. Ask again before applying it.",
+				} },
+			}
+		end
+	end
+
+	local beforeMetrics, metricsError = self:CaptureBuildMetrics(build)
+	if not beforeMetrics then
+		return {
+			ok = false,
+			applied = false,
+			results = { { ok = false, msg = metricsError or "Could not capture current metrics" } },
+		}
+	end
+
+	local snapshotOk, snapshotXml = pcall(build.SaveDB, build)
+	if not snapshotOk or not snapshotXml then
+		return {
+			ok = false,
+			applied = false,
+			results = { {
+				ok = false,
+				msg = "Could not snapshot the current build: " .. tostring(snapshotXml),
+			} },
+		}
+	end
+
+	local preflight = self:PreflightActions(build, actions, snapshotXml)
+	if not preflight.ok then
+		preflight.applied = false
+		preflight.before = beforeMetrics
+		return preflight
+	end
+
+	local verifiedFingerprint = self:GetBuildFingerprint(build)
+	if verifiedFingerprint ~= expectedFingerprint then
+		return {
+			ok = false,
+			applied = false,
+			before = beforeMetrics,
+			results = { {
+				ok = false,
+				msg = "Build changed during preflight. Ask again before applying it.",
+			} },
+		}
+	end
+
+	local results = {}
+	local appliedCount = 0
+	local failed = false
+	for index, action in ipairs(actions) do
+		local callOk, actionOk, actionMsg = pcall(self.ExecuteAction, self, build, action)
+		if not callOk then
+			t_insert(results, {
+				ok = false,
+				index = index,
+				msg = string.format("Action %d failed unexpectedly: %s", index, tostring(actionOk)),
+			})
+			failed = true
+			break
+		end
+		t_insert(results, {
+			ok = actionOk,
+			index = index,
+			msg = actionMsg or (actionOk and "OK" or "Failed"),
+		})
+		if not actionOk then
+			failed = true
+			break
+		end
+		appliedCount = appliedCount + 1
+	end
+
+	build.buildFlag = true
+	rebuilt, rebuildError = self:RebuildBuild(build)
+	self:InvalidateBuildContext()
+	local afterMetrics
+	if rebuilt then
+		local afterError
+		afterMetrics, afterError = self:CaptureBuildMetrics(build)
+		if not afterMetrics then
+			t_insert(results, {
+				ok = false,
+				msg = "Could not capture post-apply metrics: " .. tostring(afterError),
+			})
+			failed = true
+		end
+	else
+		t_insert(results, {
+			ok = false,
+			msg = "Post-apply calculation failed: " .. (rebuildError or "unknown error"),
+		})
+		failed = true
+	end
+
+	return {
+		ok = not failed and rebuilt,
+		applied = appliedCount > 0,
+		partial = failed and appliedCount > 0,
+		appliedCount = appliedCount,
+		results = results,
+		before = beforeMetrics,
+		after = afterMetrics,
+		preview = preflight.after,
+	}
+end
+
 --- Execute a list of actions on the build.
 -- Each action is a table: { type = "...", ... }
 -- Supported types:
@@ -1554,15 +2131,19 @@ function AIBridge:ExecuteActions(build, actions)
 	end
 
 	for _, action in ipairs(actions) do
-		local ok, msg = self:ExecuteAction(build, action)
-		t_insert(results, { ok = ok, msg = msg or (ok and "OK" or "Failed") })
+		local callOk, actionOk, actionMsg = pcall(self.ExecuteAction, self, build, action)
+		if callOk then
+			t_insert(results, {
+				ok = actionOk,
+				msg = actionMsg or (actionOk and "OK" or "Failed"),
+			})
+		else
+			t_insert(results, { ok = false, msg = "Action failed: " .. tostring(actionOk) })
+		end
 	end
 
-	-- Trigger a full rebuild after all actions
 	build.buildFlag = true
-	-- Every action changes the state identity; no cached advice remains valid.
 	self:InvalidateBuildContext()
-
 	return results
 end
 
@@ -1710,6 +2291,9 @@ function AIBridge:ActionSetConfig(build, action)
 		return false, "No config key provided"
 	end
 
+	if configTab.input[key] == nil then
+		return false, "Unknown config key: " .. key
+	end
 	configTab.input[key] = value
 	configTab:BuildModList()
 	configTab.modFlag = true
@@ -1808,6 +2392,20 @@ function AIBridge:ActionSetPantheon(build, action)
 	if not configTab then
 		return false, "Config tab not available"
 	end
+	local pantheons = build.data and build.data.pantheons or {}
+	if action.major ~= nil then
+		local major = action.major ~= "None" and pantheons[action.major] or nil
+		if action.major ~= "None" and (not major or not major.isMajorGod) then
+			return false, "Invalid major pantheon: " .. tostring(action.major)
+		end
+	end
+	if action.minor ~= nil then
+		local minor = action.minor ~= "None" and pantheons[action.minor] or nil
+		if action.minor ~= "None" and (not minor or minor.isMajorGod) then
+			return false, "Invalid minor pantheon: " .. tostring(action.minor)
+		end
+	end
+
 	local set = {}
 	if action.major then
 		configTab.input.pantheonMajorGod = action.major

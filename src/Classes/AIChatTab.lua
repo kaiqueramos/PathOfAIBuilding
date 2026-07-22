@@ -365,39 +365,42 @@ function AIChatTabClass:ApplyPendingActions()
 	ConPrintf("[AIChat] ApplyPendingActions called")
 	ConPrintf("[AIChat] pendingActions: %s", tostring(self.pendingActions))
 	ConPrintf("[AIChat] build: %s", tostring(self.build))
-	
+
 	if not self.pendingActions or #self.pendingActions == 0 then
 		ConPrintf("[AIChat] No pending actions to apply")
 		return
 	end
 
-	local currentFingerprint, fingerprintErr = AIBridge:GetBuildFingerprint(self.build)
-	if not currentFingerprint then
-		self:AddMessage("system", "Could not verify build state: " .. (fingerprintErr or "unknown error"))
-		self.pendingActions = nil
-		self.pendingActionsFingerprint = nil
-		self.controls.applyActions.shown = false
-		self.controls.status.label = "^1Build verification failed"
-		return
-	end
-	if not self.pendingActionsFingerprint or currentFingerprint ~= self.pendingActionsFingerprint then
-		self:AddMessage("system", "Build changed since this suggestion. Ask again before applying it.")
-		self.pendingActions = nil
-		self.pendingActionsFingerprint = nil
-		self.controls.applyActions.shown = false
-		self.controls.status.label = "^1Build changed - ask again"
-		return
+	self.controls.applyActions.enabled = false
+	ConPrintf("[AIChat] Preflighting %d actions", #self.pendingActions)
+	local callOk, report = pcall(
+		AIBridge.ApplyActionBatch,
+		AIBridge,
+		self.build,
+		self.pendingActions,
+		self.pendingActionsFingerprint
+	)
+	if not callOk then
+		report = {
+			ok = false,
+			applied = false,
+			results = { { ok = false, msg = "Action pipeline error: " .. tostring(report) } },
+		}
 	end
 
-	ConPrintf("[AIChat] Executing %d actions", #self.pendingActions)
-	local results = AIBridge:ExecuteActions(self.build, self.pendingActions)
-	ConPrintf("[AIChat] ExecuteActions returned %d results", #results)
+	local lines
+	if report.ok then
+		lines = { "^7--- Applied changes ---" }
+	elseif report.partial then
+		lines = { "^1--- Partial application error ---" }
+	else
+		lines = { "^1--- Changes not applied ---" }
+	end
 
-	-- Build a summary of what happened
-	local lines = { "^7--- Applied changes ---" }
 	local okCount, failCount = 0, 0
-	for i, result in ipairs(results) do
-		ConPrintf("[AIChat] Action %d: ok=%s msg=%s", i, tostring(result.ok), result.msg or "nil")
+	for index, result in ipairs(report.results or {}) do
+		ConPrintf("[AIChat] Action result %d: ok=%s msg=%s",
+			index, tostring(result.ok), result.msg or "nil")
 		if result.ok then
 			okCount = okCount + 1
 			t_insert(lines, "^2[OK] " .. result.msg)
@@ -406,16 +409,32 @@ function AIChatTabClass:ApplyPendingActions()
 			t_insert(lines, "^1[FAIL] " .. result.msg)
 		end
 	end
-	t_insert(lines, string.format("^7%d succeeded, %d failed", okCount, failCount))
 
+	if report.before and report.after then
+		t_insert(lines, "")
+		for _, line in ipairs(AIBridge:FormatMetricDiff(report.before, report.after)) do
+			t_insert(lines, line)
+		end
+	end
+
+	if report.ok then
+		t_insert(lines, string.format("^7%d applied, %d failed", okCount, failCount))
+		self.controls.status.label = "^2Changes applied"
+	elseif report.partial then
+		t_insert(lines, string.format("^1%d applied before failure; review the build", okCount))
+		self.controls.status.label = "^1Partial changes - review build"
+	else
+		t_insert(lines, "^1No changes were applied")
+		self.controls.status.label = "^1No changes applied"
+	end
 	self:AddMessage("system", table.concat(lines, "\n"))
 
-	-- Clear pending actions and hide the button
 	self.pendingActions = nil
 	self.pendingActionsFingerprint = nil
 	self.controls.applyActions.shown = false
-	self.controls.status.label = "^2Changes applied"
-	ConPrintf("[AIChat] Apply complete: %d ok, %d failed", okCount, failCount)
+	self.controls.applyActions.enabled = true
+	ConPrintf("[AIChat] Apply complete: ok=%s applied=%s",
+		tostring(report.ok), tostring(report.applied))
 end
 
 --- Load/Save (no persistence for chat history - session only)

@@ -20,6 +20,8 @@ o trabalho pesado: calcular, comparar, buscar no trade, sugerir upgrades.
 - [x] Shortlists de gems e uniques simulados sem mutar o build
 - [x] Fingerprint do build para invalidar caches e respostas obsoletas
 - [x] Roteamento local por intenção, contexto seletivo e histórico limitado a 12.000 caracteres
+- [x] Lotes de ações pré-validados em clone, rebuild completo e diff real após Apply
+- [ ] Escalonamento: permitir que a IA solicite contexto adicional antes de responder
 - [ ] Trade real com preço e orçamento
 - [ ] Otimização de árvore
 - [ ] Geração completa de build
@@ -43,14 +45,13 @@ o trabalho pesado: calcular, comparar, buscar no trade, sugerir upgrades.
 - Formato: núcleo JSON compacto; catálogos e candidatos volumosos entram somente sob demanda
 
 ### 1.2 AIBridge.lua (execução de ações)
-- Receber lista de ações da IA e executar no PoB:
-  - `equip_item(slot, item_string)` → equipa item
-  - `allocate_node(node_id)` → aloca nó na tree
-  - `deallocate_node(node_id)` → remove nó
-  - `set_skill(slot, gems[])` → configura skill
-  - `set_config(key, value)` → muda config de cálculo
-- Cada ação dispara recálculo automático do PoB
-- Retornar diff de stats após cada ação (antes/depois)
+- Receber lista de ações da IA e executar no PoB
+- Validar estrutura e fingerprint antes de qualquer mutação
+- Executar o lote primeiro em um `CompareEntry` isolado, incluindo dependências entre ações
+- Se o preflight falhar, manter o build original intacto
+- Aplicar o lote válido no build real e parar diante de falha inesperada
+- Disparar um rebuild síncrono completo ao final
+- Mostrar diff real de DPS, EHP, max hits e pontos antes/depois
 
 ### 1.3 Comunicação HTTP
 - PoB (Lua) → POST JSON → Server Hono (Node.js, fora do Wine)
@@ -90,6 +91,7 @@ o trabalho pesado: calcular, comparar, buscar no trade, sugerir upgrades.
 - Shortlists caros são calculados somente para intenção de gems, itens ou melhoria geral
 - Histórico enviado ao modelo preserva apenas as mensagens mais recentes dentro de 12.000 caracteres
 - Cada resposta, shortlist e lote de ações fica vinculado ao fingerprint exato do build
+- Pendente: permitir que a própria IA peça blocos omitidos e refazer a chamada uma única vez
 
 ---
 
