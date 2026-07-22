@@ -11,6 +11,7 @@ local AIBridge = {
 	lastError = nil,
 	lastResponse = nil,
 	gemShortlistCache = nil,
+	uniqueShortlistCache = nil,
 }
 
 --- Serialize the current build state into a compact JSON table
@@ -593,6 +594,139 @@ function AIBridge:ComputeGemShortlist(build, limit, forceRefresh)
 	return results
 end
 
+--- Compute unique item shortlist: simulate equipping uniques and measure DPS/EHP gain
+-- @param build The active build object
+-- @param limit Max number of uniques per slot to return (default 3)
+-- @return table Array of {slot, name, dpsGain, dpsGainPct, ehpGain, ehpGainPct} sorted by gain
+function AIBridge:ComputeUniqueShortlist(build, limit, forceRefresh)
+	limit = limit or 3
+	
+	-- Return cached result if available
+	if self.uniqueShortlistCache and not forceRefresh then
+		return self.uniqueShortlistCache
+	end
+	
+	local startTime = GetTime()
+	local maxTestPerType = 40  -- Cap uniques tested per type to avoid freezing
+	
+	local itemsTab = build.itemsTab
+	local calcsTab = build.calcsTab
+	if not itemsTab or not calcsTab or not build.data or not build.data.uniques then
+		return {}
+	end
+	
+	-- Get current DPS and EHP
+	calcsTab:BuildOutput()
+	local baseDPS = calcsTab.mainOutput.CombinedDPS or calcsTab.mainOutput.TotalDPS or 0
+	local baseEHP = calcsTab.mainOutput.Life or 0
+	if baseDPS == 0 and baseEHP == 0 then
+		return {}
+	end
+	
+	-- Map slot names to unique types
+	local slotToType = {
+		["Weapon 1"] = {"axe", "bow", "claw", "dagger", "mace", "staff", "sword", "wand"},
+		["Weapon 2"] = {"shield", "quiver"},
+		["Helmet"] = {"helmet"},
+		["Body Armour"] = {"body"},
+		["Gloves"] = {"gloves"},
+		["Boots"] = {"boots"},
+		["Amulet"] = {"amulet"},
+		["Ring 1"] = {"ring"},
+		["Ring 2"] = {"ring"},
+		["Belt"] = {"belt"},
+	}
+	
+	local results = {}
+	
+	-- Test uniques for each equipped slot
+	for slotName, slot in pairs(itemsTab.slots) do
+		local uniqueTypes = slotToType[slotName]
+		if uniqueTypes then
+			-- Get current item in slot
+			local currentItemId = slot.selItemId
+			
+			-- Test each unique type for this slot
+			for _, uniqueType in ipairs(uniqueTypes) do
+				local uniques = build.data.uniques[uniqueType]
+				if uniques then
+					local tested = 0
+					for _, unique in ipairs(uniques) do
+						if tested >= maxTestPerType then break end
+						tested = tested + 1
+						local raw = type(unique) == "string" and unique or (type(unique) == "table" and unique[1])
+						if raw then
+							-- Create item from raw
+							local item = new("Item", raw)
+							if item and item.baseName then
+								-- Temporarily equip
+								itemsTab:AddItem(item, true)
+								slot:SetSelItemId(item.id)
+								
+								-- Recalculate
+								calcsTab:BuildOutput()
+								local newDPS = calcsTab.mainOutput.CombinedDPS or calcsTab.mainOutput.TotalDPS or 0
+								local newEHP = calcsTab.mainOutput.Life or 0
+								
+								local dpsGain = newDPS - baseDPS
+								local dpsGainPct = baseDPS > 0 and (dpsGain / baseDPS) * 100 or 0
+								local ehpGain = newEHP - baseEHP
+								local ehpGainPct = baseEHP > 0 and (ehpGain / baseEHP) * 100 or 0
+								
+								-- Restore original item
+								slot:SetSelItemId(currentItemId or 0)
+								
+								-- Store result if positive gain
+								if dpsGain > 0 or ehpGain > 0 then
+									t_insert(results, {
+										slot = slotName,
+										name = item.name or item.baseName,
+										dpsGain = dpsGain,
+										dpsGainPct = dpsGainPct,
+										ehpGain = ehpGain,
+										ehpGainPct = ehpGainPct,
+									})
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+	
+	-- Restore original calculation
+	calcsTab:BuildOutput()
+	
+	-- Sort by DPS gain (or EHP if no DPS) and limit per slot
+	table.sort(results, function(a, b)
+		local aScore = a.dpsGain > 0 and a.dpsGain or a.ehpGain
+		local bScore = b.dpsGain > 0 and b.dpsGain or b.ehpGain
+		return aScore > bScore
+	end)
+	
+	-- Limit to top N per slot
+	local slotCounts = {}
+	local limited = {}
+	for _, result in ipairs(results) do
+		slotCounts[result.slot] = (slotCounts[result.slot] or 0) + 1
+		if slotCounts[result.slot] <= limit then
+			t_insert(limited, result)
+		end
+	end
+	
+	-- Log timing and cache result
+	local elapsed = GetTime() - startTime
+	local dbg = io.open("ai_debug.log", "a")
+	if dbg then
+		dbg:write(string.format("[AIBridge] Unique shortlist: %d results, %.1f ms\n", #limited, elapsed))
+		dbg:close()
+	end
+	self.uniqueShortlistCache = limited
+	
+	return limited
+end
+
 --- Send build state to LLM and get response
 -- @param build The active build object
 -- @param callback function(response, errMsg) called with AI response or error
@@ -619,6 +753,9 @@ function AIBridge:Ask(build, userMessage, callback, history)
 
 	-- Compute gem shortlist (cached; recomputed only after build changes)
 	state.gemShortlist = self:ComputeGemShortlist(build, 10, false)
+
+	-- Compute unique shortlist (cached; recomputed only after build changes)
+	state.uniqueShortlist = self:ComputeUniqueShortlist(build, 3, false)
 
 	-- Debug: log reference menu size to file
 	if state.reference then
@@ -863,8 +1000,9 @@ function AIBridge:ExecuteActions(build, actions)
 
 	-- Trigger a full rebuild after all actions
 	build.buildFlag = true
-	-- Invalidate gem shortlist cache (build changed)
+	-- Invalidate shortlist caches (build changed)
 	self.gemShortlistCache = nil
+	self.uniqueShortlistCache = nil
 
 	return results
 end
