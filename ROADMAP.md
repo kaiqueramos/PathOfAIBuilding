@@ -22,6 +22,7 @@ o trabalho pesado: calcular, comparar, buscar no trade, sugerir upgrades.
 - [x] Roteamento local por intenção, contexto seletivo e histórico limitado a 12.000 caracteres
 - [x] Lotes de ações pré-validados em clone, rebuild completo e diff real após Apply
 - [x] Escalonamento híbrido: IA pode solicitar contexto adicional uma única vez
+- [x] Matriz das 18 ações: validação, dispatch, efeitos, preflight isolado e rollback
 - [ ] Trade real com preço e orçamento
 - [ ] Otimização de árvore
 - [ ] Geração completa de build

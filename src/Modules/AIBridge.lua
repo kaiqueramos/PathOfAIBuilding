@@ -782,12 +782,13 @@ function AIBridge:ComputeGemShortlist(build, limit, forceRefresh, fingerprint)
 		end
 	end
 	
-	-- Test each support gem
+	-- Test each support gem. Every transient mutation is removed even if PoB throws
+	-- while resolving the socket group or recalculating the candidate.
 	local results = {}
+	local originalGemCount = #mainGroup.gemList
 	for gemId, gemData in pairs(build.data.gems) do
-		-- Only test support gems not already in the group, and not legacy (standard-only)
-		if gemData.grantedEffect and gemData.grantedEffect.support and not existingGems[gemId] and not gemData.grantedEffect.legacy then
-			-- Temporarily add the gem
+		if gemData.grantedEffect and gemData.grantedEffect.support
+			and not existingGems[gemId] and not gemData.grantedEffect.legacy then
 			local testGem = {
 				nameSpec = gemData.name,
 				gemId = gemId,
@@ -798,32 +799,46 @@ function AIBridge:ComputeGemShortlist(build, limit, forceRefresh, fingerprint)
 				enableGlobal1 = true,
 				enableGlobal2 = false,
 			}
-			t_insert(mainGroup.gemList, testGem)
-			skillsTab:ProcessSocketGroup(mainGroup)
-			
-			-- Recalculate
-			calcsTab:BuildOutput()
-			local newDPS = calcsTab.mainOutput.CombinedDPS or calcsTab.mainOutput.TotalDPS or 0
-			local gain = newDPS - baseDPS
-			local gainPct = (gain / baseDPS) * 100
-			
-			-- Remove the test gem
-			t_remove(mainGroup.gemList)
-			skillsTab:ProcessSocketGroup(mainGroup)
-			
-			-- Store result if positive gain
+			local simulationOk, newDPSOrError = pcall(function()
+				t_insert(mainGroup.gemList, testGem)
+				skillsTab:ProcessSocketGroup(mainGroup)
+				calcsTab:BuildOutput()
+				return calcsTab.mainOutput.CombinedDPS or calcsTab.mainOutput.TotalDPS or 0
+			end)
+
+			local cleanupOk, cleanupError = pcall(function()
+				while #mainGroup.gemList > originalGemCount do
+					t_remove(mainGroup.gemList)
+				end
+				if #mainGroup.gemList ~= originalGemCount then
+					error("socket group lost an original gem")
+				end
+				skillsTab:ProcessSocketGroup(mainGroup)
+			end)
+
+			if not simulationOk or not cleanupOk then
+				local recalcOk, recalcError = pcall(calcsTab.BuildOutput, calcsTab)
+				local failure = not simulationOk and newDPSOrError or cleanupError
+				if not recalcOk then
+					failure = tostring(failure) .. "; recalculation restore failed: " .. tostring(recalcError)
+				end
+				error("Gem shortlist simulation failed for " .. tostring(gemData.name)
+					.. ": " .. tostring(failure), 0)
+			end
+
+			local gain = newDPSOrError - baseDPS
 			if gain > 0 then
 				t_insert(results, {
 					name = gemData.name,
 					dpsGain = gain,
-					dpsGainPct = gainPct,
+					dpsGainPct = (gain / baseDPS) * 100,
 					type = "support",
 				})
 			end
 		end
 	end
-	
-	-- Restore original calculation
+
+	-- Restore the original calculated output after the final candidate.
 	calcsTab:BuildOutput()
 	
 	-- Sort by gain descending and limit
@@ -1778,7 +1793,7 @@ function AIBridge:ParseActions(content)
 		return content, nil
 	end
 
-	local actions = dkjson.decode(block)
+	local actions = dkjson.decode(block, 1, dkjson.null)
 	if type(actions) ~= "table" then
 		-- Malformed block: show the text without it, no actions
 		local displayText = content:gsub("<actions>.-</actions>", ""):gsub("%s+$", "")
@@ -1817,6 +1832,28 @@ end
 
 local function isInteger(value)
 	return type(value) == "number" and value == math.floor(value)
+end
+
+local function validateDenseArray(value, label)
+	if type(value) ~= "table" then
+		return false, label .. " must be a dense array"
+	end
+	local count = 0
+	local highestIndex = 0
+	for key in pairs(value) do
+		if not isInteger(key) or key < 1 then
+			return false, label .. " must be a dense array"
+		end
+		count = count + 1
+		highestIndex = math.max(highestIndex, key)
+	end
+	if count == 0 then
+		return false, label .. " must be a non-empty dense array"
+	end
+	if highestIndex ~= count then
+		return false, label .. " must be a dense array without gaps"
+	end
+	return true
 end
 
 local function hasNodeSelector(action)
@@ -1885,8 +1922,9 @@ function AIBridge:ValidateActionShape(action)
 			return false, "set_pantheon requires major or minor"
 		end
 	elseif actionType == "add_skill" then
-		if type(action.gems) ~= "table" or #action.gems == 0 then
-			return false, "add_skill requires a non-empty gems array"
+		local validGems, gemsError = validateDenseArray(action.gems, "add_skill gems")
+		if not validGems then
+			return false, gemsError
 		end
 		if action.label ~= nil and type(action.label) ~= "string" then
 			return false, "add_skill label must be a string"
@@ -2097,11 +2135,12 @@ end
 -- @param snapshotXml Canonical SaveDB snapshot
 -- @return table preflight report
 function AIBridge:PreflightActions(build, actions, snapshotXml)
-	if type(actions) ~= "table" or #actions == 0 then
+	local validActions, actionsError = validateDenseArray(actions, "Actions")
+	if not validActions then
 		return {
 			ok = false,
 			phase = "validation",
-			results = { { ok = false, msg = "No actions to apply" } },
+			results = { { ok = false, msg = actionsError } },
 		}
 	end
 
@@ -2719,8 +2758,17 @@ function AIBridge:ActionAddSkill(build, action)
 		return false, "No valid gems to add"
 	end
 
-	t_insert(skillSet.socketGroupList, newGroup)
 	skillsTab:ProcessSocketGroup(newGroup)
+	for index, gem in ipairs(newGroup.gemList) do
+		if not gem.gemData and not gem.grantedEffect then
+			return false, string.format(
+				"Gem %d is unknown or unsupported: %s",
+				index,
+				gem.errMsg or gem.nameSpec or "unknown"
+			)
+		end
+	end
+	t_insert(skillSet.socketGroupList, newGroup)
 	skillsTab.modFlag = true
 	build.buildFlag = true
 
@@ -2780,7 +2828,6 @@ function AIBridge:ActionEquipJewel(build, action)
 	if not item or not item.baseName then
 		return false, "Invalid jewel item data"
 	end
-	itemsTab:AddItem(item, true)
 
 	-- Determine target socket node
 	local nodeId = action.nodeId
@@ -2800,6 +2847,7 @@ function AIBridge:ActionEquipJewel(build, action)
 		return false, "Node " .. tostring(nodeId) .. " is not a jewel socket"
 	end
 
+	itemsTab:AddItem(item, true)
 	spec.jewels[nodeId] = item.id
 	spec:BuildClusterJewelGraphs()
 	itemsTab:PopulateSlots()
@@ -2976,10 +3024,13 @@ function AIBridge:ActionSetMainSkill(build, action)
 			end
 		end
 		if match then
-			build.mainSocketGroup = i
-			if action.skillIndex and group.displaySkillList and group.displaySkillList[action.skillIndex] then
+			if action.skillIndex then
+				if not group.displaySkillList or not group.displaySkillList[action.skillIndex] then
+					return false, "Skill index out of range for '" .. (group.label or target) .. "'"
+				end
 				group.mainActiveSkill = action.skillIndex
 			end
+			build.mainSocketGroup = i
 			build.buildFlag = true
 			return true, "Set main skill to '" .. (group.label or target) .. "'"
 		end
