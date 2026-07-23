@@ -88,13 +88,23 @@ generation are not part of V1.
    Linux users can run the same executable through Wine or Proton.
 3. Click `AI Setup` in the bottom toolbar. Enter an OpenAI-compatible HTTPS
    endpoint, your own API key, and the model identifier.
-4. Click `Test Connection`, save the configuration, open a build, and select the
+4. Optionally set provider-specific JSON under `Extra request options`. These
+   fields are forwarded in the Chat Completions body without coupling the app to
+   a provider; `model`, `messages`, and `stream` remain managed by the app.
+5. Click `Test Connection`, save the configuration, open a build, and select the
    `AI` tab.
 
 The portable build stores `ai_config.json` only in the extracted directory.
 Installed/development layouts use PoB's normal user-data directory. The file is
 never included in releases or sent anywhere except the endpoint you configure.
 See [AI_SECURITY.md](AI_SECURITY.md) for the complete security model.
+
+For example, MiniMax M3 can return concise answers instead of its default visible
+reasoning trace with:
+
+```json
+{"thinking":{"type":"disabled"}}
+```
 
 ## Changelog
 

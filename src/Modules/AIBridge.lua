@@ -39,6 +39,14 @@ local function getChatCompletionURL(endpoint)
 	return endpoint:gsub("/+$", "") .. "/chat/completions"
 end
 
+-- Merges validated provider options without binding the bridge to a model family.
+local function applyRequestOptions(request, options)
+	for key, value in pairs(options or {}) do
+		request[key] = value
+	end
+	return request
+end
+
 local function parseChatCompletionResponse(response, errMsg)
 	if errMsg then
 		return nil, "API request failed: " .. tostring(errMsg)
@@ -1514,15 +1522,22 @@ function AIBridge:TestConnection(config, callback)
 		callback(false, "Timeout must be between 1 and 600 seconds")
 		return
 	end
+	local requestOptionsOk, requestOptionsError = AIConfig:ValidateRequestOptions(config.request_options)
+	if not requestOptionsOk then
+		callback(false, requestOptionsError)
+		return
+	end
 
-	local requestBody, encodeError = dkjson.encode({
+
+	local request = applyRequestOptions({
 		model = model,
 		messages = {
 			{ role = "user", content = "Reply with OK." },
 		},
 		max_tokens = 16,
 		temperature = 0,
-	}, { indent = false })
+	}, config.request_options)
+	local requestBody, encodeError = dkjson.encode(request, { indent = false })
 	if not requestBody then
 		callback(false, "Could not encode connection test: " .. tostring(encodeError))
 		return
@@ -1699,12 +1714,14 @@ Only include actions you are confident about.]]
 		end
 		t_insert(messages, { role = "user", content = userPrompt })
 
-		local requestBody, requestEncodeError = dkjson.encode({
-			model = AIConfig:GetModel(),
+		local model = AIConfig:GetModel()
+		local request = applyRequestOptions({
+			model = model,
 			messages = messages,
 			max_tokens = 2048,
 			temperature = 0.3,
-		}, { indent = false })
+		}, AIConfig:GetRequestOptions())
+		local requestBody, requestEncodeError = dkjson.encode(request, { indent = false })
 		if not requestBody then
 			return nil, nil, "Could not encode API request: " .. tostring(requestEncodeError)
 		end

@@ -3,6 +3,7 @@
   "api_key": "YOUR_API_KEY_HERE",
   "model": "gpt-4o",
   "timeout": 120,
+  "request_options": {},
   "debug_logging": false,
   "config_version": 1
 }

@@ -3,10 +3,37 @@
 -- Integrated into PoB UI via popup system
 -- cspell:ignore qwen
 
+local dkjson = require "dkjson"
+
 local AIConfig = LoadModule("Modules/AIConfig")
 local AIBridge = LoadModule("Modules/AIBridge")
 
 local AIConfigPanel = {}
+
+local function formatRequestOptions(options)
+	if type(options) ~= "table" or next(options) == nil then
+		return "{}"
+	end
+	local encoded = dkjson.encode(options, { indent = false })
+	return encoded or "{}"
+end
+
+local function parseRequestOptions(raw)
+	local text = (raw or ""):match("^%s*(.-)%s*$")
+	if text == "" then
+		return {}
+	end
+	local options, _, decodeError = dkjson.decode(text)
+	if type(options) ~= "table" then
+		return nil, "Request options must be a JSON object: " .. tostring(decodeError or "")
+	end
+	local ok, validationError = AIConfig:ValidateRequestOptions(options)
+	if not ok then
+		return nil, validationError
+	end
+	return options
+end
+
 
 -- Opens the AI configuration popup
 function AIConfigPanel:OpenPopup()
@@ -37,8 +64,13 @@ function AIConfigPanel:OpenPopup()
 	controls.model = new("EditControl", { "TOPLEFT", controls.modelLabel, "BOTTOMLEFT" }, { 0, 4, fieldW, 20 }, config.model or "", nil, nil, nil, nil)
 	controls.model:SetPlaceholder("gpt-4o, qwen3.7-max, etc.")
 
+	-- Optional provider-specific OpenAI-compatible request fields.
+	controls.requestOptionsLabel = new("LabelControl", { "TOPLEFT", controls.model, "BOTTOMLEFT" }, { 0, 12, 0, 16 }, "^7Extra request options (JSON):")
+	controls.requestOptions = new("EditControl", { "TOPLEFT", controls.requestOptionsLabel, "BOTTOMLEFT" }, { 0, 4, fieldW, 20 }, formatRequestOptions(config.request_options), nil, nil, nil, nil)
+	controls.requestOptions:SetPlaceholder('{"thinking":{"type":"disabled"}}')
+
 	-- Status label
-	controls.status = new("LabelControl", { "TOPLEFT", controls.model, "BOTTOMLEFT" }, { 0, 12, fieldW, 16 }, "")
+	controls.status = new("LabelControl", { "TOPLEFT", controls.requestOptions, "BOTTOMLEFT" }, { 0, 12, fieldW, 16 }, "")
 
 	-- Buttons row
 	controls.test = new("ButtonControl", { "TOPLEFT", controls.status, "BOTTOMLEFT" }, { 0, 8, 90, 24 }, "Test", function()
@@ -51,7 +83,7 @@ function AIConfigPanel:OpenPopup()
 		main:ClosePopup()
 	end)
 
-	main:OpenPopup(310, 260, "AI Configuration", controls, "save", "apiKey", "cancel")
+	main:OpenPopup(310, 320, "AI Configuration", controls, "save", "apiKey", "cancel")
 end
 
 -- Tests the API connection
@@ -77,6 +109,12 @@ function AIConfigPanel:TestConnection(controls)
 		return
 	end
 
+	local requestOptions, requestOptionsError = parseRequestOptions(controls.requestOptions.buf)
+	if not requestOptions then
+		controls.status.label = "^1" .. requestOptionsError
+		return
+	end
+
 	controls.status.label = "^7Testing connection..."
 	controls.test.enabled = false
 	controls.save.enabled = false
@@ -85,6 +123,7 @@ function AIConfigPanel:TestConnection(controls)
 		api_endpoint = endpoint,
 		model = model,
 		timeout = AIConfig:GetTimeout(),
+		request_options = requestOptions,
 	}, function(ok, errMsg)
 		controls.test.enabled = true
 		controls.save.enabled = true
@@ -119,9 +158,20 @@ function AIConfigPanel:SaveConfig(controls)
 		return
 	end
 
+	local requestOptions, requestOptionsError = parseRequestOptions(controls.requestOptions.buf)
+	if not requestOptions then
+		controls.status.label = "^1" .. requestOptionsError
+		return
+	end
+
 	AIConfig:SetAPIKey(apiKey)
 	AIConfig:SetEndpoint(endpoint)
 	AIConfig:SetModel(model)
+	local requestOptionsOk, requestOptionsSaveError = AIConfig:SetRequestOptions(requestOptions)
+	if not requestOptionsOk then
+		controls.status.label = "^1Error saving request options: " .. tostring(requestOptionsSaveError)
+		return
+	end
 
 	local ok, err = AIConfig:Save()
 	if ok then

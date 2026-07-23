@@ -15,8 +15,10 @@ release archive, or debug log.
 Use the `AI Setup` button in PoB's bottom toolbar:
 
 1. Enter an HTTPS endpoint, API key, and model identifier.
-2. Click `Test Connection`.
-3. Save only after the connection succeeds.
+2. Optionally enter provider-specific JSON in `Extra request options`; it is sent
+   in the Chat Completions body and must never contain credentials.
+3. Click `Test Connection`.
+4. Save only after the connection succeeds.
 
 The key field is masked in the UI. PathOfAIBuilding stores the configuration in
 `ai_config.json`:
@@ -45,6 +47,9 @@ The repository ignores `ai_config.json`, `ai_debug.log`, `.ai_key`, `.ai_secrets
 - Additional context is requested at most once per question.
 - No trade API, telemetry endpoint, analytics service, or hidden proxy is used in
   V1.
+- Extra request options support provider-specific fields without hardcoding a
+  model integration. The bridge reserves `model`, `messages`, and `stream` to
+  preserve the configured endpoint and non-streaming response contract.
 
 Use only a provider you trust with build data. Provider retention and training
 policies are outside PathOfAIBuilding's control.

@@ -260,4 +260,65 @@ describe("AI selective build serialization", function()
 		assert.is_nil(state.gemShortlist)
 		assert.is_nil(state.uniqueShortlist)
 	end)
+
+	it("includes configured provider options in full build requests", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local aiConfig = findUpvalue(bridge.Ask, "AIConfig")
+		assert.is_table(aiConfig)
+
+		local originalValidate = aiConfig.Validate
+		local originalGetEndpoint = aiConfig.GetEndpoint
+		local originalGetAPIKey = aiConfig.GetAPIKey
+		local originalGetModel = aiConfig.GetModel
+		local originalGetRequestOptions = aiConfig.GetRequestOptions
+		local originalGetTimeout = aiConfig.GetTimeout
+		local originalDownloadPage = launch.DownloadPage
+		local capturedOptions
+		local responseContent
+		local responseError
+
+		aiConfig.Validate = function() return true end
+		aiConfig.GetEndpoint = function() return "https://example.invalid/v1" end
+		aiConfig.GetAPIKey = function() return "test-key" end
+		aiConfig.GetModel = function() return "test-model" end
+		aiConfig.GetRequestOptions = function()
+			return {
+				thinking = { type = "disabled" },
+				service_tier = "priority",
+			}
+		end
+		aiConfig.GetTimeout = function() return 73 end
+		launch.DownloadPage = function(_, _, callback, options)
+			capturedOptions = options
+			callback({
+				body = '{"choices":[{"message":{"content":"Direct answer"}}]}',
+			}, nil)
+		end
+
+		local ok, err = pcall(function()
+			bridge:Ask(build, "Can I tank this boss?", function(content, callbackError)
+				responseContent = content
+				responseError = callbackError
+			end, {})
+		end)
+
+		aiConfig.Validate = originalValidate
+		aiConfig.GetEndpoint = originalGetEndpoint
+		aiConfig.GetAPIKey = originalGetAPIKey
+		aiConfig.GetModel = originalGetModel
+		aiConfig.GetRequestOptions = originalGetRequestOptions
+		aiConfig.GetTimeout = originalGetTimeout
+		launch.DownloadPage = originalDownloadPage
+		assert(ok, err)
+		assert.are.equal("Direct answer", responseContent)
+		assert.is_nil(responseError)
+		local request = assert(dkjson.decode(capturedOptions.body))
+		assert.same({
+			thinking = { type = "disabled" },
+			service_tier = "priority",
+		}, {
+			thinking = request.thinking,
+			service_tier = request.service_tier,
+		})
+	end)
 end)

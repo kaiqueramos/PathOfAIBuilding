@@ -6,6 +6,12 @@
 
 local dkjson = require "dkjson"
 
+local RESERVED_REQUEST_OPTION_FIELDS = {
+	model = true,
+	messages = true,
+	stream = true,
+}
+
 -- Singleton guard: return cached instance if already loaded
 if _G._AIConfigInstance then
 	return _G._AIConfigInstance
@@ -86,8 +92,28 @@ function AIConfig:GetDefaults()
 		model = "qwen3.7-max",
 		timeout = 120,
 		debug_logging = false,
+		request_options = {},
 		config_version = 1,
 	}
+end
+
+-- Validate optional provider-specific JSON fields while preserving the bridge contract.
+function AIConfig:ValidateRequestOptions(options)
+	if options == nil then
+		return true
+	end
+	if type(options) ~= "table" then
+		return false, "Request options must be a JSON object"
+	end
+	for key in pairs(options) do
+		if type(key) ~= "string" then
+			return false, "Request option keys must be strings"
+		end
+		if RESERVED_REQUEST_OPTION_FIELDS[key] then
+			return false, "Request option '" .. key .. "' is managed by the app"
+		end
+	end
+	return true
 end
 
 -- Validate that configuration is complete
@@ -113,7 +139,7 @@ function AIConfig:Validate()
 		return false, "Timeout must be between 1 and 600 seconds"
 	end
 
-	return true
+	return self:ValidateRequestOptions(self.config.request_options)
 end
 
 -- Returns the API key (for use in requests)
@@ -137,6 +163,11 @@ function AIConfig:GetTimeout()
 	return tonumber(self.config.timeout) or self:GetDefaults().timeout
 end
 
+-- Returns provider-specific OpenAI-compatible request fields.
+function AIConfig:GetRequestOptions()
+	return self.config.request_options or {}
+end
+
 -- Updates the API key
 function AIConfig:SetAPIKey(key)
 	self.config.api_key = key
@@ -152,6 +183,16 @@ end
 -- Updates the model
 function AIConfig:SetModel(model)
 	self.config.model = model
+	return self:Save()
+end
+
+-- Updates provider-specific OpenAI-compatible request fields.
+function AIConfig:SetRequestOptions(options)
+	local ok, err = self:ValidateRequestOptions(options)
+	if not ok then
+		return false, err
+	end
+	self.config.request_options = options or {}
 	return self:Save()
 end
 

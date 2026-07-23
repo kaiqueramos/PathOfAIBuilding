@@ -65,6 +65,44 @@ describe("AI connection", function()
 		assert.are.equal("Reply with OK.", request.messages[1].content)
 	end)
 
+	it("includes configured provider options in the connection test", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local originalDownloadPage = launch.DownloadPage
+		local capturedOptions
+		local callbackOk
+		local callbackError
+
+		launch.DownloadPage = function(_, _, callback, options)
+			capturedOptions = options
+			callback({
+				body = '{"choices":[{"message":{"content":"OK"}}]}',
+			}, nil)
+		end
+
+		local providerOptions = {
+			thinking = { type = "disabled" },
+			service_tier = "priority",
+		}
+		local ok, err = pcall(function()
+			bridge:TestConnection(validConfig({
+				request_options = providerOptions,
+			}), function(success, connectionError)
+				callbackOk = success
+				callbackError = connectionError
+			end)
+		end)
+		launch.DownloadPage = originalDownloadPage
+		assert(ok, err)
+
+		assert.is_true(callbackOk)
+		assert.is_nil(callbackError)
+		local request = assert(dkjson.decode(capturedOptions.body))
+		assert.same(providerOptions, request.thinking and {
+			thinking = request.thinking,
+			service_tier = request.service_tier,
+		})
+	end)
+
 	it("reports provider failures without accepting the configuration", function()
 		local bridge = LoadModule("Modules/AIBridge")
 		local originalDownloadPage = launch.DownloadPage
@@ -111,6 +149,32 @@ describe("AI connection", function()
 		assert.are.equal("Endpoint must use HTTPS", callbackError)
 	end)
 
+	it("rejects provider options that override the chat contract", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local originalDownloadPage = launch.DownloadPage
+		local transportCalled = false
+		local callbackOk
+		local callbackError
+
+		launch.DownloadPage = function()
+			transportCalled = true
+		end
+		local ok, err = pcall(function()
+			bridge:TestConnection(validConfig({
+				request_options = { stream = true },
+			}), function(success, connectionError)
+				callbackOk = success
+				callbackError = connectionError
+			end)
+		end)
+		launch.DownloadPage = originalDownloadPage
+		assert(ok, err)
+
+		assert.is_false(transportCalled)
+		assert.is_false(callbackOk)
+		assert.are.equal("Request option 'stream' is managed by the app", callbackError)
+	end)
+
 	it("updates the configuration popup after the asynchronous result", function()
 		local panel = LoadModule("Classes/AIConfigPanel")
 		local bridge = assert(findUpvalue(panel.TestConnection, "AIBridge"))
@@ -119,13 +183,16 @@ describe("AI connection", function()
 			apiKey = { buf = "test-api-key" },
 			endpoint = { buf = "https://example.invalid/v1" },
 			model = { buf = "test-model" },
+			requestOptions = { buf = '{"thinking":{"type":"disabled"}}' },
 			status = { label = "" },
 			test = { enabled = true },
 			save = { enabled = true },
 		}
 		local disabledDuringRequest = false
 
-		bridge.TestConnection = function(_, _, callback)
+		local receivedConfig
+		bridge.TestConnection = function(_, config, callback)
+			receivedConfig = config
 			disabledDuringRequest = not controls.test.enabled and not controls.save.enabled
 			callback(true)
 		end
@@ -137,6 +204,7 @@ describe("AI connection", function()
 		assert.is_true(controls.test.enabled)
 		assert.is_true(controls.save.enabled)
 		assert.are.equal("^2Connection successful", controls.status.label)
+		assert.same({ thinking = { type = "disabled" } }, receivedConfig.request_options)
 	end)
 end)
 
