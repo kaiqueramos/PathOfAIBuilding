@@ -1,3 +1,11 @@
+VERSION[1.1.1][2026/07/23]
+
+--- AI Provider Configuration ---
+* Add optional generic request options to AI Setup and persisted ai_config.json
+* Forward validated provider options to both connection tests and chat completions
+* Reserve model, messages, and stream to keep the PoB chat transport contract safe
+* Document MiniMax M3 direct-answer configuration through {"thinking":{"type":"disabled"}}
+
 VERSION[1.1.0][2026/07/23]
 
 --- 3.29 Support ---

@@ -5,6 +5,12 @@ the desktop application. It reads the active PoE 1 build, uses PoB's calculated
 numbers as the source of truth, proposes validated changes, and applies them only
 after a preview.
 
+## V1.1.1: provider request options
+
+AI Setup now exposes optional provider request JSON. This keeps the OpenAI-compatible
+bridge generic while allowing model-specific fields such as MiniMax M3's
+`{"thinking":{"type":"disabled"}}` without another code change.
+
 ## V1.1: PoE 3.29 support
 
 The current release syncs the fork with Path of Building Community's 3.29 tree
@@ -82,7 +88,7 @@ generation are not part of V1.
 
 ## Download and first run
 
-1. Download `PathOfAIBuilding-v1.1.0-Windows-Portable.zip` from this fork's
+1. Download `PathOfAIBuilding-v1.1.1-Windows-Portable.zip` from this fork's
    [Releases](https://github.com/kaiqueramos/PathOfAIBuilding/releases) page.
 2. Extract the archive to a writable directory and run `Path of Building.exe`.
    Linux users can run the same executable through Wine or Proton.

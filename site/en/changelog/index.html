@@ -5,14 +5,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0a0c0f">
-  <meta name="description" content="Technical changelog for PathOfAIBuilding v1.1.0: 3.29 passive-tree support, upstream sync, and AI integration history.">
+  <meta name="description" content="Technical changelog for PathOfAIBuilding v1.1.1: generic provider options, 3.29 passive-tree support, and AI integration history.">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="PathOfAIBuilding v1.1.0 — 3.29 passive tree">
-  <meta property="og:description" content="3.29 passive-tree support, upstream sync, and the technical history of the AI integration.">
+  <meta property="og:title" content="PathOfAIBuilding v1.1.1 — provider options">
+  <meta property="og:description" content="Generic provider request options, 3.29 passive-tree support, and the technical history of the AI integration.">
   <meta property="og:url" content="https://kaiqueramos.github.io/PathOfAIBuilding/en/changelog/">
   <meta property="og:image" content="https://kaiqueramos.github.io/PathOfAIBuilding/assets/ai-chat.webp">
   <meta name="twitter:card" content="summary_large_image">
-  <title>Technical changelog v1.1.0 — PathOfAIBuilding</title>
+  <title>Technical changelog v1.1.1 — PathOfAIBuilding</title>
   <link rel="canonical" href="https://kaiqueramos.github.io/PathOfAIBuilding/en/changelog/">
   <link rel="alternate" hreflang="pt-BR" href="https://kaiqueramos.github.io/PathOfAIBuilding/changelog/">
   <link rel="alternate" hreflang="en" href="https://kaiqueramos.github.io/PathOfAIBuilding/en/changelog/">
@@ -51,8 +51,8 @@
     <header class="changelog-header">
       <div class="shell changelog-shell">
         <span class="changelog-label">Release notes</span>
-        <h1>PathOfAIBuilding <em>v1.1.0</em></h1>
-        <p>Passive-tree support update for 3.29, synced from Path of Building Community. The complete V1.0 technical history of the AI integration remains on this page.</p>
+        <h1>PathOfAIBuilding <em>v1.1.1</em></h1>
+        <p>AI configuration patch: extra provider options are configured inside PoB without coupling the bridge to a model. 3.29 passive-tree support remains part of this release.</p>
         <dl class="changelog-meta">
           <div><dt>Date</dt><dd>23 July 2026</dd></div>
           <div><dt>Base</dt><dd>PoB Community dev</dd></div>
@@ -61,8 +61,8 @@
           <div><dt>Licence</dt><dd>MIT · free application</dd></div>
         </dl>
         <div class="changelog-links">
-          <a class="button button-primary" href="https://github.com/kaiqueramos/PathOfAIBuilding/releases/tag/v1.1.0">Download v1.1.0</a>
-          <a class="button button-ghost" href="https://github.com/kaiqueramos/PathOfAIBuilding/tree/v1.1.0">Release source</a>
+          <a class="button button-primary" href="https://github.com/kaiqueramos/PathOfAIBuilding/releases/tag/v1.1.1">Download v1.1.1</a>
+          <a class="button button-ghost" href="https://github.com/kaiqueramos/PathOfAIBuilding/tree/v1.1.1">Release source</a>
         </div>
         <p class="changelog-cost"><strong>Price:</strong> the application is free and open source. The user-configured AI API may have its own usage cost.</p>
       </div>
@@ -72,6 +72,7 @@
       <nav class="changelog-toc" aria-label="Changelog index">
         <strong>On this page</strong>
         <ol>
+          <li><a href="#v1-1-1">V1.1.1 — provider options</a></li>
           <li><a href="#v1-1-3-29">V1.1 — 3.29 support</a></li>
           <li><a href="#v1-0">V1.0 — AI integration</a></li>
           <li><a href="#interface">Integration and interface</a></li>
@@ -85,6 +86,17 @@
           <li><a href="#limits">Known limitations</a></li>
         </ol>
       </nav>
+
+      <section class="changelog-section" id="v1-1-1">
+        <h2>V1.1.1 — generic provider options</h2>
+        <p class="section-intro">AI configuration no longer depends on model-specific conditionals: users enter extra fields for their OpenAI-compatible endpoint directly in PoB.</p>
+        <ul class="change-list">
+          <li><span class="change-kind added">Config</span><div><code>AI Setup</code> now exposes <code>Extra request options (JSON)</code>, persisted in <code>ai_config.json</code>.</div></li>
+          <li><span class="change-kind changed">Bridge</span><div>Validated options are sent for the connection test and every chat request; there is no MiniMax- or provider-specific branch.</div></li>
+          <li><span class="change-kind fixed">Safety</span><div><code>model</code>, <code>messages</code>, and <code>stream</code> remain bridge-managed to preserve the chat contract.</div></li>
+          <li><span class="change-kind note">MiniMax</span><div>For M3 direct answers, use <code>{"thinking":{"type":"disabled"}}</code> in the new field.</div></li>
+        </ul>
+      </section>
 
       <section class="changelog-section" id="v1-1-3-29">
         <h2>V1.1.0 — 3.29 passive-tree support</h2>
