@@ -31,4 +31,4 @@ jobs:
             dist/*.zip dist/SHA256SUMS.txt \
             --verify-tag \
             --title "PathOfAIBuilding $GITHUB_REF_NAME" \
-            --generate-notes
+            --notes-from-tag
