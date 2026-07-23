@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Checkout release tag
         uses: actions/checkout@v4
+        with:
+          fetch-tags: true
 
       - name: Build clean portable archive
         shell: bash
