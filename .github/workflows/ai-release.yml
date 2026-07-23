@@ -20,7 +20,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           python3 scripts/package_release.py --version "$VERSION"
-          sha256sum dist/*.zip > dist/SHA256SUMS.txt
+          (cd dist && sha256sum *.zip > SHA256SUMS.txt)
 
       - name: Publish GitHub release
         env:
