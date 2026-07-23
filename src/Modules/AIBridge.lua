@@ -6,6 +6,7 @@
 -- cspell:ignore distancia equipamento equipamentos esta frasco gema gemas habilidade joia luvas
 -- cspell:ignore maestria melhor melhorar melhoro melhoria melhorias nodo nodos passiva proximo
 -- cspell:ignore realocar recalc resistencias suporte suportes supressao unico unicos
+-- cspell:ignore jsontype
 
 local t_insert = table.insert
 local t_remove = table.remove
@@ -1545,18 +1546,30 @@ function AIBridge:TestConnection(config, callback)
 
 	local header = "Content-Type: application/json\r\n"
 		.. "Authorization: Bearer " .. apiKey
-	launch:DownloadPage(getChatCompletionURL(endpoint), function(response, errMsg)
+	local responseHandled = false
+	local function onResponse(response, errMsg)
+		responseHandled = true
 		local _, responseError = parseChatCompletionResponse(response, errMsg)
 		if responseError then
 			callback(false, responseError)
 			return
 		end
 		callback(true)
-	end, {
-		header = header,
-		body = requestBody,
-		timeout = timeout,
-	})
+	end
+	local submitted, requestId = pcall(
+		launch.DownloadPage,
+		launch,
+		getChatCompletionURL(endpoint),
+		onResponse,
+		{
+			header = header,
+			body = requestBody,
+			timeout = timeout,
+		}
+	)
+	if (not submitted or not requestId) and not responseHandled then
+		callback(false, "Could not start connection test")
+	end
 end
 
 --- Send build state to LLM and get response
@@ -1764,7 +1777,8 @@ complete <actions> block for the requested change; never assume the previous pro
 			dbg:close()
 		end
 
-		launch:DownloadPage(url, function(response, errMsg)
+		local responseHandled = false
+		local function handleResponse(response, errMsg)
 			local content, responseError = parseChatCompletionResponse(response, errMsg)
 			if not content then
 				fail(responseError)
@@ -1837,11 +1851,31 @@ complete <actions> block for the requested change; never assume the previous pro
 			end
 
 			complete(content, currentState)
-		end, {
-			header = header,
-			body = requestBody,
-			timeout = AIConfig:GetTimeout(),
-		})
+		end
+		local function onResponse(response, errMsg)
+			if responseHandled then
+				return
+			end
+			responseHandled = true
+			local handled = pcall(handleResponse, response, errMsg)
+			if not handled then
+				fail("AI response processing failed")
+			end
+		end
+		local submitted, requestId = pcall(
+			launch.DownloadPage,
+			launch,
+			url,
+			onResponse,
+			{
+				header = header,
+				body = requestBody,
+				timeout = AIConfig:GetTimeout(),
+			}
+		)
+		if (not submitted or not requestId) and not responseHandled then
+			fail("Could not start AI request")
+		end
 	end
 
 	sendRequest(state, context, 0)
@@ -1879,30 +1913,46 @@ function AIBridge:GetBuildSummary(build)
 	return table.concat(parts, " | ")
 end
 
+local ACTION_OPEN_TAG_PATTERN = "<[Aa][Cc][Tt][Ii][Oo][Nn][Ss]%s*>"
+local ACTION_CLOSE_TAG_PATTERN = "</[Aa][Cc][Tt][Ii][Oo][Nn][Ss]%s*>"
+local ACTION_BLOCK_PATTERN = ACTION_OPEN_TAG_PATTERN .. "([%s%S]-)" .. ACTION_CLOSE_TAG_PATTERN
+local ACTION_STRIP_PATTERN = ACTION_OPEN_TAG_PATTERN .. "[%s%S]-" .. ACTION_CLOSE_TAG_PATTERN
+
 --- Parse an <actions> JSON block out of an AI response.
 -- @param content The raw AI response text
--- @return string displayText The response with the actions block removed
+-- @return string displayText The response with action blocks removed
 -- @return table|nil actions Parsed action array, or nil if no valid block
+-- @return string|nil parseError An actionable explanation for a malformed block
 function AIBridge:ParseActions(content)
 	if not content then
-		return content, nil
+		return content, nil, nil
 	end
 
-	local block = content:match("<actions>%s*(.-)%s*</actions>")
-	if not block then
-		return content, nil
+	local displayText, blockCount = content:gsub(ACTION_STRIP_PATTERN, "")
+	displayText = displayText:gsub("%s+$", "")
+	if blockCount == 0 then
+		local lowerContent = content:lower()
+		if lowerContent:find("<actions", 1, true) or lowerContent:find("</actions", 1, true) then
+			return content, nil, "AI returned an incomplete action block"
+		end
+		return content, nil, nil
+	end
+	if blockCount ~= 1 then
+		return displayText, nil, "AI returned multiple action blocks"
 	end
 
-	local actions = dkjson.decode(block, 1, dkjson.null)
-	if type(actions) ~= "table" then
-		-- Malformed block: show the text without it, no actions
-		local displayText = content:gsub("<actions>.-</actions>", ""):gsub("%s+$", "")
-		return displayText, nil
+	local block = content:match(ACTION_BLOCK_PATTERN)
+	local actions, nextPosition, decodeError = dkjson.decode(block, 1, dkjson.null)
+	if decodeError or type(actions) ~= "table"
+		or type(nextPosition) ~= "number" or block:sub(nextPosition):find("%S") then
+		return displayText, nil, "AI returned an invalid action block"
+	end
+	local actionMeta = getmetatable(actions)
+	if not actionMeta or actionMeta.__jsontype ~= "array" then
+		return displayText, nil, "Action block must contain a JSON array"
 	end
 
-	-- Strip the actions block from the display text
-	local displayText = content:gsub("<actions>.-</actions>", ""):gsub("%s+$", "")
-	return displayText, actions
+	return displayText, actions, nil
 end
 
 local SUPPORTED_ACTION_TYPES = {

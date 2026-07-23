@@ -271,35 +271,86 @@ function AIChatTabClass:SendMessage(text)
 		-- Skip "system" messages (errors)
 	end
 
-	AIBridge:Ask(self.build, text, function(response, errMsg, responseFingerprint)
+	local responseHandled = false
+	local function resetRequestState()
 		self.pending = false
 		self.controls.quickImprove.enabled = true
 		self.controls.quickUpgrade.enabled = true
 		self.controls.quickTank.enabled = true
+	end
+	local function showRequestFailure(message)
+		resetRequestState()
+		self.pendingActions = nil
+		self.pendingActionsFingerprint = nil
+		self.controls.applyActions.shown = false
+		self:AddMessage("system", "Error: " .. message)
+		self.controls.status.label = "^1Request failed"
+	end
+	local function handleResponse(response, errMsg, responseFingerprint)
+		if responseHandled then
+			return
+		end
+		responseHandled = true
+		local handled, handlerError = pcall(function()
+			if errMsg then
+				showRequestFailure(errMsg)
+				return
+			end
 
-		if errMsg then
-			self:AddMessage("system", "Error: " .. errMsg)
-			self.pendingActions = nil
-			self.pendingActionsFingerprint = nil
-			self.controls.status.label = "^1Request failed"
-			self.controls.applyActions.shown = false
-		else
+			resetRequestState()
 			-- Parse actions FIRST (before translit to avoid corrupting JSON)
-			local displayText, actions = AIBridge:ParseActions(response)
+			local displayText, actions, actionError = AIBridge:ParseActions(response)
 			self.pendingActions = actions
 			self.pendingActionsFingerprint = actions and #actions > 0 and responseFingerprint or nil
 			self.controls.applyActions.shown = (actions ~= nil and #actions > 0)
 			ConPrintf("[AIChat] Parsed %d actions, shown=%s", actions and #actions or 0, tostring(self.controls.applyActions.shown))
 			-- Transliterate only the display text
 			self:StartStream(translit(displayText))
-			self.controls.status.label = self.controls.applyActions.shown
-				and "^2Ready - actions available below" or "^2Ready"
+			if actionError then
+				self:AddMessage("system", "Action proposal ignored: " .. actionError)
+				self.controls.status.label = "^1Action proposal ignored - ask again"
+			else
+				self.controls.status.label = self.controls.applyActions.shown
+					and "^2Ready - actions available below" or "^2Ready"
+			end
+		end)
+		if not handled then
+			AIBridge.pending = false
+			showRequestFailure("AI response processing failed: " .. tostring(handlerError))
 		end
-	end, history, supersedesUnappliedActions)
+	end
+	local started, requestError = pcall(
+		AIBridge.Ask,
+		AIBridge,
+		self.build,
+		text,
+		handleResponse,
+		history,
+		supersedesUnappliedActions
+	)
+	if not started and not responseHandled then
+		AIBridge.pending = false
+		showRequestFailure("AI request crashed: " .. tostring(requestError))
+	end
+end
+
+--- Finish a progressive reply before another reply replaces the stream cursor.
+function AIChatTabClass:FinishStream()
+	if not self.streaming then
+		return
+	end
+	local msg = self.messages[self.streamMsgIndex]
+	if msg then
+		msg.text = msg.full
+		self:RefreshHistory()
+	end
+	self.streaming = false
+	self.streamPos = 0
 end
 
 --- Start streaming a response (progressive reveal)
 function AIChatTabClass:StartStream(fullText)
+	self:FinishStream()
 	t_insert(self.messages, { role = "ai", text = "", full = fullText })
 	self.streamMsgIndex = #self.messages
 	self.streamPos = 0

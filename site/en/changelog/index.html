@@ -5,14 +5,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0a0c0f">
-  <meta name="description" content="Technical changelog for PathOfAIBuilding v1.1.2: unapplied action-proposal correction, generic provider options, and 3.29 passive-tree support.">
+  <meta name="description" content="Technical changelog for PathOfAIBuilding v1.1.3: resilient AI chat, unapplied proposal correction, and 3.29 passive-tree support.">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="PathOfAIBuilding v1.1.2 — action correction">
-  <meta property="og:description" content="Unapplied action-proposal correction, generic provider request options, and 3.29 passive-tree support.">
+  <meta property="og:title" content="PathOfAIBuilding v1.1.3 — resilient chat">
+  <meta property="og:description" content="Request failure recovery, action validation, and reliable AI chat continuity.">
   <meta property="og:url" content="https://kaiqueramos.github.io/PathOfAIBuilding/en/changelog/">
   <meta property="og:image" content="https://kaiqueramos.github.io/PathOfAIBuilding/assets/ai-chat.webp">
   <meta name="twitter:card" content="summary_large_image">
-  <title>Technical changelog v1.1.2 — PathOfAIBuilding</title>
+  <title>Technical changelog v1.1.3 — PathOfAIBuilding</title>
   <link rel="canonical" href="https://kaiqueramos.github.io/PathOfAIBuilding/en/changelog/">
   <link rel="alternate" hreflang="pt-BR" href="https://kaiqueramos.github.io/PathOfAIBuilding/changelog/">
   <link rel="alternate" hreflang="en" href="https://kaiqueramos.github.io/PathOfAIBuilding/en/changelog/">
@@ -51,8 +51,8 @@
     <header class="changelog-header">
       <div class="shell changelog-shell">
         <span class="changelog-label">Release notes</span>
-        <h1>PathOfAIBuilding <em>v1.1.2</em></h1>
-        <p>Chat continuity patch: a correction requested before Apply gets a fresh action batch without changing the current build.</p>
+        <h1>PathOfAIBuilding <em>v1.1.3</em></h1>
+        <p>Chat resilience patch: request failures, malformed proposals, and fast replies no longer leave an AI session stuck.</p>
         <dl class="changelog-meta">
           <div><dt>Date</dt><dd>23 July 2026</dd></div>
           <div><dt>Base</dt><dd>PoB Community dev</dd></div>
@@ -61,8 +61,8 @@
           <div><dt>Licence</dt><dd>MIT · free application</dd></div>
         </dl>
         <div class="changelog-links">
-          <a class="button button-primary" href="https://github.com/kaiqueramos/PathOfAIBuilding/releases/tag/v1.1.2">Download v1.1.2</a>
-          <a class="button button-ghost" href="https://github.com/kaiqueramos/PathOfAIBuilding/tree/v1.1.2">Release source</a>
+          <a class="button button-primary" href="https://github.com/kaiqueramos/PathOfAIBuilding/releases/tag/v1.1.3">Download v1.1.3</a>
+          <a class="button button-ghost" href="https://github.com/kaiqueramos/PathOfAIBuilding/tree/v1.1.3">Release source</a>
         </div>
         <p class="changelog-cost"><strong>Price:</strong> the application is free and open source. The user-configured AI API may have its own usage cost.</p>
       </div>
@@ -72,6 +72,7 @@
       <nav class="changelog-toc" aria-label="Changelog index">
         <strong>On this page</strong>
         <ol>
+          <li><a href="#v1-1-3">V1.1.3 — resilient chat</a></li>
           <li><a href="#v1-1-2">V1.1.2 — action correction</a></li>
           <li><a href="#v1-1-1">V1.1.1 — provider options</a></li>
           <li><a href="#v1-1-3-29">V1.1 — 3.29 support</a></li>
@@ -87,6 +88,17 @@
           <li><a href="#limits">Known limitations</a></li>
         </ol>
       </nav>
+
+      <section class="changelog-section" id="v1-1-3">
+        <h2>V1.1.3 — resilient AI chat</h2>
+        <p class="section-intro">The session remains usable when transport or model output leaves the expected path.</p>
+        <ul class="change-list">
+          <li><span class="change-kind fixed">Transport</span><div>The bridge detects when a request or connection test cannot start and returns an immediate error, allowing a new attempt.</div></li>
+          <li><span class="change-kind fixed">Actions</span><div><code>&lt;actions&gt;</code> tags accept case and whitespace, while incomplete, invalid, duplicate, object-shaped, or trailing JSON is rejected with a visible message.</div></li>
+          <li><span class="change-kind fixed">Stream</span><div>An animated reply is completed before a later fast reply replaces the stream cursor, so no earlier response remains blank.</div></li>
+          <li><span class="change-kind note">Coverage</span><div>Regression cases cover startup failure, response-processing exceptions, malformed action tags and JSON, pending proposals, and immediate follow-ups.</div></li>
+        </ul>
+      </section>
 
       <section class="changelog-section" id="v1-1-2">
         <h2>V1.1.2 — unapplied proposal correction</h2>

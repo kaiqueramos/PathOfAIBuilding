@@ -263,6 +263,108 @@ describe("AI selective build serialization", function()
 		assert.is_nil(state.uniqueShortlist)
 	end)
 
+	it("unblocks the bridge after an AI request cannot start", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local aiConfig = findUpvalue(bridge.Ask, "AIConfig")
+		local originalValidate = aiConfig.Validate
+		local originalGetEndpoint = aiConfig.GetEndpoint
+		local originalGetAPIKey = aiConfig.GetAPIKey
+		local originalGetModel = aiConfig.GetModel
+		local originalGetTimeout = aiConfig.GetTimeout
+		local originalDownloadPage = launch.DownloadPage
+		local firstContent
+		local firstError
+		local secondContent
+		local secondError
+
+		aiConfig.Validate = function() return true end
+		aiConfig.GetEndpoint = function() return "https://example.invalid/v1" end
+		aiConfig.GetAPIKey = function() return "test-key" end
+		aiConfig.GetModel = function() return "test-model" end
+		aiConfig.GetTimeout = function() return 73 end
+		launch.DownloadPage = function()
+			return nil
+		end
+		bridge:Ask(build, "Can I tank this boss?", function(content, callbackError)
+			firstContent = content
+			firstError = callbackError
+		end, {})
+
+		launch.DownloadPage = function(_, _, callback)
+			callback({
+				body = '{"choices":[{"message":{"content":"Recovered"}}]}',
+			}, nil)
+			return 1
+		end
+		bridge:Ask(build, "Can I tank this boss?", function(content, callbackError)
+			secondContent = content
+			secondError = callbackError
+		end, {})
+
+		aiConfig.Validate = originalValidate
+		aiConfig.GetEndpoint = originalGetEndpoint
+		aiConfig.GetAPIKey = originalGetAPIKey
+		aiConfig.GetModel = originalGetModel
+		aiConfig.GetTimeout = originalGetTimeout
+		launch.DownloadPage = originalDownloadPage
+
+		assert.is_nil(firstContent)
+		assert.are.equal("Could not start AI request", firstError)
+		assert.are.equal("Recovered", secondContent)
+		assert.is_nil(secondError)
+		assert.is_false(bridge.pending)
+	end)
+
+	it("recovers when response processing raises after submission", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local aiConfig = findUpvalue(bridge.Ask, "AIConfig")
+		local originalValidate = aiConfig.Validate
+		local originalGetEndpoint = aiConfig.GetEndpoint
+		local originalGetAPIKey = aiConfig.GetAPIKey
+		local originalGetModel = aiConfig.GetModel
+		local originalGetTimeout = aiConfig.GetTimeout
+		local originalGetBuildFingerprint = bridge.GetBuildFingerprint
+		local originalDownloadPage = launch.DownloadPage
+		local fingerprintCalls = 0
+		local responseContent
+		local responseError
+
+		aiConfig.Validate = function() return true end
+		aiConfig.GetEndpoint = function() return "https://example.invalid/v1" end
+		aiConfig.GetAPIKey = function() return "test-key" end
+		aiConfig.GetModel = function() return "test-model" end
+		aiConfig.GetTimeout = function() return 73 end
+		bridge.GetBuildFingerprint = function()
+			fingerprintCalls = fingerprintCalls + 1
+			if fingerprintCalls == 1 then
+				return "fingerprint"
+			end
+			error("fingerprint unavailable")
+		end
+		launch.DownloadPage = function(_, _, callback)
+			callback({
+				body = '{"choices":[{"message":{"content":"Response"}}]}',
+			}, nil)
+			return 1
+		end
+		bridge:Ask(build, "Can I tank this boss?", function(content, callbackError)
+			responseContent = content
+			responseError = callbackError
+		end, {})
+
+		aiConfig.Validate = originalValidate
+		aiConfig.GetEndpoint = originalGetEndpoint
+		aiConfig.GetAPIKey = originalGetAPIKey
+		aiConfig.GetModel = originalGetModel
+		aiConfig.GetTimeout = originalGetTimeout
+		bridge.GetBuildFingerprint = originalGetBuildFingerprint
+		launch.DownloadPage = originalDownloadPage
+
+		assert.is_nil(responseContent)
+		assert.are.equal("AI response processing failed", responseError)
+		assert.is_false(bridge.pending)
+	end)
+
 	it("includes configured provider options in full build requests", function()
 		local bridge = LoadModule("Modules/AIBridge")
 		local aiConfig = findUpvalue(bridge.Ask, "AIConfig")

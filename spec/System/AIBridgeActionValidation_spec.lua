@@ -163,6 +163,44 @@ describe("AI action structural contracts", function()
 		assert.is_truthy(preflight.results[1].msg:find("dense array", 1, true))
 	end)
 
+	it("parses one case-insensitive actions block with tag whitespace", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local displayText, actions, parseError = bridge:ParseActions([[
+Use level 90.
+<ACTIONS >
+[{"type":"set_level","value":90}]
+</ACTIONS >]])
+
+		assert.are.equal("Use level 90.", displayText)
+		assert.is_nil(parseError)
+		assert.same({ { type = "set_level", value = 90 } }, actions)
+	end)
+
+	it("reports malformed, object-shaped, and duplicate action blocks", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local _, malformedActions, malformedError = bridge:ParseActions("<actions>{oops}</actions>")
+		local _, objectActions, objectError = bridge:ParseActions('<actions>{"type":"set_level","value":90}</actions>')
+		local _, duplicateActions, duplicateError = bridge:ParseActions(
+			"<actions>[]</actions>\n<actions>[]</actions>"
+		)
+		local _, incompleteActions, incompleteError = bridge:ParseActions("<actions>[")
+		local _, trailingActions, trailingError = bridge:ParseActions(
+			'<actions>[{"type":"set_level","value":90}] trailing</actions>'
+		)
+
+		assert.is_nil(malformedActions)
+		assert.is_truthy(malformedError:find("invalid", 1, true))
+		assert.is_nil(objectActions)
+		assert.is_truthy(objectError:find("JSON array", 1, true))
+		assert.is_nil(duplicateActions)
+		assert.is_truthy(duplicateError:find("multiple", 1, true))
+		assert.is_nil(incompleteActions)
+		assert.is_truthy(incompleteError:find("incomplete", 1, true))
+		assert.is_nil(trailingActions)
+		assert.is_truthy(trailingError:find("invalid", 1, true))
+	end)
+
+
 	it("preserves explicit nulls for validation", function()
 		local bridge = LoadModule("Modules/AIBridge")
 		local _, actions = bridge:ParseActions([[

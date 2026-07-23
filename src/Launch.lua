@@ -328,6 +328,7 @@ function launch:DownloadPage(url, callback, params)
 			end
 		}
 	end
+	return id
 end
 
 function launch:ApplyUpdate(mode)

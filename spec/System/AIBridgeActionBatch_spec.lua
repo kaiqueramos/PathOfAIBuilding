@@ -147,4 +147,101 @@ Use level 97 instead.
 		assert.is_true(chat.controls.applyActions.shown)
 		assert.are.equal(originalLevel, build.characterLevel)
 	end)
+
+	it("makes a malformed replacement proposal visible without keeping stale actions", function()
+		local chat = build.aiChatTab
+		local bridge = assert(findUpvalue(chat.SendMessage, "AIBridge"))
+		local originalAsk = bridge.Ask
+		local originalLevel = build.characterLevel
+		chat.pendingActions = { { type = "set_level", value = 98 } }
+		chat.pendingActionsFingerprint = assert(bridge:GetBuildFingerprint(build))
+		chat.controls.applyActions.shown = true
+
+		bridge.Ask = function(_, _, _, callback)
+			callback('Use level 97 instead.\n<actions>{"type":"set_level","value":97}</actions>', nil,
+				assert(bridge:GetBuildFingerprint(build)))
+		end
+		local ok, err = pcall(function()
+			chat:SendMessage("Correct the previous suggestion.")
+		end)
+		bridge.Ask = originalAsk
+
+		assert(ok, err)
+		assert.is_nil(chat.pendingActions)
+		assert.is_false(chat.controls.applyActions.shown)
+		assert.are.equal("^1Action proposal ignored - ask again", chat.controls.status.label)
+		assert.is_truthy(chat.messages[#chat.messages].text:find("Action proposal ignored", 1, true))
+		assert.are.equal(originalLevel, build.characterLevel)
+	end)
+
+	it("clears an unapplied proposal and recovers after a follow-up request fails", function()
+		local chat = build.aiChatTab
+		local bridge = assert(findUpvalue(chat.SendMessage, "AIBridge"))
+		local originalAsk = bridge.Ask
+		local originalLevel = build.characterLevel
+		chat.pendingActions = { { type = "set_level", value = 98 } }
+		chat.pendingActionsFingerprint = assert(bridge:GetBuildFingerprint(build))
+		chat.controls.applyActions.shown = true
+
+		bridge.Ask = function(_, _, _, callback)
+			callback(nil, "Connection lost")
+		end
+		local ok, err = pcall(function()
+			chat:SendMessage("Correct the previous suggestion.")
+		end)
+		bridge.Ask = originalAsk
+
+		assert(ok, err)
+		assert.is_false(chat.pending)
+		assert.is_nil(chat.pendingActions)
+		assert.is_nil(chat.pendingActionsFingerprint)
+		assert.is_false(chat.controls.applyActions.shown)
+		assert.are.equal("^1Request failed", chat.controls.status.label)
+		assert.is_truthy(chat.messages[#chat.messages].text:find("Connection lost", 1, true))
+		assert.are.equal(originalLevel, build.characterLevel)
+	end)
+
+	it("completes a streaming reply before a fast follow-up replaces it", function()
+		local chat = build.aiChatTab
+		local bridge = assert(findUpvalue(chat.SendMessage, "AIBridge"))
+		local originalAsk = bridge.Ask
+		local requestCount = 0
+
+		bridge.Ask = function(_, _, _, callback)
+			requestCount = requestCount + 1
+			callback(requestCount == 1 and "First complete reply." or "Second complete reply.", nil)
+		end
+		local ok, err = pcall(function()
+			chat:SendMessage("First question.")
+			chat:SendMessage("Immediate follow-up.")
+		end)
+		bridge.Ask = originalAsk
+
+		assert(ok, err)
+		assert.are.equal(2, requestCount)
+		assert.are.equal("First complete reply.", chat.messages[2].full)
+		assert.are.equal(chat.messages[2].full, chat.messages[2].text)
+		assert.is_true(chat.streaming)
+	end)
+
+	it("recovers the chat when the bridge throws before starting a request", function()
+		local chat = build.aiChatTab
+		local bridge = assert(findUpvalue(chat.SendMessage, "AIBridge"))
+		local originalAsk = bridge.Ask
+
+		bridge.Ask = function(self)
+			self.pending = true
+			error("serialization failed")
+		end
+		local ok, err = pcall(function()
+			chat:SendMessage("Can I tank this boss?")
+		end)
+		bridge.Ask = originalAsk
+
+		assert(ok, err)
+		assert.is_false(chat.pending)
+		assert.is_false(bridge.pending)
+		assert.are.equal("^1Request failed", chat.controls.status.label)
+		assert.is_truthy(chat.messages[#chat.messages].text:find("AI request crashed", 1, true))
+	end)
 end)

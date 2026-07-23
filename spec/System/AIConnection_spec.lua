@@ -225,6 +225,56 @@ describe("AI request timeout", function()
 		assert.are.equal("API Endpoint must use HTTPS", endpointError)
 	end)
 
+	it("reports a connection-test startup failure exactly once", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local originalDownloadPage = launch.DownloadPage
+		local callbackCount = 0
+		local callbackOk
+		local callbackError
+		launch.DownloadPage = function()
+			return nil
+		end
+
+		local ok, err = pcall(function()
+			bridge:TestConnection(validConfig(), function(success, connectionError)
+				callbackCount = callbackCount + 1
+				callbackOk = success
+				callbackError = connectionError
+			end)
+		end)
+		launch.DownloadPage = originalDownloadPage
+
+		assert(ok, err)
+		assert.are.equal(1, callbackCount)
+		assert.is_false(callbackOk)
+		assert.are.equal("Could not start connection test", callbackError)
+	end)
+
+	it("contains errors raised while starting a connection test", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local originalDownloadPage = launch.DownloadPage
+		local callbackCount = 0
+		local callbackOk
+		local callbackError
+		launch.DownloadPage = function()
+			error("transport unavailable")
+		end
+
+		local ok, err = pcall(function()
+			bridge:TestConnection(validConfig(), function(success, connectionError)
+				callbackCount = callbackCount + 1
+				callbackOk = success
+				callbackError = connectionError
+			end)
+		end)
+		launch.DownloadPage = originalDownloadPage
+
+		assert(ok, err)
+		assert.are.equal(1, callbackCount)
+		assert.is_false(callbackOk)
+		assert.are.equal("Could not start connection test", callbackError)
+	end)
+
 	it("configures total and connection timeouts in the lcurl subprocess", function()
 		local originalLaunchSubScript = _G.LaunchSubScript
 		local originalSubScripts = launch.subScripts
@@ -244,13 +294,15 @@ describe("AI request timeout", function()
 			return 42
 		end
 
+		local requestId
 		local ok, err = pcall(function()
-			launch:DownloadPage("https://example.invalid", function() end, { timeout = 120 })
+			requestId = launch:DownloadPage("https://example.invalid", function() end, { timeout = 120 })
 		end)
 		_G.LaunchSubScript = originalLaunchSubScript
 		launch.subScripts = originalSubScripts
 		assert(ok, err)
 		assert.are.equal(120, captured.timeout)
+		assert.are.equal(42, requestId)
 
 		local options = {}
 		local writeFunction

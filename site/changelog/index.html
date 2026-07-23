@@ -5,14 +5,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0a0c0f">
-  <meta name="description" content="Changelog técnico do PathOfAIBuilding v1.1.2: correção de propostas de ação não aplicadas, opções genéricas por provider e suporte à árvore 3.29.">
+  <meta name="description" content="Changelog técnico do PathOfAIBuilding v1.1.3: robustez do chat de IA, correção de propostas não aplicadas e suporte à árvore 3.29.">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="PathOfAIBuilding v1.1.2 — correção de ações">
-  <meta property="og:description" content="Correção de propostas de ação não aplicadas, opções genéricas de request por provider e suporte à árvore passiva 3.29.">
+  <meta property="og:title" content="PathOfAIBuilding v1.1.3 — robustez do chat">
+  <meta property="og:description" content="Recuperação de falhas de request, validação de ações e continuidade do chat de IA.">
   <meta property="og:url" content="https://kaiqueramos.github.io/PathOfAIBuilding/changelog/">
   <meta property="og:image" content="https://kaiqueramos.github.io/PathOfAIBuilding/assets/ai-chat.webp">
   <meta name="twitter:card" content="summary_large_image">
-  <title>Changelog técnico v1.1.2 — PathOfAIBuilding</title>
+  <title>Changelog técnico v1.1.3 — PathOfAIBuilding</title>
   <link rel="canonical" href="https://kaiqueramos.github.io/PathOfAIBuilding/changelog/">
   <link rel="alternate" hreflang="pt-BR" href="https://kaiqueramos.github.io/PathOfAIBuilding/changelog/">
   <link rel="alternate" hreflang="en" href="https://kaiqueramos.github.io/PathOfAIBuilding/en/changelog/">
@@ -51,8 +51,8 @@
     <header class="changelog-header">
       <div class="shell changelog-shell">
         <span class="changelog-label">Release notes</span>
-        <h1>PathOfAIBuilding <em>v1.1.2</em></h1>
-        <p>Patch de continuidade do chat: uma correção solicitada antes de Apply recebe um lote novo de ações, sem mudar o build atual.</p>
+        <h1>PathOfAIBuilding <em>v1.1.3</em></h1>
+        <p>Patch de robustez do chat: falhas de request, propostas malformadas e respostas rápidas não deixam a sessão de IA travada.</p>
         <dl class="changelog-meta">
           <div><dt>Data</dt><dd>23 de julho de 2026</dd></div>
           <div><dt>Base</dt><dd>PoB Community dev</dd></div>
@@ -61,8 +61,8 @@
           <div><dt>Licença</dt><dd>MIT · aplicativo grátis</dd></div>
         </dl>
         <div class="changelog-links">
-          <a class="button button-primary" href="https://github.com/kaiqueramos/PathOfAIBuilding/releases/tag/v1.1.2">Baixar v1.1.2</a>
-          <a class="button button-ghost" href="https://github.com/kaiqueramos/PathOfAIBuilding/tree/v1.1.2">Código da release</a>
+          <a class="button button-primary" href="https://github.com/kaiqueramos/PathOfAIBuilding/releases/tag/v1.1.3">Baixar v1.1.3</a>
+          <a class="button button-ghost" href="https://github.com/kaiqueramos/PathOfAIBuilding/tree/v1.1.3">Código da release</a>
         </div>
         <p class="changelog-cost"><strong>Preço:</strong> o aplicativo é gratuito e open source. A API de IA configurada pelo usuário pode ter custo próprio.</p>
       </div>
@@ -72,6 +72,7 @@
       <nav class="changelog-toc" aria-label="Índice do changelog">
         <strong>Nesta página</strong>
         <ol>
+          <li><a href="#v1-1-3">V1.1.3 — robustez do chat</a></li>
           <li><a href="#v1-1-2">V1.1.2 — correção de ações</a></li>
           <li><a href="#v1-1-1">V1.1.1 — opções por provider</a></li>
           <li><a href="#v1-1-3-29">V1.1 — suporte 3.29</a></li>
@@ -87,6 +88,17 @@
           <li><a href="#limites">Limitações conhecidas</a></li>
         </ol>
       </nav>
+
+      <section class="changelog-section" id="v1-1-3">
+        <h2>V1.1.3 — robustez do chat de IA</h2>
+        <p class="section-intro">A sessão continua utilizável quando o transporte ou a resposta do modelo fogem do caminho esperado.</p>
+        <ul class="change-list">
+          <li><span class="change-kind fixed">Transporte</span><div>A bridge detecta quando a request ou o teste de conexão não conseguem iniciar e devolve um erro imediato, liberando nova tentativa.</div></li>
+          <li><span class="change-kind fixed">Ações</span><div>Blocos <code>&lt;actions&gt;</code> aceitam maiúsculas e espaço nas tags, mas JSON incompleto, inválido, duplicado, objeto ou com conteúdo extra é rejeitado com mensagem visível.</div></li>
+          <li><span class="change-kind fixed">Stream</span><div>Uma resposta animada é concluída antes de uma resposta rápida posterior substituir o cursor do stream; nenhuma resposta anterior fica em branco.</div></li>
+          <li><span class="change-kind note">Cobertura</span><div>Regressões cobrem transporte que não inicia, exceção durante a resposta, tags e JSON de ações malformados, proposta pendente e follow-up imediato.</div></li>
+        </ul>
+      </section>
 
       <section class="changelog-section" id="v1-1-2">
         <h2>V1.1.2 — correção de propostas não aplicadas</h2>
