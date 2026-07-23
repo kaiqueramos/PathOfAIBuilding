@@ -86,54 +86,56 @@
     ? {
         upgrade: {
           question: "What is my best next upgrade without losing survivability?",
-          answer: "I found a support swap that increases damage without reducing EHP. I tested it in an isolated clone and recalculated the build.",
+          answer: "I found a support swap that increases damage without hurting your defenses. PoB tested the change and showed the result.",
           stats: ["+15.4%", "+2.1%", "+3.8%"],
           labels: ["DPS", "EHP", "Max hit"],
-          type: "replace support",
+          type: "suggested swap",
           action: "Replace the main skill support",
         },
         defense: {
           question: "Why does this build struggle against physical damage?",
-          answer: "Physical max hit is the main gap. I simulated a defensive configuration that raises it with almost no DPS loss.",
+          answer: "Physical damage is your biggest weakness. I tested a more defensive setup with almost no DPS loss.",
           stats: ["+18.7%", "+11.2%", "-0.6%"],
           labels: ["Phys. max hit", "EHP", "DPS"],
-          type: "change config",
+          type: "suggested setup",
           action: "Enable Granite Flask and Molten Shell",
         },
         gems: {
           question: "Which support gem gives this setup the best gain?",
-          answer: "I tested compatible supports in the PoB engine and ranked the options by their calculated impact.",
+          answer: "I tested compatible support gems in PoB and ranked the ones that add the most damage.",
           stats: ["+12.8%", "+0.0%", "+0.0%"],
           labels: ["DPS", "EHP", "Max hit"],
-          type: "replace support",
+          type: "suggested swap",
           action: "Use the highest-gain compatible support",
         },
       }
     : {
+        // cspell:disable
         upgrade: {
           question: "Qual é o melhor próximo upgrade sem perder sobrevivência?",
-          answer: "Encontrei uma troca de suporte que aumenta o dano sem reduzir o EHP. Testei a mudança em um clone isolado e recalculei o build.",
+          answer: "Achei uma troca de suporte que aumenta o dano sem piorar sua defesa. O PoB testou a mudança e mostrou o resultado.",
           stats: ["+15,4%", "+2,1%", "+3,8%"],
           labels: ["DPS", "EHP", "Max hit"],
-          type: "replace support",
+          type: "troca sugerida",
           action: "Trocar suporte da skill principal",
         },
         defense: {
           question: "Por que esta build sofre contra dano físico?",
-          answer: "O max hit físico é a principal lacuna. Simulei uma configuração defensiva que o aumenta com perda mínima de DPS.",
+          answer: "Sua maior fraqueza é o dano físico. Testei uma opção com mais defesa e quase nenhuma perda de DPS.",
           stats: ["+18,7%", "+11,2%", "-0,6%"],
           labels: ["Max hit físico", "EHP", "DPS"],
-          type: "change config",
+          type: "ajuste sugerido",
           action: "Ativar Granite Flask e Molten Shell",
         },
         gems: {
           question: "Qual gema de suporte entrega o maior ganho aqui?",
-          answer: "Testei os suportes compatíveis no motor do PoB e ordenei as opções pelo impacto calculado.",
+          answer: "Testei as gems de suporte compatíveis no PoB e ordenei as que mais aumentam seu dano.",
           stats: ["+12,8%", "+0,0%", "+0,0%"],
           labels: ["DPS", "EHP", "Max hit"],
-          type: "replace support",
+          type: "troca sugerida",
           action: "Usar o suporte compatível de maior ganho",
         },
+        // cspell:enable
       };
 
   const renderScenario = (tab) => {

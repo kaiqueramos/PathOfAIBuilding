@@ -4,16 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0a0c0f">
-  <meta name="description" content="PathOfAIBuilding adds an AI copilot to Path of Building: selective context, validated actions, and a recalculated preview before Apply.">
+  <meta name="description" content="PathOfAIBuilding puts AI inside Path of Building so you can ask questions, find upgrades, and see the result before applying anything.">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="PathOfAIBuilding — PoB with an AI copilot">
-  <meta property="og:description" content="Chat with your build, validate changes in the PoB engine, and apply them only after reviewing their actual impact.">
+  <meta property="og:title" content="PathOfAIBuilding — PoB with AI to improve your build">
+  <meta property="og:description" content="Ask about your build, compare improvements with PoB calculations, and choose what to apply.">
   <meta property="og:url" content="https://kaiqueramos.github.io/PathOfAIBuilding/en/">
   <meta property="og:image" content="https://kaiqueramos.github.io/PathOfAIBuilding/assets/ai-chat.webp">
-  <meta property="og:image:alt" content="PathOfAIBuilding analyzing a real build inside Path of Building">
+  <meta property="og:image:alt" content="PathOfAIBuilding helping improve a build inside Path of Building">
   <meta name="twitter:image" content="https://kaiqueramos.github.io/PathOfAIBuilding/assets/ai-chat.webp">
   <meta name="twitter:card" content="summary_large_image">
-  <title>PathOfAIBuilding — PoB with an AI copilot</title>
+  <title>PathOfAIBuilding — PoB with AI to improve your build</title>
   <link rel="canonical" href="https://kaiqueramos.github.io/PathOfAIBuilding/en/">
   <link rel="alternate" hreflang="pt-BR" href="https://kaiqueramos.github.io/PathOfAIBuilding/">
   <link rel="alternate" hreflang="en" href="https://kaiqueramos.github.io/PathOfAIBuilding/en/">
@@ -78,10 +78,9 @@
       <div class="shell hero-layout">
         <div class="hero-copy reveal">
           <div class="eyebrow"><span></span> Path of Building + AI <b>V1</b></div>
-          <h1>Your build.<br>PoB's numbers.<br><em>An AI that can take action.</em></h1>
+          <h1>Your build.<br>PoB's calculations.<br><em>AI that helps.</em></h1>
           <p class="hero-lead">
-            Chat with the build you already have open, get actionable changes, and see their impact
-            recalculated by Path of Building itself before applying anything.
+            Ask how to improve your build, see suggestions tested by PoB, and choose whether to apply them.
           </p>
           <div class="hero-actions">
             <a class="button button-primary" href="https://github.com/kaiqueramos/PathOfAIBuilding/releases/tag/v1.0.0">
@@ -91,9 +90,9 @@
             <a class="button button-ghost" href="#como-funciona">See how it works</a>
           </div>
           <ul class="hero-proof" aria-label="Version 1 highlights">
-            <li><span class="proof-dot"></span>18 validated actions</li>
-            <li><span class="proof-dot"></span>Preview before Apply</li>
-            <li><span class="proof-dot"></span>Your key, your provider</li>
+            <li><span class="proof-dot"></span>Understands your open build</li>
+            <li><span class="proof-dot"></span>Shows the before and after</li>
+            <li><span class="proof-dot"></span>You decide what changes</li>
           </ul>
         </div>
 
@@ -116,13 +115,13 @@
                 <p data-demo-question>How can I improve this build without losing survivability?</p>
               </div>
               <div class="message message-ai">
-                <span class="message-role"><i class="ai-pulse"></i> AI · using PoB data</span>
-                <p data-demo-answer>I found a support swap that increases damage without reducing EHP. I tested the change in an isolated clone and recalculated the build.</p>
+                <span class="message-role"><i class="ai-pulse"></i> AI · looking at your build</span>
+                <p data-demo-answer>I found a support swap that increases damage without hurting your defenses. PoB tested the change and showed the result.</p>
               </div>
               <div class="diff-card">
                 <div class="diff-heading">
-                  <span>Recalculated preview</span>
-                  <small>original build preserved</small>
+                  <span>Before and after</span>
+                  <small>your build has not changed yet</small>
                 </div>
                 <div class="diff-grid">
                   <div><span>DPS</span><strong data-demo-stat-one>+15.4%</strong></div>
@@ -131,13 +130,13 @@
                 </div>
                 <div class="action-preview">
                   <span class="action-index">01</span>
-                  <div><small data-demo-action-type>replace support</small><b data-demo-action>Replace main skill support</b></div>
-                  <span class="action-valid">Validated</span>
+                  <div><small data-demo-action-type>suggested swap</small><b data-demo-action>Replace main skill support</b></div>
+                  <span class="action-valid">Tested</span>
                 </div>
               </div>
               <div class="apply-row">
-                <span><i></i> Fingerprint matches</span>
-                <button type="button" tabindex="-1">Apply changes</button>
+                <span><i></i> Ready to apply</span>
+                <button type="button" tabindex="-1">Apply to build</button>
               </div>
             </div>
           </div>
@@ -148,15 +147,15 @@
 
     <section class="section principle-section" aria-labelledby="principio-title">
       <div class="shell principle-grid">
-        <div class="section-kicker reveal">The principle</div>
+        <div class="section-kicker reveal">The idea</div>
         <div class="principle-copy reveal">
-          <h2 id="principio-title">AI does not replace the PoB engine.<br><em>It talks to it.</em></h2>
-          <p>The model interprets your intent and proposes actions. Path of Building remains the source of truth for DPS, EHP, resistances, max hits, points, and every calculation that matters.</p>
+          <h2 id="principio-title">AI suggests.<br><em>PoB checks.</em></h2>
+          <p>It understands your question and looks for improvements. The numbers still come from Path of Building, just as they always have.</p>
         </div>
         <div class="principle-metric reveal">
           <strong>0</strong>
-          <span>silent changes</span>
-          <p>You see the diff and confirm it before the actual build is changed.</p>
+          <span>changes without your permission</span>
+          <p>You see the result and choose whether to apply it.</p>
         </div>
       </div>
     </section>
@@ -165,37 +164,37 @@
       <div class="shell">
         <div class="section-heading reveal">
           <div>
-            <span class="section-kicker">Inside the application</span>
-            <h2 id="screenshots-title">AI working where<br>the build already lives.</h2>
+            <span class="section-kicker">See it in action</span>
+            <h2 id="screenshots-title">AI inside<br>Path of Building.</h2>
           </div>
-          <p>Actual screenshots of the fork running with the AI bridge integrated into Path of Building.</p>
+          <p>Real screenshots of V1 in use.</p>
         </div>
         <div class="screenshots-grid">
           <figure class="screenshot-card screenshot-card-main reveal">
             <a class="screenshot-frame" href="../assets/ai-chat.webp" target="_blank" rel="noreferrer" aria-label="Open full-size chat screenshot">
-              <img src="../assets/ai-chat.webp" alt="PathOfAIBuilding AI tab analyzing three build weaknesses based on calculated DPS, EHP, and max hits" width="1600" height="900" loading="lazy">
+              <img src="../assets/ai-chat.webp" alt="AI chat analyzing a build inside Path of Building" width="1600" height="900" loading="lazy">
             </a>
             <figcaption>
-              <span>01 · Integrated chat</span>
-              <p>Ask questions, get contextual answers, and review proposed actions without leaving PoB.</p>
+              <span>01 · Chat inside PoB</span>
+              <p>Ask about your build and get an answer without leaving the app.</p>
             </figcaption>
           </figure>
           <figure class="screenshot-card reveal">
-            <a class="screenshot-frame" href="../assets/ai-preview.webp" target="_blank" rel="noreferrer" aria-label="Open full-size shortlist screenshot">
-              <img src="../assets/ai-preview.webp" alt="PathOfAIBuilding comparing simulated upgrades and showing percentage gains in DPS and EHP" width="1600" height="900" loading="lazy">
+            <a class="screenshot-frame" href="../assets/ai-preview.webp" target="_blank" rel="noreferrer" aria-label="Open full-size upgrade comparison screenshot">
+              <img src="../assets/ai-preview.webp" alt="Upgrade comparison showing DPS and EHP gains" width="1600" height="900" loading="lazy">
             </a>
             <figcaption>
-              <span>02 · Simulated shortlist</span>
-              <p>Upgrades tested in the PoB engine, with their actual impact on DPS and EHP.</p>
+              <span>02 · Upgrade comparison</span>
+              <p>See which options give you more damage or defense before changing the build.</p>
             </figcaption>
           </figure>
           <figure class="screenshot-card reveal">
             <a class="screenshot-frame" href="../assets/ai-setup.webp" target="_blank" rel="noreferrer" aria-label="Open full-size setup screenshot">
-              <img src="../assets/ai-setup.webp" alt="PathOfAIBuilding AI setup with a protected key, endpoint, and model" width="1600" height="900" loading="lazy">
+              <img src="../assets/ai-setup.webp" alt="Screen for setting up an AI service in PathOfAIBuilding" width="1600" height="900" loading="lazy">
             </a>
             <figcaption>
-              <span>03 · Local setup</span>
-              <p>Endpoint, model, and masked key under your control.</p>
+              <span>03 · Set up your AI</span>
+              <p>Choose an AI service and use your own key.</p>
             </figcaption>
           </figure>
         </div>
@@ -207,36 +206,36 @@
         <div class="section-heading reveal">
           <div>
             <span class="section-kicker">How it works</span>
-            <h2 id="flow-title">From question to Apply,<br>with PoB in the loop.</h2>
+            <h2 id="flow-title">Ask. Compare.<br>Decide.</h2>
           </div>
-          <p>A short flow on the outside, multiple safety barriers on the inside.</p>
+          <p>AI finds options, PoB runs the numbers, and you choose.</p>
         </div>
 
         <ol class="flow-list">
           <li class="flow-item reveal">
             <span class="flow-number">01</span>
             <div class="flow-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 3V5Z"/><path d="M8 9h8M8 12h5"/></svg></div>
-            <div><h3>You ask</h3><p>“How can I improve?”, “why is my DPS low?”, or request a specific change.</p></div>
+            <div><h3>You ask</h3><p>“How can I improve?”, “why do I keep dying?”, or anything else about your build.</p></div>
           </li>
           <li class="flow-item reveal">
             <span class="flow-number">02</span>
             <div class="flow-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg></div>
-            <div><h3>The bridge selects the context</h3><p>It sends the build core and adds gems, uniques, tree, or config only when useful.</p></div>
+            <div><h3>AI reads the build</h3><p>It looks at the gems, items, tree, and other parts needed to answer.</p></div>
           </li>
           <li class="flow-item reveal">
             <span class="flow-number">03</span>
             <div class="flow-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 2.2 4.8L19 10l-4.8 2.2L12 17l-2.2-4.8L5 10l4.8-2.2L12 3Z"/><path d="m19 16 .9 2.1L22 19l-2.1.9L19 22l-.9-2.1L16 19l2.1-.9L19 16Z"/></svg></div>
-            <div><h3>AI proposes typed actions</h3><p>The response can include a structured batch using any of the 18 actions known to the application.</p></div>
+            <div><h3>It suggests improvements</h3><p>It can suggest changes to gems, items, the tree, ascendancy, and configuration.</p></div>
           </li>
           <li class="flow-item reveal">
             <span class="flow-number">04</span>
             <div class="flow-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 3h8l1 4 3 2v8l-3 2-1 2H8l-1-2-3-2V9l3-2 1-4Z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></svg></div>
-            <div><h3>PoB simulates in isolation</h3><p>It validates the batch in a clone, performs a full rebuild, and measures the actual before and after.</p></div>
+            <div><h3>PoB tests it first</h3><p>Path of Building calculates how the build would perform without changing the original.</p></div>
           </li>
           <li class="flow-item reveal">
             <span class="flow-number">05</span>
             <div class="flow-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 19V9m7 10V5m7 14v-7"/><path d="m3 7 4-4 4 4M10 3h4M17 10l2-2 2 2"/></svg></div>
-            <div><h3>You review and decide</h3><p>The diff appears first. Only an explicit Apply changes the open build.</p></div>
+            <div><h3>You decide</h3><p>Compare damage and defenses. The build only changes when you confirm.</p></div>
           </li>
         </ol>
       </div>
@@ -246,10 +245,10 @@
       <div class="shell">
         <div class="section-heading reveal">
           <div>
-            <span class="section-kicker">V1 features</span>
-            <h2 id="features-title">A conversational interface<br>for data that is already real.</h2>
+            <span class="section-kicker">What you get</span>
+            <h2 id="features-title">Help improving your build,<br>right inside PoB.</h2>
           </div>
-          <p>Built to improve an existing build without turning LLM advice into automatic truth.</p>
+          <p>Ask questions, compare options, and apply only what makes sense to you.</p>
         </div>
 
         <div class="feature-grid">
@@ -257,44 +256,44 @@
             <span class="feature-index">01</span>
             <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v12H8l-4 3V5Z"/><path d="M8 9h8M8 13h6"/></svg></div>
             <h3>Chat inside PoB</h3>
-            <p>Ask in natural language without exporting, copying numbers, or switching between tools.</p>
+            <p>Ask in plain language without copying numbers or switching between apps.</p>
             <div class="mini-chat" aria-hidden="true"><span>Why is my physical max hit low?</span><i></i></div>
           </article>
 
           <article class="feature-card reveal">
             <span class="feature-index">02</span>
             <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 19V8m5 11V4m5 15v-7m5 7V6"/></svg></div>
-            <h3>Calculations as the source of truth</h3>
-            <p>DPS, EHP, max hits, and defenses come from PoB's <code>mainOutput</code>, not the model's imagination.</p>
+            <h3>Numbers from PoB</h3>
+            <p>DPS, EHP, max hits, and defenses are calculated by PoB. AI does not make up the results.</p>
           </article>
 
           <article class="feature-card reveal">
             <span class="feature-index">03</span>
             <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16M6.4 6.4l11.2 11.2M17.6 6.4 6.4 17.6"/></svg></div>
-            <h3>Selective context</h3>
-            <p>Items, skills, tree, and config are included when relevant. Large catalogs are loaded on demand.</p>
+            <h3>Only what it needs</h3>
+            <p>AI uses only the parts of your build that help answer your question.</p>
           </article>
 
           <article class="feature-card reveal">
             <span class="feature-index">04</span>
             <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8 8h8m-8 4h5m-5 4h7"/></svg></div>
-            <h3>18 structured actions</h3>
-            <p>Character, ascendancies, skills, items, jewels, passives, masteries, tattoos, and configuration.</p>
+            <h3>Changes many parts of the build</h3>
+            <p>Skills, items, jewels, passives, masteries, tattoos, ascendancy, and configuration.</p>
           </article>
 
           <article class="feature-card reveal">
             <span class="feature-index">05</span>
             <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 3h6l1 5 4 2v6l-4 2-1 3H9l-1-3-4-2v-6l4-2 1-5Z"/><circle cx="12" cy="12" r="3"/></svg></div>
-            <h3>Simulated shortlists</h3>
-            <p>Candidate support gems and uniques are tested in the calculation engine without affecting the active build.</p>
+            <h3>Compares options</h3>
+            <p>Support gems and uniques are tested and ranked by their results in PoB.</p>
           </article>
 
           <article class="feature-card feature-card-accent reveal">
             <span class="feature-index">06</span>
             <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 4 7v5c0 4.8 3.3 7.8 8 9 4.7-1.2 8-4.2 8-9V7l-8-4Z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></svg></div>
-            <h3>Preflight before touching the build</h3>
-            <p>Schema, domain, isolated clone, recalculation, fingerprint, and confirmation. In that order.</p>
-            <div class="safety-chain" aria-label="Safety steps"><span>Validate</span><i></i><span>Simulate</span><i></i><span>Recalculate</span><i></i><span>Confirm</span></div>
+            <h3>Tests before applying</h3>
+            <p>PoB runs the calculations first. Your build only changes when you confirm.</p>
+            <div class="safety-chain" aria-label="Steps before applying a change"><span>Understand</span><i></i><span>Suggest</span><i></i><span>Test</span><i></i><span>Confirm</span></div>
           </article>
         </div>
       </div>
@@ -303,27 +302,27 @@
     <section class="section actions-section" aria-labelledby="actions-title">
       <div class="shell actions-layout">
         <div class="actions-copy reveal">
-          <span class="section-kicker">What AI can change</span>
-          <h2 id="actions-title">A closed action set.<br>Broad possibilities.</h2>
-          <p>The model does not execute arbitrary Lua. It can only request known actions, each with its own validation.</p>
-          <a class="text-link" href="https://github.com/kaiqueramos/PathOfAIBuilding/blob/dev/AI_SECURITY.md">View the full security model <span>→</span></a>
+          <span class="section-kicker">What you can ask for</span>
+          <h2 id="actions-title">From gear to the tree.<br>Just ask.</h2>
+          <p>Ask for a change in plain language. AI turns the idea into a suggestion that PoB can test.</p>
+          <a class="text-link" href="https://github.com/kaiqueramos/PathOfAIBuilding/blob/dev/AI_SECURITY.md">See how your key and build are protected <span>→</span></a>
         </div>
         <div class="action-groups reveal">
           <article>
             <span>01</span>
-            <div><h3>Character</h3><p>Level, class, primary and secondary ascendancies, bandits, and pantheon.</p></div>
+            <div><h3>Character</h3><p>Level, class, ascendancy, bandits, and pantheon.</p></div>
           </article>
           <article>
             <span>02</span>
-            <div><h3>Skills</h3><p>Add, remove, choose the main skill, and select the calculated part.</p></div>
+            <div><h3>Skills</h3><p>Add or remove gems, swap supports, and choose the main skill.</p></div>
           </article>
           <article>
             <span>03</span>
-            <div><h3>Items</h3><p>Equip an item or jewel using full text validated by PoB itself.</p></div>
+            <div><h3>Items</h3><p>Equip items and jewels; PoB checks that everything works.</p></div>
           </article>
           <article>
             <span>04</span>
-            <div><h3>Tree and config</h3><p>Allocate, deallocate, choose a mastery, apply tattoos, and adjust conditions.</p></div>
+            <div><h3>Tree and configuration</h3><p>Choose passives, masteries, tattoos, and calculation options.</p></div>
           </article>
         </div>
       </div>
@@ -334,9 +333,9 @@
         <div class="section-heading reveal">
           <div>
             <span class="section-kicker">Getting started</span>
-            <h2 id="setup-title">From download to your first question.</h2>
+            <h2 id="setup-title">Get started in four steps.</h2>
           </div>
-          <p>The package is portable. There is no installer, and the configuration stays under your control.</p>
+          <p>Download, connect your AI service, and start chatting with your build.</p>
         </div>
 
         <div class="setup-layout">
@@ -344,25 +343,25 @@
             <li class="setup-step reveal is-active" data-setup-step="1">
               <button type="button" aria-expanded="true">
                 <span>01</span>
-                <div><h3>Download and extract</h3><p>Download the release ZIP, extract it to a writable folder, and open <code>Path of Building.exe</code>.</p></div>
+                <div><h3>Download and extract</h3><p>Download the ZIP, extract the folder, and open <code>Path of Building.exe</code>.</p></div>
               </button>
             </li>
             <li class="setup-step reveal" data-setup-step="2">
               <button type="button" aria-expanded="false">
                 <span>02</span>
-                <div><h3>Configure your provider</h3><p>Click <b>AI Setup</b> and enter the HTTPS endpoint, API key, and model identifier.</p></div>
+                <div><h3>Connect your AI service</h3><p>In <b>AI Setup</b>, enter the service address, your key, and the model name.</p></div>
               </button>
             </li>
             <li class="setup-step reveal" data-setup-step="3">
               <button type="button" aria-expanded="false">
                 <span>03</span>
-                <div><h3>Test the connection</h3><p>The <b>Test Connection</b> button makes a minimal call before saving.</p></div>
+                <div><h3>Make sure it works</h3><p>Click <b>Test Connection</b>. PoB will tell you when everything is ready.</p></div>
               </button>
             </li>
             <li class="setup-step reveal" data-setup-step="4">
               <button type="button" aria-expanded="false">
                 <span>04</span>
-                <div><h3>Open a build and start chatting</h3><p>Select the <b>AI</b> tab, ask your question, review the preview, and apply it if it makes sense.</p></div>
+                <div><h3>Open a build and ask</h3><p>Go to the <b>AI</b> tab, ask a question, and review the suggestion before applying.</p></div>
               </button>
             </li>
           </ol>
@@ -389,7 +388,7 @@
             </div>
             <div class="setup-window" data-setup-panel="3" hidden>
               <div class="setup-bar"><span></span><span></span><span></span><b>Connection test</b></div>
-              <div class="connection-visual"><i></i><strong>Connection successful</strong><p>HTTPS endpoint · model available · timeout enabled</p></div>
+              <div class="connection-visual"><i></i><strong>All set!</strong><p>Your AI service is ready to use.</p></div>
             </div>
             <div class="setup-window" data-setup-panel="4" hidden>
               <div class="setup-bar"><span></span><span></span><span></span><b>AI Chat</b></div>
@@ -400,7 +399,7 @@
 
         <div class="download-strip reveal">
           <div><span>Stable release</span><strong>PathOfAIBuilding v1.0.0</strong></div>
-          <div class="download-meta"><span>Windows Portable</span><span>Wine / Proton</span><span>SHA-256 published</span></div>
+          <div class="download-meta"><span>Windows Portable</span><span>Wine / Proton</span><span>Verified download</span></div>
           <a class="button button-primary" href="https://github.com/kaiqueramos/PathOfAIBuilding/releases/tag/v1.0.0">Open downloads</a>
         </div>
       </div>
@@ -410,49 +409,49 @@
       <div class="security-orbit" aria-hidden="true"></div>
       <div class="shell security-layout">
         <div class="security-copy reveal">
-          <span class="section-kicker">Security and privacy</span>
-          <h2 id="security-title">Your key does not come with the app.<br><em>And it is not included in the build.</em></h2>
-          <p>You choose the OpenAI-compatible provider. The key stays in local configuration and is used only in the authorization header of the HTTPS request.</p>
-          <a class="button button-ghost" href="https://github.com/kaiqueramos/PathOfAIBuilding/blob/dev/AI_SECURITY.md">Read the security documentation</a>
+          <span class="section-kicker">Your key</span>
+          <h2 id="security-title">Your key stays<br><em>on your computer.</em></h2>
+          <p>You use your own AI key. It is stored only on your computer and sent only to the service you choose.</p>
+          <a class="button button-ghost" href="https://github.com/kaiqueramos/PathOfAIBuilding/blob/dev/AI_SECURITY.md">See the security details</a>
         </div>
         <ul class="security-list reveal">
-          <li><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z"/></svg></span><div><strong>Local API key</strong><p>Masked field; file excluded from Git and releases.</p></div></li>
-          <li><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span><div><strong>HTTPS required</strong><p>The key is sent only to the endpoint you configure.</p></div></li>
-          <li><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h12M3 18h8"/><path d="m17 16 4 4m0-4-4 4"/></svg></span><div><strong>No hidden proxy</strong><p>No telemetry, analytics, or intermediary service in V1.</p></div></li>
-          <li><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6"/></svg></span><div><strong>Audited artifact</strong><p>Package published without configs, logs, saved builds, or credentials.</p></div></li>
+          <li><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z"/></svg></span><div><strong>Stored on your computer</strong><p>The key is hidden on screen and never included on GitHub or in the download.</p></div></li>
+          <li><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16M14 6l6 6-6 6"/></svg></span><div><strong>Secure connection</strong><p>The app only talks to services through a secure connection (HTTPS).</p></div></li>
+          <li><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h12M3 18h8"/><path d="m17 16 4 4m0-4-4 4"/></svg></span><div><strong>No tracking</strong><p>V1 does not track how you use the app or send your chats through our own server.</p></div></li>
+          <li><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6"/></svg></span><div><strong>Clean download</strong><p>The package contains no keys, settings, logs, or personal builds.</p></div></li>
         </ul>
       </div>
       <div class="shell security-note reveal">
-        <strong>Transparency:</strong>
-        <p>The provider receives your question, limited history, and the build context required to answer it. Use a provider whose retention policy you trust.</p>
+        <strong>Important:</strong>
+        <p>When you chat, your AI service receives the question and the parts of your build needed to answer. Choose a service you trust.</p>
       </div>
     </section>
 
     <section class="section scope-section" aria-labelledby="scope-title">
       <div class="shell scope-layout">
         <div class="scope-title reveal">
-          <span class="section-kicker">Honest scope</span>
-          <h2 id="scope-title">What V1 does —<br>and what it does not promise yet.</h2>
+          <span class="section-kicker">What it already does</span>
+          <h2 id="scope-title">What you can do now<br>and what comes later.</h2>
         </div>
         <div class="scope-columns">
           <div class="scope-column scope-now reveal">
             <span class="scope-label"><i></i>Available now</span>
             <ul>
-              <li>Improve an existing build</li>
-              <li>Explain bottlenecks using PoB numbers</li>
-              <li>Simulate candidate gems and uniques</li>
-              <li>Propose and apply 18 action types</li>
-              <li>Recalculate and show a diff before Apply</li>
+              <li>Improve a build you already have</li>
+              <li>Find weak points in damage and defense</li>
+              <li>Compare support gems and uniques</li>
+              <li>Suggest changes to skills, items, and the tree</li>
+              <li>Show the result before applying</li>
             </ul>
           </div>
           <div class="scope-column scope-later reveal">
-            <span class="scope-label"><i></i>Outside V1</span>
+            <span class="scope-label"><i></i>Not available yet</span>
             <ul>
-              <li>Real-world pricing and budget planning</li>
-              <li>Automatic tree optimization</li>
-              <li>Complete build generation from scratch</li>
-              <li>Automatic trade purchases</li>
-              <li>A guarantee that AI advice is correct</li>
+              <li>Check prices and plan a budget</li>
+              <li>Optimize the entire tree on its own</li>
+              <li>Create a complete build from scratch</li>
+              <li>Buy items automatically on trade</li>
+              <li>Guarantee that every AI suggestion is correct</li>
             </ul>
           </div>
         </div>
@@ -462,30 +461,30 @@
     <section class="section faq-section" aria-labelledby="faq-title">
       <div class="shell faq-layout">
         <div class="faq-heading reveal">
-          <span class="section-kicker">Common questions</span>
-          <h2 id="faq-title">Before opening<br>the AI tab.</h2>
-          <p>The essentials about providers, security, and control over changes.</p>
+          <span class="section-kicker">Before you start</span>
+          <h2 id="faq-title">What you need<br>to know.</h2>
+          <p>Quick answers about setup, security, and Linux.</p>
         </div>
         <div class="faq-list" data-faq>
           <article class="faq-item reveal">
-            <button type="button" aria-expanded="false"><span>Does AI replace Path of Building calculations?</span><i></i></button>
-            <div class="faq-answer"><p>No. AI interprets the question and proposes changes. DPS, EHP, max hits, resistances, and diffs are still calculated by the PoB engine.</p></div>
+            <button type="button" aria-expanded="false"><span>Does AI do the calculations instead of PoB?</span><i></i></button>
+            <div class="faq-answer"><p>No. It suggests changes, but DPS, EHP, resistances, and max hits are still calculated by Path of Building.</p></div>
           </article>
           <article class="faq-item reveal">
-            <button type="button" aria-expanded="false"><span>Which models and providers work?</span><i></i></button>
-            <div class="faq-answer"><p>Any HTTPS endpoint compatible with the OpenAI chat API, as long as you provide a valid API key and the correct model identifier.</p></div>
+            <button type="button" aria-expanded="false"><span>Which AI service can I use?</span><i></i></button>
+            <div class="faq-answer"><p>You can use AI services that follow the OpenAI format. In <b>AI Setup</b>, enter the key, address, and model name.</p></div>
           </article>
           <article class="faq-item reveal">
             <button type="button" aria-expanded="false"><span>Can AI change my build without permission?</span><i></i></button>
-            <div class="faq-answer"><p>No. The batch is validated and simulated in a clone, the diff is displayed, and the actual build changes only after an explicit Apply.</p></div>
+            <div class="faq-answer"><p>No. PoB tests the suggestion and shows the result first. The build only changes when you click <b>Apply</b>.</p></div>
           </article>
           <article class="faq-item reveal">
-            <button type="button" aria-expanded="false"><span>Is my API key sent to GitHub?</span><i></i></button>
-            <div class="faq-answer"><p>No. The local file is ignored by Git and excluded from packages. The key is sent only to your chosen endpoint in the HTTPS authorization header.</p></div>
+            <button type="button" aria-expanded="false"><span>Is my AI key sent to GitHub?</span><i></i></button>
+            <div class="faq-answer"><p>No. It stays on your computer and is sent only to the AI service you choose.</p></div>
           </article>
           <article class="faq-item reveal">
             <button type="button" aria-expanded="false"><span>Does it work on Linux?</span><i></i></button>
-            <div class="faq-answer"><p>Yes. The same Windows package can run through Wine or Proton. There is no native Linux binary in this version.</p></div>
+            <div class="faq-answer"><p>Yes. Use the same download with Wine or Proton. V1 does not have a native Linux version yet.</p></div>
           </article>
         </div>
       </div>
@@ -494,9 +493,9 @@
     <section class="final-cta" aria-labelledby="cta-title">
       <div class="final-grid" aria-hidden="true"></div>
       <div class="shell final-cta-inner reveal">
-        <span class="section-kicker">Open a build. Ask a question.</span>
-        <h2 id="cta-title">Less trial and error.<br><em>More calculated decisions.</em></h2>
-        <p>PathOfAIBuilding v1.0.0 is available as a portable package for Windows, Wine, and Proton.</p>
+        <span class="section-kicker">Open your build and ask.</span>
+        <h2 id="cta-title">Less trial and error.<br><em>More time playing.</em></h2>
+        <p>Download V1, open your build, and find what you can improve.</p>
         <div>
           <a class="button button-primary" href="https://github.com/kaiqueramos/PathOfAIBuilding/releases/tag/v1.0.0">Download V1</a>
           <a class="button button-ghost" href="https://github.com/kaiqueramos/PathOfAIBuilding">View code on GitHub</a>
@@ -511,7 +510,7 @@
         <span class="brand-mark" aria-hidden="true"><span class="brand-orbit"></span><span class="brand-core"></span></span>
         <span class="brand-copy"><strong>PathOfAI</strong><span>Building</span></span>
       </a>
-      <p>A community fork of Path of Building for PoE 1, with an optional AI layer.</p>
+      <p>A community version of Path of Building for PoE 1, with optional AI.</p>
       <nav aria-label="Footer links">
         <a href="https://github.com/kaiqueramos/PathOfAIBuilding/releases">Releases</a>
         <a href="https://github.com/kaiqueramos/PathOfAIBuilding/blob/dev/AI_SECURITY.md">Security</a>
@@ -521,7 +520,7 @@
     </div>
     <div class="shell footer-bottom">
       <span>MIT License · Community project, not affiliated with Grinding Gear Games.</span>
-      <span>Built on the Path of Building Community calculation engine.</span>
+      <span>Built from Path of Building Community.</span>
     </div>
   </footer>
 </body>
