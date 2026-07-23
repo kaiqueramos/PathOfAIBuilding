@@ -1,3 +1,11 @@
+VERSION[1.1.4][2026/07/23]
+
+--- AI Canonical Gem Actions ---
+* Include PoB's canonical gem catalog for skill, minion, summoner, and summon questions
+* Require add_skill and set_main_skill actions to use exact catalog names instead of translated, guessed, or pluralized variants
+* Resolve only a unique trailing singular/plural gem-name variation before preflight
+* Cover a level-30 minion starter request and Summon Raging Spirits -> Summon Raging Spirit regression
+
 VERSION[1.1.3][2026/07/23]
 
 --- AI Chat Reliability ---

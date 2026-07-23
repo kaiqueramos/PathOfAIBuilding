@@ -5,6 +5,13 @@ the desktop application. It reads the active PoE 1 build, uses PoB's calculated
 numbers as the source of truth, proposes validated changes, and applies them only
 after a preview.
 
+## V1.1.4: canonical AI gem actions
+
+Skill and minion questions now include PoB's canonical gem catalog, and the AI is
+required to use those exact names in actions. A uniquely resolvable singular/plural
+variation is normalized safely before preflight, so `Summon Raging Spirits` reaches
+PoB as `Summon Raging Spirit`.
+
 ## V1.1.3: resilient AI chat
 
 The AI tab now recovers when an HTTP request cannot start or response handling fails,
@@ -100,7 +107,7 @@ generation are not part of V1.
 
 ## Download and first run
 
-1. Download `PathOfAIBuilding-v1.1.3-Windows-Portable.zip` from this fork's
+1. Download `PathOfAIBuilding-v1.1.4-Windows-Portable.zip` from this fork's
    [Releases](https://github.com/kaiqueramos/PathOfAIBuilding/releases) page.
 2. Extract the archive to a writable directory and run `Path of Building.exe`.
    Linux users can run the same executable through Wine or Proton.

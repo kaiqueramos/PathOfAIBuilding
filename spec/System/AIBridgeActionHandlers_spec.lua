@@ -121,7 +121,7 @@ local function newFakeBuild()
 	function skillsTab:ProcessSocketGroup(group)
 		self.processedGroup = group
 		for _, gem in ipairs(group.gemList or {}) do
-			if gem.nameSpec == "Fireball" or gem.nameSpec == "Combustion" then
+			if gem.nameSpec == "Fireball" or gem.nameSpec == "Combustion" or gem.nameSpec == "Summon Raging Spirit" then
 				gem.gemData = gem.gemData or { grantedEffect = {} }
 				gem.errMsg = nil
 			else
@@ -162,6 +162,10 @@ local function newFakeBuild()
 		configTab = configTab,
 		controls = { characterLevel = levelControl },
 		data = {
+			gems = {
+				SummonRagingSpirit = { name = "Summon Raging Spirit", grantedEffect = {} },
+			},
+
 			pantheons = {
 				TheBrineKing = { isMajorGod = true },
 				Gruthkul = { isMajorGod = false },
@@ -320,6 +324,20 @@ describe("AI action semantic handlers", function()
 		assert.is_false(ok)
 		assert.is_truthy(message:find("not a jewel socket", 1, true))
 		assert.are.equal(0, #fake.itemsTab.added)
+	end)
+
+	it("resolves a unique singular/plural gem alias before adding it", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local fake = newFakeBuild()
+		local ok, message = bridge:ExecuteAction(fake, {
+			type = "add_skill",
+			label = "Raging Spirits",
+			gems = { "Summon Raging Spirits" },
+		})
+		assert.is_true(ok, message)
+		local group = fake.skillsTab.skillSets[1].socketGroupList[2]
+		assert.are.equal("Summon Raging Spirit", group.gemList[1].nameSpec)
+		assert.is_table(group.gemList[1].gemData)
 	end)
 
 	it("does not append unknown gems or change the selected main skill", function()

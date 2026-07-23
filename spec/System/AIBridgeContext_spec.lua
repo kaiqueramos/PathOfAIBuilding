@@ -36,6 +36,12 @@ describe("AI question context", function()
 		assert.is_true(gems.includeGemReference)
 		assert.is_false(gems.includeUniqueShortlist)
 
+		local minionStarter = bridge:ClassifyQuestion("Build a minion starter to level 30; which skills should I use?")
+		assert.same({ "gems" }, minionStarter.intents)
+		assert.is_true(minionStarter.includeGemShortlist)
+		assert.is_true(minionStarter.includeGemReference)
+
+
 		local items = bridge:ClassifyQuestion("Which unique amulet is best for this build?")
 		assert.same({ "items" }, items.intents)
 		assert.is_true(items.includeUniqueShortlist)
@@ -144,6 +150,20 @@ describe("AI selective build serialization", function()
 		assert.is_nil(treeContext.reference)
 	end)
 
+	it("supplies canonical gem names for minion starter questions", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local context = bridge:ClassifyQuestion("Build a minion starter to level 30; which skills should I use?")
+		local state = assert(bridge:SerializeBuild(build, context))
+		local hasRagingSpirit = false
+		for _, name in ipairs(state.reference.gemNames) do
+			if name == "Summon Raging Spirit" then
+				hasRagingSpirit = true
+				break
+			end
+		end
+		assert.is_true(hasRagingSpirit)
+	end)
+
 	it("runs only the simulations selected for the question", function()
 		local bridge = LoadModule("Modules/AIBridge")
 		local gemCalls = 0
@@ -243,6 +263,8 @@ describe("AI selective build serialization", function()
 		local request = assert(dkjson.decode(capturedOptions.body))
 		assert.is_truthy(request.messages[1].content:find("previous action proposal", 1, true))
 		assert.is_truthy(request.messages[1].content:find("NOT applied", 1, true))
+		assert.is_truthy(request.messages[1].content:find("exact canonical gem names", 1, true))
+
 		assert.are.equal(6, #request.messages)
 		local historyChars = 0
 		for index = 2, #request.messages - 1 do

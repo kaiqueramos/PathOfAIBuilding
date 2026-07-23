@@ -3,9 +3,9 @@
 -- Uses PoB's existing lcurl subprocess pattern for async HTTP
 -- cspell:ignore aguent aljava alocar anel arma armas arvore ascs baixo bandido bloqueio botas
 -- cspell:ignore capacete cinto condicao condicoes configuracao dano defesa defensiva desalocar
--- cspell:ignore distancia equipamento equipamentos esta frasco gema gemas habilidade joia luvas
--- cspell:ignore maestria melhor melhorar melhoro melhoria melhorias nodo nodos passiva proximo
--- cspell:ignore realocar recalc resistencias suporte suportes supressao unico unicos
+-- cspell:ignore distancia equipamento equipamentos esta frasco gema gemas habilidade invocacao invocacoes invocador joia luvas
+-- cspell:ignore maestria melhor melhorar melhoro melhoria melhorias minion minions nodo nodos passiva proximo
+-- cspell:ignore realocar recalc resistencias summon summoner suporte suportes supressao unico unicos
 -- cspell:ignore jsontype
 
 local t_insert = table.insert
@@ -96,6 +96,39 @@ local function containsAny(text, terms)
 	return false
 end
 
+-- Resolves a harmless singular/plural variation only when it maps to one canonical gem.
+-- Model output must still use the catalog name whenever it is available.
+local function resolveGemAlias(build, name)
+	if type(name) ~= "string" or not build or not build.data or type(build.data.gems) ~= "table" then
+		return name
+	end
+	local normalized = name:lower():gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
+	if normalized == "" then
+		return name
+	end
+	local singular = normalized:sub(-1) == "s" and normalized:sub(1, -2) or normalized
+	local candidate
+	for _, gemData in pairs(build.data.gems) do
+		local canonical = gemData.name
+		if canonical and not gemData.unsupported then
+			local canonicalNormalized = canonical:lower():gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
+			if canonicalNormalized == normalized then
+				return canonical
+			end
+			local canonicalSingular = canonicalNormalized:sub(-1) == "s"
+				and canonicalNormalized:sub(1, -2)
+				or canonicalNormalized
+			if canonicalSingular == singular then
+				if candidate then
+					return name
+				end
+				candidate = canonical
+			end
+		end
+	end
+	return candidate or name
+end
+
 --- Classify a question locally so expensive context is built only when useful.
 -- Input typed in the PoB UI is already transliterated to ASCII.
 -- @param userMessage Player question
@@ -107,8 +140,9 @@ function AIBridge:ClassifyQuestion(userMessage)
 		"como melhorar", "como melhoro", "melhorar esta build", "proximo upgrade", "melhor upgrade",
 	})
 	local gems = containsAny(text, {
-		"gem", "gems", "support", "supports", "skill gem", "socket link", "link", "links",
-		"gema", "gemas", "suporte", "suportes", "habilidade",
+		"gem", "gems", "skill", "skills", "support", "supports", "skill gem", "socket link", "link", "links",
+		"minion", "minions", "summon", "summoner", "gema", "gemas", "suporte", "suportes",
+		"habilidade", "invocador", "invocacao", "invocacoes",
 	})
 	local items = containsAny(text, {
 		"unique", "uniques", "item", "items", "gear", "equipment", "equipamento", "equipamentos",
@@ -1669,6 +1703,10 @@ Order matters: if you need more points to allocate a distant node, emit set_leve
 then the alloc_node actions. For cluster jewels, emit equip_jewel FIRST, then alloc_node
 for the cluster's internal nodes. After adding skills, emit set_main_skill so DPS is correct.
 Abyssal jewels: use equip_item with an abyssal slot name from state.abyssalSockets.
+For add_skill and set_main_skill actions, use the exact canonical gem names from
+state.reference.gemNames. Never translate, pluralize, abbreviate, or invent a gem name.
+If that catalog is omitted and an exact gem name is needed, request the "gems" context instead.
+
 Only include actions you are confident about.]]
 
 	if supersedesUnappliedActions then
@@ -2892,6 +2930,7 @@ function AIBridge:ActionAddSkill(build, action)
 			quality = gem.quality or 0
 		end
 		if name then
+			name = resolveGemAlias(build, name)
 			t_insert(newGroup.gemList, {
 				nameSpec = name,
 				level = level,
