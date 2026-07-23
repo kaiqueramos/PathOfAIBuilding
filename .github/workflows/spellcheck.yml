@@ -33,6 +33,9 @@ jobs:
             ${{ env.CONFIG_URL }}/extra-en-dict.txt
             ${{ env.CONFIG_URL }}/contribs-dict.txt
 
+      - name: Add upstream test terminology
+        run: printf '%s\n' meatsack Tanky >> pob-dict.txt
+
       - name: Run cspell
         uses: streetsidesoftware/cspell-action@v8
         with:
