@@ -27,8 +27,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
+          TAG_OBJECT="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${GITHUB_REF_NAME}" --jq '.object.sha')"
+          gh api "repos/${GITHUB_REPOSITORY}/git/tags/${TAG_OBJECT}" --jq '.message' > release-notes.md
+          test -s release-notes.md
           gh release create "$GITHUB_REF_NAME" \
             dist/*.zip dist/SHA256SUMS.txt \
             --verify-tag \
             --title "PathOfAIBuilding $GITHUB_REF_NAME" \
-            --notes-from-tag
+            --notes-file release-notes.md
