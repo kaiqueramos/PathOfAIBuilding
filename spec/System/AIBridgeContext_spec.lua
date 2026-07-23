@@ -194,6 +194,7 @@ describe("AI selective build serialization", function()
 		local originalGetEndpoint = aiConfig.GetEndpoint
 		local originalGetAPIKey = aiConfig.GetAPIKey
 		local originalGetModel = aiConfig.GetModel
+		local originalGetTimeout = aiConfig.GetTimeout
 		local originalDownloadPage = launch.DownloadPage
 		local capturedOptions
 		local responseContent
@@ -203,6 +204,7 @@ describe("AI selective build serialization", function()
 		aiConfig.GetEndpoint = function() return "https://example.invalid/v1" end
 		aiConfig.GetAPIKey = function() return "test-key" end
 		aiConfig.GetModel = function() return "test-model" end
+		aiConfig.GetTimeout = function() return 73 end
 		launch.DownloadPage = function(_, _, callback, options)
 			capturedOptions = options
 			callback({
@@ -229,12 +231,14 @@ describe("AI selective build serialization", function()
 		aiConfig.GetEndpoint = originalGetEndpoint
 		aiConfig.GetAPIKey = originalGetAPIKey
 		aiConfig.GetModel = originalGetModel
+		aiConfig.GetTimeout = originalGetTimeout
 		launch.DownloadPage = originalDownloadPage
 		assert(ok, err)
 		assert.are.equal("Selective context OK", responseContent)
 		assert.is_nil(responseError)
 		assert.is_table(capturedOptions)
 
+		assert.are.equal(73, capturedOptions.timeout)
 		local request = assert(dkjson.decode(capturedOptions.body))
 		assert.are.equal(6, #request.messages)
 		local historyChars = 0

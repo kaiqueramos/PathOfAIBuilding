@@ -49,4 +49,7 @@ ai_keys/
 # User-specific AI settings
 Settings.xml
 *.user.json
-src/ai_debug.log
+ai_debug.log
+
+# Local release artifacts
+dist/

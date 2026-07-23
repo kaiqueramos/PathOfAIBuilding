@@ -1,3 +1,17 @@
+VERSION[1.0.0][2026/07/22]
+
+--- PathOfAIBuilding V1 ---
+* Add an integrated AI chat tab for improving active PoE 1 builds
+* Serialize calculated DPS, EHP, max hits, defenses, gear, skills, tree, and configuration
+* Add selective context routing with one bounded context-escalation request
+* Add 18 typed build actions with structural validation and domain checks
+* Preflight complete action batches on an isolated build clone before Apply
+* Show real recalculated before/after diffs and reject stale build fingerprints
+* Add local OpenAI-compatible provider configuration with a protected key field
+* Add a real connection test plus total and connect timeouts
+* Exclude local keys, logs, settings, and build saves from release artifacts
+
+
 VERSION[2.65.0][2026/04/20]
 
 --- Fixed Crashes ---

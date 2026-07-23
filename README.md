@@ -1,12 +1,36 @@
-# Path of Building Community
-## Welcome to Path of Building, an offline build planner for Path of Exile!
+# PathOfAIBuilding
+
+PathOfAIBuilding is a Path of Building Community fork with an AI build advisor inside
+the desktop application. It reads the active PoE 1 build, uses PoB's calculated
+numbers as the source of truth, proposes validated changes, and applies them only
+after a preview.
+
+## V1: improve an existing build
+
+The first release is intentionally narrow: open a build, ask a question, review the
+answer and calculated diff, then choose whether to apply the proposed actions.
+
+- Conversational `AI` tab with local history.
+- Selective build context, including DPS, EHP, max hits, gear, skills, tree, and
+  configuration when relevant.
+- 18 typed actions for items, skills, levels, class, ascendancy, bandits, pantheon,
+  configuration, passive nodes, masteries, tattoos, and jewels.
+- Isolated preflight on a cloned build, real PoB recalculation, and an atomic
+  fingerprint check before applying changes.
+- Local API configuration with a protected key field, HTTPS validation, a real
+  connection test, and request timeouts.
+
+Trade pricing, budget planning, passive-tree optimization, and complete build
+generation are not part of V1.
+
+## Welcome to Path of Building, an offline build planner for Path of Exile
 
 <p float="middle">
   <img alt="Tree tab" src="https://github.com/user-attachments/assets/0826b7ab-84ba-440f-be52-2f216f13e75c" width="48%" />
   <img alt="Items tab" src="https://github.com/user-attachments/assets/e5af1326-7e22-43d8-ab12-aa5500da611a" width="48%" />
 </p>
 
-### Features
+### Upstream PoB features
 * Comprehensive offence + defence calculations:
   * Calculate your skill DPS, damage over time, life/mana/ES totals and much more!
   * Can factor in auras, buffs, charges, curses, monster resistances and more, to estimate your effective DPS
@@ -47,14 +71,31 @@
   * Share builds with other users by generating a share code
   * Automatic updating; most updates will only take a couple of seconds to apply
 
-## Download
-Head over to the [Releases](https://github.com/PathOfBuildingCommunity/PathOfBuilding/releases) page to download the install wizard or portable zip.
+## Download and first run
+
+1. Download `PathOfAIBuilding-v1.0.0-Windows-Portable.zip` from this fork's
+   [Releases](https://github.com/kaiqueramos/PathOfAIBuilding/releases) page.
+2. Extract the archive to a writable directory and run `Path of Building.exe`.
+   Linux users can run the same executable through Wine or Proton.
+3. Click `AI Setup` in the bottom toolbar. Enter an OpenAI-compatible HTTPS
+   endpoint, your own API key, and the model identifier.
+4. Click `Test Connection`, save the configuration, open a build, and select the
+   `AI` tab.
+
+The portable build stores `ai_config.json` only in the extracted directory.
+Installed/development layouts use PoB's normal user-data directory. The file is
+never included in releases or sent anywhere except the endpoint you configure.
+See [AI_SECURITY.md](AI_SECURITY.md) for the complete security model.
 
 ## Changelog
-You can find the full version history [here](CHANGELOG.md).
+
+The fork release history is on the [Releases](https://github.com/kaiqueramos/PathOfAIBuilding/releases)
+page. The inherited PoB history is in [changelog.txt](changelog.txt).
 
 ## Contribute
-You can find instructions on how to contribute code and bug reports [here](CONTRIBUTING.md).
+
+Open issues and pull requests against the
+[PathOfAIBuilding fork](https://github.com/kaiqueramos/PathOfAIBuilding).
 
 ## Licence
 [MIT](https://opensource.org/licenses/MIT)

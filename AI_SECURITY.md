@@ -1,210 +1,117 @@
-# Path of Building AI Integration - Guia de Segurança e Distribuição
+# PathOfAIBuilding security and distribution
 
-## 🔐 Segurança das Chaves de API
+## Security model
 
-### Para Desenvolvedores (você)
+PathOfAIBuilding does not ship an API key or an AI service. Each user configures an
+OpenAI-compatible HTTPS endpoint, model, and personal API key.
 
-**NUNCA commitar:**
-- `ai_config.json` (contém a key real)
-- Qualquer arquivo com `.ai_key` ou em `ai_keys/`
-- Keys hardcoded no código
+The key is used only in the `Authorization: Bearer` header sent to that configured
+endpoint. It is never included in the build payload, chat history, PoB share code,
+release archive, or debug log.
 
-**Onde a key fica:**
-- Local: `~/.local/share/Path of Building/ai_config.json` (Linux)
-- Windows: `%APPDATA%/Path of Building/ai_config.json`
-- O PoB usa `GetUserPath()` que aponta para o diretório de dados do usuário
+## Local configuration
 
-**Permissões:**
-O módulo `AIConfig.lua` automaticamente define `chmod 600` no arquivo de config (apenas owner pode ler).
+Use the `AI Setup` button in PoB's bottom toolbar:
 
-### Para Usuários Finais (distribuição)
+1. Enter an HTTPS endpoint, API key, and model identifier.
+2. Click `Test Connection`.
+3. Save only after the connection succeeds.
 
-Quando você distribuir o binário/fork, os usuários precisam:
+The key field is masked in the UI. PathOfAIBuilding stores the configuration in
+`ai_config.json`:
 
-1. **Copiar o exemplo:**
-   ```bash
-   cp ai_config.example.json ~/.local/share/Path\ of\ Building/ai_config.json
-   ```
+- Portable archive: next to `Path of Building.exe` in the extracted directory.
+- Installed Windows build: `%APPDATA%\\Path of Building\\ai_config.json`.
+- Wine: the equivalent `Path of Building` directory inside the selected Wine
+  prefix.
+- Source/development checkout: under `src/`, because PoB runs in Dev Mode.
 
-2. **Editar e inserir a própria key:**
-   ```json
-   {
-     "api_endpoint": "https://api.openai.com/v1",
-     "api_key": "sk-... (key do usuário)",
-     "model": "gpt-4o"
-   }
-   ```
+On systems where the filesystem supports POSIX permissions, the application
+attempts to set mode `0600`. The file is plaintext local configuration; this V1
+does not use Windows Credential Manager or another OS keychain. Protect the
+directory and do not share the file.
 
-3. **Ou usar a UI (quando implementada):**
-   - Menu → Configurações → IA
-   - Inserir key, endpoint, modelo
-   - Salvar
+The repository ignores `ai_config.json`, `ai_debug.log`, `.ai_key`, `.ai_secrets`,
+`ai_keys/`, and user-specific `Settings*.xml` files.
 
-## 📦 Distribuição Segura
+## Network and data disclosure
 
-### Opção 1: Distribuir Código-Fonte (Recomendado)
+- Endpoints must use `https://`.
+- Requests have a configurable total timeout and a bounded connect timeout.
+- The configured provider receives the user's question, bounded conversation
+  history, the current build's calculated core state, and any optional context
+  required by that question.
+- Additional context is requested at most once per question.
+- No trade API, telemetry endpoint, analytics service, or hidden proxy is used in
+  V1.
 
-**Vantagens:**
-- Usuários compilam localmente
-- Transparência total
-- Sem binários assinados
+Use only a provider you trust with build data. Provider retention and training
+policies are outside PathOfAIBuilding's control.
 
-**Como:**
-```bash
-git clone https://github.com/kaiqueramos/PathOfAIBuilding.git
-cd PathOfAIBuilding
-# Usuário segue README para compilar/rodar
-```
+## Action safety
 
-**O que incluir no repo:**
-- ✅ `ai_config.example.json` (sem key real)
-- ✅ `src/Modules/AIConfig.lua` (módulo de config)
-- ✅ `src/Classes/AIConfigPanel.lua` (UI de config)
-- ✅ Este guia (`AI_SECURITY.md`)
-- ❌ `ai_config.json` (NUNCA)
+Model output is untrusted input. Before PoB changes the active build, the bridge:
 
-### Opção 2: Distribuir Binário (Windows via Wine)
+1. Parses a dense JSON action array and rejects malformed or unknown actions.
+2. Validates all 18 action schemas and their domain constraints.
+3. Runs the whole batch against an isolated cloned build.
+4. Recalculates that clone and shows the actual DPS, EHP, max-hit, and passive-point
+   diff.
+5. Requires the active build fingerprint to still match the preview.
+6. Applies only after explicit user confirmation.
+7. Stops on an unexpected failure and restores temporary simulation mutations.
 
-**Desafios:**
-- Binário não pode conter keys
-- Usuário precisa configurar após instalar
-- Wine complica paths de config
+This prevents silent partial application and stale previews. It does not make an
+LLM's advice correct; the user must still review the proposed changes and PoB
+numbers.
 
-**Solução:**
-1. **Primeiro run:** PoB cria `ai_config.json` vazio no userPath
-2. **UI de setup:** Modal obrigatório pedindo a key
-3. **Validação:** Testa a key com um request simples antes de salvar
+## Logging
 
-**Script de setup (pós-instalação):**
-```bash
-#!/bin/bash
-# setup-ai.sh - Roda após instalar o PoB
+Normal operation does not log the API key. `AIConfig:GetSanitizedConfig()` exposes
+only `[CONFIGURED]` or `[EMPTY]` in place of the key.
 
-USER_PATH="$HOME/.local/share/Path of Building"
-CONFIG="$USER_PATH/ai_config.json"
+`ai_debug.log` is local diagnostic output and is ignored by Git and excluded from
+release manifests. Do not attach it to a public issue without reviewing its build
+and provider-error content.
 
-if [ ! -f "$CONFIG" ]; then
-    echo "Configurando IA pela primeira vez..."
-    cp ai_config.example.json "$CONFIG"
-    chmod 600 "$CONFIG"
-    echo "Edite $CONFIG e insira sua API key"
-    xdg-open "$CONFIG"
-fi
-```
+## Release controls
 
-### Opção 3: Distribuir via Flatpak/Snap (Linux Nativo)
+`scripts/package_release.py` builds the portable archive from the tracked runtime
+and release manifest. It:
 
-**Vantagens:**
-- Sandbox de segurança
-- Config isolada por usuário
-- Atualizações automáticas
+- starts from the clean Windows runtime archive;
+- validates every manifest-managed source file against its SHA-1;
+- rejects local configs, debug logs, settings, build saves, and Git metadata;
+- writes a local manifest pinned to the stable `release` branch;
+- emits a SHA-256 digest for the completed archive.
 
-**Paths de config:**
-- Flatpak: `~/.var/app/com.pathofbuilding.PoB/data/ai_config.json`
-- Snap: `~/snap/pathofbuilding/current/.config/ai_config.json`
+The GitHub release workflow publishes both the archive and `SHA256SUMS.txt`.
 
-**Manifest Flatpak (exemplo):**
-```yaml
-finish-args:
-  - --share=network  # Necessário para API calls
-  - --filesystem=xdg-data/Path of Building  # Acesso ao config
-```
+## Developer checklist
 
-## 🛡️ Boas Práticas de Segurança
+Before publishing a release:
 
-### 1. Validação de Input
-```lua
--- Sempre valida antes de usar
-local ok, err = AIConfig:Validate()
-if not ok then
-    -- Mostra erro, não executa
-    return false, err
-end
-```
+- [x] `ai_config.json` and related secret files are ignored.
+- [x] `ai_config.example.json` contains no real key.
+- [x] The UI masks the key and validates endpoint, model, and key.
+- [x] HTTPS is mandatory.
+- [x] HTTP requests have total and connect timeouts.
+- [x] Logs never intentionally include the key.
+- [x] Model actions are structurally validated and preflighted in isolation.
+- [x] The generated archive contains no local config, log, settings, or build save.
+- [x] The focused AI tests and full PoB suite pass on the release commit.
+- [x] A clean portable archive boots and opens the AI-enabled PoB UI.
 
-### 2. Logging Seguro
-```lua
--- NUNCA logue a key completa
-local config = AIConfig:GetSanitizedConfig()
--- api_key: "[CONFIGURADA]" ou "[VAZIA]"
-print(json.encode(config))
-```
+## If a key is exposed
 
-### 3. HTTPS Obrigatório
-```lua
--- Valida que o endpoint é HTTPS
-if not string.match(endpoint, "^https://") then
-    return false, "Endpoint deve usar HTTPS"
-end
-```
+1. Revoke it immediately at the provider.
+2. Remove the file or secret from the repository and release artifact.
+3. Rewrite Git history if the key was committed.
+4. Rotate any other credentials stored with it.
+5. Publish a corrected release and notify affected users.
 
-### 4. Timeout e Rate Limiting
-```lua
--- Evita requests infinitos
-AIConfig.config.timeout = 120  -- segundos
--- Implementa retry com backoff
-```
+References:
 
-### 5. Não Armazenar em Memória Compartilhada
-```lua
--- A key fica apenas no objeto AIConfig
--- Não passa por variáveis globais
--- Não serializa em logs de debug
-```
-
-## 🔍 Auditoria de Segurança
-
-Antes de distribuir, verifique:
-
-```bash
-# 1. Nenhuma key no código
-grep -r "sk-" src/
-grep -r "api_key.*=.*['\"]" src/
-
-# 2. .gitignore cobre os arquivos sensíveis
-cat .gitignore | grep ai_config
-
-# 3. Nenhum config real no repo
-find . -name "ai_config.json" -not -path "./.git/*"
-
-# 4. Histórico do git não tem keys (se já commitou por engano)
-git log -p | grep "sk-"
-# Se encontrar: git filter-branch ou BFG Repo-Cleaner
-```
-
-## 🚨 Incidente: Key Vazada
-
-Se uma key for commitada por engano:
-
-1. **Revoga a key imediatamente** (no provider: OpenAI/Anthropic/etc.)
-2. **Remove do histórico:**
-   ```bash
-   # Usando BFG (mais rápido)
-   bfg --replace-text passwords.txt  # arquivo com a key
-   git reflog expire --expire=now --all
-   git gc --prune=now --aggressive
-   git push --force
-   ```
-3. **Notifica usuários** (se a key era compartilhada)
-4. **Rotaciona todas as keys** que estavam no mesmo arquivo
-
-## 📝 Checklist de Distribuição
-
-- [ ] `ai_config.json` está no `.gitignore`
-- [ ] `ai_config.example.json` existe (sem key real)
-- [ ] `AI_SECURITY.md` está no repo
-- [ ] Nenhuma key hardcoded no código
-- [ ] UI de configuração implementada
-- [ ] Validação de HTTPS no endpoint
-- [ ] Logging sanitizado (sem keys)
-- [ ] Timeout configurado
-- [ ] Testado com key inválida (mostra erro amigável)
-- [ ] Documentação de setup para usuários
-
-## 🔗 Referências
-
-- [OpenAI API Keys](https://platform.openai.com/api-keys)
-- [Anthropic API Keys](https://console.anthropic.com/)
-- [Qwen Cloud (Alibaba)](https://dashscope.console.aliyun.com/)
-- [Git Secret Scanning](https://docs.github.com/en/code-security/secret-scanning)
-- [BFG Repo-Cleaner](https://rtyley.github.io/bfg-repo-cleaner/)
+- [GitHub secret scanning](https://docs.github.com/en/code-security/secret-scanning)
+- [OpenAI API keys](https://platform.openai.com/api-keys)
+- [Qwen Cloud](https://dashscope.console.aliyun.com/)

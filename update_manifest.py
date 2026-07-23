@@ -73,7 +73,7 @@ def create_manifest(version: str | None = None, replace: bool = False) -> None:
         logging.critical(f"Manifest configuration file not found in path '{base_path}'")
         return
 
-    base_url = "https://raw.githubusercontent.com/PathOfBuildingCommunity/PathOfBuilding/{branch}/"
+    base_url = "https://raw.githubusercontent.com/kaiqueramos/PathOfAIBuilding/{branch}/"
     parts: list[dict[str, str]] = []
     for part in config.sections():
         url = base_url + config[part]["path"]

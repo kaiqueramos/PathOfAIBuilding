@@ -99,8 +99,17 @@ function AIConfig:Validate()
 		return false, "API Endpoint not configured"
 	end
 
+	if not self.config.api_endpoint:match("^https://") then
+		return false, "API Endpoint must use HTTPS"
+	end
+
 	if not self.config.model or self.config.model == "" then
 		return false, "Model not configured"
+	end
+
+	local timeout = tonumber(self.config.timeout)
+	if not timeout or timeout < 1 or timeout > 600 then
+		return false, "Timeout must be between 1 and 600 seconds"
 	end
 
 	return true
@@ -120,6 +129,11 @@ end
 -- Returns the model
 function AIConfig:GetModel()
 	return self.config.model or ""
+end
+
+-- Returns the request timeout in seconds
+function AIConfig:GetTimeout()
+	return tonumber(self.config.timeout) or self:GetDefaults().timeout
 end
 
 -- Updates the API key

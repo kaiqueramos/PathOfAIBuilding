@@ -3,6 +3,7 @@
 -- Integrated into PoB UI via popup system
 
 local AIConfig = LoadModule("Modules/AIConfig")
+local AIBridge = LoadModule("Modules/AIBridge")
 
 local AIConfigPanel = {}
 
@@ -76,8 +77,22 @@ function AIConfigPanel:TestConnection(controls)
 	end
 
 	controls.status.label = "^7Testing connection..."
-	-- Real connection test will be implemented with AIBridge
-	controls.status.label = "^2Valid format! (Live test coming with AIBridge)"
+	controls.test.enabled = false
+	controls.save.enabled = false
+	AIBridge:TestConnection({
+		api_key = apiKey,
+		api_endpoint = endpoint,
+		model = model,
+		timeout = AIConfig:GetTimeout(),
+	}, function(ok, errMsg)
+		controls.test.enabled = true
+		controls.save.enabled = true
+		if ok then
+			controls.status.label = "^2Connection successful"
+		else
+			controls.status.label = "^1Connection failed: " .. tostring(errMsg)
+		end
+	end)
 end
 
 -- Saves the configuration

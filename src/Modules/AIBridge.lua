@@ -30,6 +30,39 @@ local CONTEXT_SCOPE_DESCRIPTIONS = {
 	config = "current calculation settings and available configuration keys",
 }
 
+local function getChatCompletionURL(endpoint)
+	return endpoint:gsub("/+$", "") .. "/chat/completions"
+end
+
+local function parseChatCompletionResponse(response, errMsg)
+	if errMsg then
+		return nil, "API request failed: " .. tostring(errMsg)
+	end
+
+	local body = response and response.body
+	if not body or body == "" then
+		return nil, "Empty response from API"
+	end
+
+	local parsed, _, parseError = dkjson.decode(body)
+	if parseError or not parsed then
+		return nil, "Invalid JSON response from API"
+	end
+	if parsed.error then
+		local message = type(parsed.error) == "table" and parsed.error.message or tostring(parsed.error)
+		return nil, "API error: " .. (message or "Unknown API error")
+	end
+	if not parsed.choices or not parsed.choices[1] or not parsed.choices[1].message then
+		return nil, "No content in API response"
+	end
+
+	local content = parsed.choices[1].message.content
+	if type(content) ~= "string" or content == "" then
+		return nil, "No content in API response"
+	end
+	return content
+end
+
 local function containsAny(text, terms)
 	for _, rawTerm in ipairs(terms) do
 		local isPrefix = rawTerm:sub(-1) == "*"
@@ -1446,6 +1479,66 @@ function AIBridge:BuildQuestionState(build, userMessage, fingerprint, requestedS
 	return state, context
 end
 
+--- Verify an unsaved OpenAI-compatible configuration with a minimal chat request.
+-- @param config table Candidate api_endpoint, api_key, model, and timeout values
+-- @param callback function(ok, errMsg) called when the request completes
+function AIBridge:TestConnection(config, callback)
+	config = config or {}
+	local apiKey = config.api_key
+	local endpoint = config.api_endpoint
+	local model = config.model
+	local timeout = tonumber(config.timeout) or AIConfig:GetTimeout()
+
+	if type(apiKey) ~= "string" or #apiKey < 10 then
+		callback(false, "Invalid or empty API Key")
+		return
+	end
+	if type(endpoint) ~= "string" or endpoint == "" then
+		callback(false, "Endpoint cannot be empty")
+		return
+	end
+	if not endpoint:match("^https://") then
+		callback(false, "Endpoint must use HTTPS")
+		return
+	end
+	if type(model) ~= "string" or model == "" then
+		callback(false, "Model cannot be empty")
+		return
+	end
+	if timeout < 1 or timeout > 600 then
+		callback(false, "Timeout must be between 1 and 600 seconds")
+		return
+	end
+
+	local requestBody, encodeError = dkjson.encode({
+		model = model,
+		messages = {
+			{ role = "user", content = "Reply with OK." },
+		},
+		max_tokens = 16,
+		temperature = 0,
+	}, { indent = false })
+	if not requestBody then
+		callback(false, "Could not encode connection test: " .. tostring(encodeError))
+		return
+	end
+
+	local header = "Content-Type: application/json\r\n"
+		.. "Authorization: Bearer " .. apiKey
+	launch:DownloadPage(getChatCompletionURL(endpoint), function(response, errMsg)
+		local _, responseError = parseChatCompletionResponse(response, errMsg)
+		if responseError then
+			callback(false, responseError)
+			return
+		end
+		callback(true)
+	end, {
+		header = header,
+		body = requestBody,
+		timeout = timeout,
+	})
+end
+
 --- Send build state to LLM and get response
 -- @param build The active build object
 -- @param callback function(response, errMsg, fingerprint) called with the result
@@ -1561,7 +1654,7 @@ Only include actions you are confident about.]]
 
 	local trimmedHistory, historyChars, historyDropped = self:TrimHistory(history)
 	local endpoint = AIConfig:GetEndpoint()
-	local url = endpoint .. "/chat/completions"
+	local url = getChatCompletionURL(endpoint)
 	local header = "Content-Type: application/json\r\n"
 		.. "Authorization: Bearer " .. AIConfig:GetAPIKey()
 
@@ -1641,34 +1734,9 @@ Only include actions you are confident about.]]
 		end
 
 		launch:DownloadPage(url, function(response, errMsg)
-			if errMsg then
-				fail("API request failed: " .. errMsg)
-				return
-			end
-
-			local body = response and response.body
-			if not body or body == "" then
-				fail("Empty response from API")
-				return
-			end
-
-			local parsed, _, parseError = dkjson.decode(body)
-			if parseError or not parsed then
-				fail("Invalid JSON response from API")
-				return
-			end
-			if parsed.error then
-				fail("API error: " .. (parsed.error.message or "Unknown API error"))
-				return
-			end
-			if not parsed.choices or not parsed.choices[1] or not parsed.choices[1].message then
-				fail("No content in API response")
-				return
-			end
-
-			local content = parsed.choices[1].message.content
-			if type(content) ~= "string" or content == "" then
-				fail("No content in API response")
+			local content, responseError = parseChatCompletionResponse(response, errMsg)
+			if not content then
+				fail(responseError)
 				return
 			end
 
@@ -1741,6 +1809,7 @@ Only include actions you are confident about.]]
 		end, {
 			header = header,
 			body = requestBody,
+			timeout = AIConfig:GetTimeout(),
 		})
 	end
 
