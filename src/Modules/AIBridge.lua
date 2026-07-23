@@ -1438,7 +1438,7 @@ function AIBridge:BuildContextManifest(context, escalated)
 	return included, available, escalated and 0 or 1
 end
 
---- Parse a response that consists only of a structured context request.
+--- Parse one structured context request, ignoring surrounding prose but never actions.
 -- Valid form: <context_request>["gems","tree"]</context_request>
 -- @return string displayText
 -- @return table|nil scopes
@@ -1459,15 +1459,26 @@ function AIBridge:ParseContextRequest(content)
 	if not hasOpen or not hasClose then
 		return content, nil, "Malformed context_request tags"
 	end
+	local openCount = 0
+	for _ in lower:gmatch("<context_request") do
+		openCount = openCount + 1
+	end
+	local closeCount = 0
+	for _ in lower:gmatch("</context_request") do
+		closeCount = closeCount + 1
+	end
+	if openCount ~= 1 or closeCount ~= 1 then
+		return content, nil, "Context request must contain exactly one block"
+	end
+	if lower:find("<actions", 1, true) or lower:find("</actions", 1, true) then
+		return content, nil, "Context request cannot include actions"
+	end
 
-	local prefix, block, suffix = content:match(
+	local _, block = content:match(
 		"^(.-)<context_request>%s*(.-)%s*</context_request>(.-)$"
 	)
 	if not block then
 		return content, nil, "Malformed context_request block"
-	end
-	if (prefix .. suffix):find("%S") then
-		return content, nil, "Context request must not include text or actions"
 	end
 
 	local decoded, _, decodeError = dkjson.decode(block, 1, dkjson.null)

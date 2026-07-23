@@ -5,14 +5,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0a0c0f">
-  <meta name="description" content="Technical changelog for PathOfAIBuilding v1.1.4: canonical gem actions, safe aliases, and 3.29 passive-tree support.">
+  <meta name="description" content="Technical changelog for PathOfAIBuilding v1.1.5: AI context recovery, safe actions, and 3.29 passive-tree support.">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="PathOfAIBuilding v1.1.4 — canonical gem actions">
-  <meta property="og:description" content="PoB gem catalog context, safe aliases, and actionable AI suggestions.">
+  <meta property="og:title" content="PathOfAIBuilding v1.1.5 — context recovery">
+  <meta property="og:description" content="The bridge recovers prose-wrapped context without accepting mixed actions.">
   <meta property="og:url" content="https://kaiqueramos.github.io/PathOfAIBuilding/en/changelog/">
   <meta property="og:image" content="https://kaiqueramos.github.io/PathOfAIBuilding/assets/ai-chat.webp">
   <meta name="twitter:card" content="summary_large_image">
-  <title>Technical changelog v1.1.4 — PathOfAIBuilding</title>
+  <title>Technical changelog v1.1.5 — PathOfAIBuilding</title>
   <link rel="canonical" href="https://kaiqueramos.github.io/PathOfAIBuilding/en/changelog/">
   <link rel="alternate" hreflang="pt-BR" href="https://kaiqueramos.github.io/PathOfAIBuilding/changelog/">
   <link rel="alternate" hreflang="en" href="https://kaiqueramos.github.io/PathOfAIBuilding/en/changelog/">
@@ -51,8 +51,8 @@
     <header class="changelog-header">
       <div class="shell changelog-shell">
         <span class="changelog-label">Release notes</span>
-        <h1>PathOfAIBuilding <em>v1.1.4</em></h1>
-        <p>Gem-action patch: the AI receives PoB's canonical catalog and a simple pluralization no longer blocks the entire batch.</p>
+        <h1>PathOfAIBuilding <em>v1.1.5</em></h1>
+        <p>Context-recovery patch: explanatory prose around a valid request no longer leaves the AI chat in an error state.</p>
         <dl class="changelog-meta">
           <div><dt>Date</dt><dd>23 July 2026</dd></div>
           <div><dt>Base</dt><dd>PoB Community dev</dd></div>
@@ -61,8 +61,8 @@
           <div><dt>Licence</dt><dd>MIT · free application</dd></div>
         </dl>
         <div class="changelog-links">
-          <a class="button button-primary" href="https://github.com/kaiqueramos/PathOfAIBuilding/releases/tag/v1.1.4">Download v1.1.4</a>
-          <a class="button button-ghost" href="https://github.com/kaiqueramos/PathOfAIBuilding/tree/v1.1.4">Release source</a>
+          <a class="button button-primary" href="https://github.com/kaiqueramos/PathOfAIBuilding/releases/tag/v1.1.5">Download v1.1.5</a>
+          <a class="button button-ghost" href="https://github.com/kaiqueramos/PathOfAIBuilding/tree/v1.1.5">Release source</a>
         </div>
         <p class="changelog-cost"><strong>Price:</strong> the application is free and open source. The user-configured AI API may have its own usage cost.</p>
       </div>
@@ -72,6 +72,8 @@
       <nav class="changelog-toc" aria-label="Changelog index">
         <strong>On this page</strong>
         <ol>
+          <li><a href="#v1-1-5">V1.1.5 — context recovery</a></li>
+
           <li><a href="#v1-1-4">V1.1.4 — canonical gem actions</a></li>
 
           <li><a href="#v1-1-3">V1.1.3 — resilient chat</a></li>
@@ -90,6 +92,17 @@
           <li><a href="#limits">Known limitations</a></li>
         </ol>
       </nav>
+
+      <section class="changelog-section" id="v1-1-5">
+        <h2>V1.1.5 — context recovery</h2>
+        <p class="section-intro">The bridge continues when a model validly requests additional data but wraps the block in explanatory prose.</p>
+        <ul class="change-list">
+          <li><span class="change-kind fixed">Recovery</span><div>One valid <code>&lt;context_request&gt;</code> block is now accepted with prose before or after it; the prose is discarded and the question is repeated with the requested context.</div></li>
+          <li><span class="change-kind fixed">Safety</span><div>Any <code>&lt;actions&gt;</code> marker alongside the request still blocks the response before the build can change.</div></li>
+          <li><span class="change-kind fixed">Boundary</span><div>Duplicate blocks, invalid JSON, and scopes outside the catalog remain rejected.</div></li>
+          <li><span class="change-kind note">Test</span><div>Regressions cover prose-wrapped context, duplicate blocks, and mixed actions.</div></li>
+        </ul>
+      </section>
 
       <section class="changelog-section" id="v1-1-4">
         <h2>V1.1.4 — canonical gem actions</h2>

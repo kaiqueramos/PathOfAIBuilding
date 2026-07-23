@@ -1,3 +1,4 @@
+-- cspell:ignore Upvalue
 local dkjson = require "dkjson"
 
 local function readFile(path)
@@ -90,7 +91,7 @@ describe("AI context escalation", function()
 		end
 	end)
 
-	it("parses only a standalone allowed context request", function()
+	it("parses one allowed context request and ignores surrounding prose", function()
 		local bridge = LoadModule("Modules/AIBridge")
 		local _, scopes, err = bridge:ParseContextRequest(
 			"  \n<context_request>[\"GEMS\",\"tree\",\"gems\"]</context_request>\n"
@@ -98,10 +99,15 @@ describe("AI context escalation", function()
 		assert.is_nil(err)
 		assert.same({ "gems", "tree" }, scopes)
 
+		local _, proseScopes, proseErr = bridge:ParseContextRequest(
+			"I need a little more data first.\n<context_request>[\"gems\"]</context_request>\nThen I can answer."
+		)
+		assert.is_nil(proseErr)
+		assert.same({ "gems" }, proseScopes)
+
 		local _, unknown, unknownErr = bridge:ParseContextRequest(
 			"<context_request>[\"secrets\"]</context_request>"
 		)
-
 		local _, withNull, nullErr = bridge:ParseContextRequest(
 			"<context_request>[\"gems\",null]</context_request>"
 		)
@@ -111,10 +117,16 @@ describe("AI context escalation", function()
 		assert.is_truthy(unknownErr:find("Unknown context scope", 1, true))
 
 		local _, mixed, mixedErr = bridge:ParseContextRequest(
-			"Need more data<context_request>[\"gems\"]</context_request>"
+			"<context_request>[\"gems\"]</context_request><actions>[{\"type\":\"set_level\",\"value\":100}]</actions>"
 		)
 		assert.is_nil(mixed)
-		assert.is_truthy(mixedErr:find("must not include text or actions", 1, true))
+		assert.is_truthy(mixedErr:find("cannot include actions", 1, true))
+
+		local _, multiple, multipleErr = bridge:ParseContextRequest(
+			"<context_request>[\"gems\"]</context_request><context_request>[\"tree\"]</context_request>"
+		)
+		assert.is_nil(multiple)
+		assert.is_truthy(multipleErr:find("exactly one block", 1, true))
 
 		local _, malformed, malformedErr = bridge:ParseContextRequest(
 			"<context_request>[\"gems\"]"
@@ -204,6 +216,33 @@ describe("AI context escalation", function()
 
 		assert.are.equal(1, callbackCount)
 		assert.are.equal("Final answer with real config context", callbackContent)
+		assert.is_nil(callbackError)
+		assert.is_false(bridge.pending)
+	end)
+
+	it("retries when the model wraps an allowed context request in prose", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local callbackContent
+		local callbackError
+
+		withMockedTransport(bridge, function(attempt)
+			if attempt == 1 then
+				return "I need the current configuration before I can answer.\n"
+					.. '<context_request>["config"]</context_request>\n'
+					.. "Then I will provide the recommendation."
+			end
+			return "Final answer after context recovery"
+		end, function(requests)
+			bridge:Ask(build, "Explain this build", function(content, err)
+				callbackContent = content
+				callbackError = err
+			end, {})
+			assert.are.equal(2, #requests)
+			local expandedState = extractState(requests[2])
+			assert.same({ "config" }, expandedState.context.requestedContexts)
+		end)
+
+		assert.are.equal("Final answer after context recovery", callbackContent)
 		assert.is_nil(callbackError)
 		assert.is_false(bridge.pending)
 	end)

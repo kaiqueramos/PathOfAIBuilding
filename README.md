@@ -5,6 +5,12 @@ the desktop application. It reads the active PoE 1 build, uses PoB's calculated
 numbers as the source of truth, proposes validated changes, and applies them only
 after a preview.
 
+## V1.1.5: resilient AI context recovery
+
+When a model wraps one valid `<context_request>` in prose, the bridge now ignores
+that prose and retries once with the requested PoB context. A response that mixes
+context expansion with actions remains rejected before it can affect the build.
+
 ## V1.1.4: canonical AI gem actions
 
 Skill and minion questions now include PoB's canonical gem catalog, and the AI is
@@ -107,7 +113,7 @@ generation are not part of V1.
 
 ## Download and first run
 
-1. Download `PathOfAIBuilding-v1.1.4-Windows-Portable.zip` from this fork's
+1. Download `PathOfAIBuilding-v1.1.5-Windows-Portable.zip` from this fork's
    [Releases](https://github.com/kaiqueramos/PathOfAIBuilding/releases) page.
 2. Extract the archive to a writable directory and run `Path of Building.exe`.
    Linux users can run the same executable through Wine or Proton.

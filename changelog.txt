@@ -1,3 +1,11 @@
+VERSION[1.1.5][2026/07/23]
+
+--- AI Context Recovery ---
+* Accept one valid context_request wrapped in model prose and retry with the requested PoB data
+* Ignore explanatory text around the request instead of leaving the chat in an error state
+* Continue to reject any response that mixes a context request with actions
+* Cover prose-wrapped context requests, duplicate request blocks, and action-mixing safety
+
 VERSION[1.1.4][2026/07/23]
 
 --- AI Canonical Gem Actions ---

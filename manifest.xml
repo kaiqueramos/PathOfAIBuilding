@@ -1,11 +1,11 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <PoBVersion>
-	<Version number="1.1.4" />
+	<Version number="1.1.5" />
 	<Source part="default" url="https://raw.githubusercontent.com/kaiqueramos/PathOfAIBuilding/{branch}/" />
 	<Source part="runtime" platform="win32" url="https://raw.githubusercontent.com/kaiqueramos/PathOfAIBuilding/{branch}/runtime/" />
 	<Source part="program" url="https://raw.githubusercontent.com/kaiqueramos/PathOfAIBuilding/{branch}/src/" />
 	<Source part="tree" url="https://raw.githubusercontent.com/kaiqueramos/PathOfAIBuilding/{branch}/src/" />
-	<File name="changelog.txt" part="default" sha1="707be1f3f62a0b7b910dccd01dcc35bbfa7a429d" />
+	<File name="changelog.txt" part="default" sha1="e906eb068b936804316c43ed7ba89801d3c30d7e" />
 	<File name="help.txt" part="default" sha1="e486cb63a78f5ca355430b67fa23e02fd30f5771" />
 	<File name="LICENSE.md" part="default" sha1="c77635aa1ba0a2ffe8eb72f93b3376e3a3d2041a" />
 	<File name="Assets/ascendancypassiveheaderleft.png" part="program" sha1="6a65683dcc3b14382dc083198fe9361454e91b15" />
@@ -338,7 +338,7 @@
 	<File name="GameVersions.lua" part="program" sha1="2ba59bb7443d8f829861fdd5794c57db14c894b3" />
 	<File name="Launch.lua" part="program" sha1="d7affcfa0784fc640979d96887f97e7f7d50ee2f" />
 	<File name="LaunchServer.lua" part="program" sha1="223ba77d7e428904b1849d7b4416a42ea1c23a00" />
-	<File name="Modules/AIBridge.lua" part="program" sha1="4e07fbfaa496a8a0eb6af972524abf2491f83706" />
+	<File name="Modules/AIBridge.lua" part="program" sha1="0696b2df79c520086ed9ec501fd7b13e7bc6fed5" />
 	<File name="Modules/AIConfig.lua" part="program" sha1="85496350c8b373d3de79303b3f1e921b9bcf0730" />
 	<File name="Modules/Build.lua" part="program" sha1="8c53bf11f30773002695768ba6dd0efb7130e9d7" />
 	<File name="Modules/BuildDisplayStats.lua" part="program" sha1="6fe2e80a3a9fb836d21279e37654047a2c6afcbd" />
