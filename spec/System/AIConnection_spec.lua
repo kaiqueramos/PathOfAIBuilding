@@ -1,3 +1,4 @@
+-- cspell:ignore Upvalue
 local dkjson = require "dkjson"
 
 local function findUpvalue(fn, targetName)

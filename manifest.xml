@@ -118,7 +118,7 @@
 	<File name="Assets/veiledicon.png" part="program" sha1="035479a7ee7847969ef50ff428e3bee897fba671" />
 	<File name="Assets/warlordicon.png" part="program" sha1="cca050c84884f5c0bb1380ece51d3c4b32be4900" />
 	<File name="Classes/AIChatTab.lua" part="program" sha1="f10c681c0df72ae90a2caa23c9e975c295af67a5" />
-	<File name="Classes/AIConfigPanel.lua" part="program" sha1="784a916ffae615e040c8c592abc064c9b971c59a" />
+	<File name="Classes/AIConfigPanel.lua" part="program" sha1="2f2d0f8830936a1afad60f7441bea5ed2cc1deeb" />
 	<File name="Classes/BuildListControl.lua" part="program" sha1="dd5b90a9f901096ed9d88783398ca5060b2419bf" />
 	<File name="Classes/ButtonControl.lua" part="program" sha1="697870f9f43eee2c804be087849b46849c83153a" />
 	<File name="Classes/CalcBreakdownControl.lua" part="program" sha1="1cee4a32917a561c720032b37baeeca8bda58dd5" />
@@ -338,8 +338,8 @@
 	<File name="GameVersions.lua" part="program" sha1="eebdc4265ce75db1d4d267899b365b95f09a1c5e" />
 	<File name="Launch.lua" part="program" sha1="fc295365f1b22662f67071da92f4778ad3cd0c33" />
 	<File name="LaunchServer.lua" part="program" sha1="223ba77d7e428904b1849d7b4416a42ea1c23a00" />
-	<File name="Modules/AIBridge.lua" part="program" sha1="ef50ff9ab2d3b5d4b9c39f1b18aca1eda2d21c5c" />
-	<File name="Modules/AIConfig.lua" part="program" sha1="d9bcb8d1a5e030425adc3ae57604bba5c079f4ec" />
+	<File name="Modules/AIBridge.lua" part="program" sha1="d815dc453d8e0bcb8743f22fc14c7864c57cb7ab" />
+	<File name="Modules/AIConfig.lua" part="program" sha1="b4ea58b3b740cc6c049ab1ac3c77e05f32c3a03e" />
 	<File name="Modules/Build.lua" part="program" sha1="14afb97e14b11d75d5bda4d506e3f52cba2235fa" />
 	<File name="Modules/BuildDisplayStats.lua" part="program" sha1="6fe2e80a3a9fb836d21279e37654047a2c6afcbd" />
 	<File name="Modules/BuildList.lua" part="program" sha1="d4ad3ff8e13558339f0c6d2f92157645618e0d65" />

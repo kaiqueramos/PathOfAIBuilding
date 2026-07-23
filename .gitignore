@@ -1,3 +1,4 @@
+# cspell:ignore imgui Simplegraphic
 # Development tools
 .idea/
 .vs/
@@ -40,7 +41,7 @@ runtime/SimpleGraphic/SimpleGraphic.log
 
 src/poe_api_response.json
 
-# AI Integration - NUNCA COMMITAR
+# AI integration - NEVER COMMIT
 ai_config.json
 *.ai_key
 .ai_secrets

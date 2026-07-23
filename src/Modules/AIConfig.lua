@@ -2,6 +2,7 @@
 -- Secure API key configuration module
 -- Stores config in userPath (outside the repository)
 -- Singleton: all LoadModule calls share the same instance
+-- cspell:ignore qwen
 
 local dkjson = require "dkjson"
 

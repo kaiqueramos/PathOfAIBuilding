@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build a clean Windows portable archive from a release manifest."""
+# cspell:ignore compresslevel
 
 from __future__ import annotations
 
@@ -200,7 +201,7 @@ def build_release(version: str, branch: str, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     output = output_dir / f"PathOfAIBuilding-v{version}-Windows-Portable.zip"
 
-    with tempfile.TemporaryDirectory(prefix="pathofaibuilding-release-") as temp:
+    with tempfile.TemporaryDirectory(prefix="pob-release-") as temp:
         staging = Path(temp) / "PathOfAIBuilding"
         staging.mkdir()
         with zipfile.ZipFile(RUNTIME_ARCHIVE) as runtime:

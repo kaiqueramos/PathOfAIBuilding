@@ -1,3 +1,4 @@
+-- cspell:ignore Upvalue arvore alocar devo gemas habilidade melhoram minha nodos suporte
 local dkjson = require "dkjson"
 
 local function readFile(path)

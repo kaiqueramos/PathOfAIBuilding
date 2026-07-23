@@ -1,6 +1,11 @@
 -- Path of Building AI Integration
 -- AIBridge: serializes build state, calls LLM API, executes actions
 -- Uses PoB's existing lcurl subprocess pattern for async HTTP
+-- cspell:ignore aguent aljava alocar anel arma armas arvore ascs baixo bandido bloqueio botas
+-- cspell:ignore capacete cinto condicao condicoes configuracao dano defesa defensiva desalocar
+-- cspell:ignore distancia equipamento equipamentos esta frasco gema gemas habilidade joia luvas
+-- cspell:ignore maestria melhor melhorar melhoro melhoria melhorias nodo nodos passiva proximo
+-- cspell:ignore realocar recalc resistencias suporte suportes supressao unico unicos
 
 local t_insert = table.insert
 local t_remove = table.remove

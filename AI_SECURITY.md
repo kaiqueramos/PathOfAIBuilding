@@ -1,4 +1,5 @@
 # PathOfAIBuilding security and distribution
+<!-- cspell:ignore Qwen -->
 
 ## Security model
 
@@ -97,7 +98,7 @@ Before publishing a release:
 - [x] HTTPS is mandatory.
 - [x] HTTP requests have total and connect timeouts.
 - [x] Logs never intentionally include the key.
-- [x] Model actions are structurally validated and preflighted in isolation.
+- [x] Model actions are structurally validated in an isolated preflight.
 - [x] The generated archive contains no local config, log, settings, or build save.
 - [x] The focused AI tests and full PoB suite pass on the release commit.
 - [x] A clean portable archive boots and opens the AI-enabled PoB UI.

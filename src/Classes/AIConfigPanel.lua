@@ -1,6 +1,7 @@
 -- Path of Building AI Integration
 -- AI configuration panel (API Key, Endpoint, Model)
 -- Integrated into PoB UI via popup system
+-- cspell:ignore qwen
 
 local AIConfig = LoadModule("Modules/AIConfig")
 local AIBridge = LoadModule("Modules/AIBridge")
