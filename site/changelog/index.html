@@ -5,14 +5,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0a0c0f">
-  <meta name="description" content="Changelog técnico do PathOfAIBuilding v1.0.0: arquitetura Lua, protocolo LLM, contexto seletivo, simulações no PoB, 18 ações, preflight e segurança.">
+  <meta name="description" content="Changelog técnico do PathOfAIBuilding v1.1.0: suporte à árvore 3.29, sincronização upstream e histórico da integração de IA.">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="PathOfAIBuilding v1.0.0 — Changelog técnico">
-  <meta property="og:description" content="Lista técnica completa das mudanças incluídas no PathOfAIBuilding v1.0.0.">
+  <meta property="og:title" content="PathOfAIBuilding v1.1.0 — Árvore 3.29">
+  <meta property="og:description" content="Suporte à árvore passiva 3.29, sincronização upstream e histórico técnico da integração de IA.">
   <meta property="og:url" content="https://kaiqueramos.github.io/PathOfAIBuilding/changelog/">
   <meta property="og:image" content="https://kaiqueramos.github.io/PathOfAIBuilding/assets/ai-chat.webp">
   <meta name="twitter:card" content="summary_large_image">
-  <title>Changelog técnico v1.0.0 — PathOfAIBuilding</title>
+  <title>Changelog técnico v1.1.0 — PathOfAIBuilding</title>
   <link rel="canonical" href="https://kaiqueramos.github.io/PathOfAIBuilding/changelog/">
   <link rel="alternate" hreflang="pt-BR" href="https://kaiqueramos.github.io/PathOfAIBuilding/changelog/">
   <link rel="alternate" hreflang="en" href="https://kaiqueramos.github.io/PathOfAIBuilding/en/changelog/">
@@ -51,18 +51,18 @@
     <header class="changelog-header">
       <div class="shell changelog-shell">
         <span class="changelog-label">Release notes</span>
-        <h1>PathOfAIBuilding <em>v1.0.0</em></h1>
-        <p>Primeira release pública da integração de IA no Path of Building Community. Esta é a lista técnica das mudanças entregues.</p>
+        <h1>PathOfAIBuilding <em>v1.1.0</em></h1>
+        <p>Atualização de suporte à árvore passiva 3.29, sincronizada do Path of Building Community. O histórico técnico completo da integração de IA da V1.0 continua nesta página.</p>
         <dl class="changelog-meta">
-          <div><dt>Data</dt><dd>22 de julho de 2026</dd></div>
-          <div><dt>Base</dt><dd>PoB Community 2.65.0</dd></div>
-          <div><dt>Árvore</dt><dd>3.28</dd></div>
+          <div><dt>Data</dt><dd>23 de julho de 2026</dd></div>
+          <div><dt>Base</dt><dd>PoB Community dev</dd></div>
+          <div><dt>Árvore</dt><dd>3.29 · standard e Ruthless</dd></div>
           <div><dt>Plataforma</dt><dd>Windows · Wine/Proton</dd></div>
           <div><dt>Licença</dt><dd>MIT · aplicativo grátis</dd></div>
         </dl>
         <div class="changelog-links">
-          <a class="button button-primary" href="https://github.com/kaiqueramos/PathOfAIBuilding/releases/tag/v1.0.0">Baixar v1.0.0</a>
-          <a class="button button-ghost" href="https://github.com/kaiqueramos/PathOfAIBuilding/tree/v1.0.0">Código da release</a>
+          <a class="button button-primary" href="https://github.com/kaiqueramos/PathOfAIBuilding/releases/tag/v1.1.0">Baixar v1.1.0</a>
+          <a class="button button-ghost" href="https://github.com/kaiqueramos/PathOfAIBuilding/tree/v1.1.0">Código da release</a>
         </div>
         <p class="changelog-cost"><strong>Preço:</strong> o aplicativo é gratuito e open source. A API de IA configurada pelo usuário pode ter custo próprio.</p>
       </div>
@@ -70,12 +70,14 @@
 
     <article class="shell changelog-shell changelog-content">
       <nav class="changelog-toc" aria-label="Índice do changelog">
-        <strong>Nesta versão</strong>
+        <strong>Nesta página</strong>
         <ol>
+          <li><a href="#v1-1-3-29">V1.1 — suporte 3.29</a></li>
+          <li><a href="#v1-0">V1.0 — integração de IA</a></li>
           <li><a href="#interface">Integração e interface</a></li>
           <li><a href="#contexto">Serialização e contexto</a></li>
           <li><a href="#api">API e transporte</a></li>
-          <li><a href="#simulacoes">Simulações</a></li>
+          <li><a href="#simulacoes">Simulações e shortlists</a></li>
           <li><a href="#acoes">Protocolo de ações</a></li>
           <li><a href="#preflight">Preflight e Apply</a></li>
           <li><a href="#seguranca-tecnica">Configuração e segurança</a></li>
@@ -83,6 +85,24 @@
           <li><a href="#limites">Limitações conhecidas</a></li>
         </ol>
       </nav>
+
+      <section class="changelog-section" id="v1-1-3-29">
+        <h2>V1.1.0 — suporte à árvore 3.29</h2>
+        <p class="section-intro">Atualização de compatibilidade com a árvore passiva atual do PoE 1, integrada do branch <code>dev</code> do Path of Building Community.</p>
+        <ul class="change-list">
+          <li><span class="change-kind added">Tree</span><div>Adicionadas <code>TreeData/3_29</code> e <code>TreeData/3_29_ruthless</code>, incluindo <code>tree.lua</code>, sprites, texturas e assets de passive tree.</div></li>
+          <li><span class="change-kind changed">Default</span><div><code>GameVersions.lua</code> registra 3.29 standard e Ruthless; <code>latestTreeVersion</code> agora resolve para 3.29 em novas builds.</div></li>
+          <li><span class="change-kind added">Import</span><div>Mapeamentos de import/export passam a reconhecer a versão 3.29 e a variante Ruthless.</div></li>
+          <li><span class="change-kind fixed">Tree UI</span><div>O carregamento de sprites da árvore aceita o formato de coordenadas usado pelos dados 3.29; a UI também reconhece a ascendência Luminary ao importar personagens.</div></li>
+          <li><span class="change-kind changed">Sync</span><div>Sincronizados os commits upstream posteriores à V1.0, incluindo correções de cálculo, comparação, importação e atualização do runtime SimpleGraphic.</div></li>
+          <li><span class="change-kind fixed">AI</span><div>A aba AI, configuração local, preflight e guards da V1.0 foram preservados durante o merge upstream.</div></li>
+        </ul>
+      </section>
+
+      <section class="changelog-section" id="v1-0">
+        <h2>V1.0.0 — integração de IA</h2>
+        <p class="section-intro">Histórico técnico da primeira release pública. As seções abaixo descrevem a arquitetura, validações e limitações que continuam vigentes na V1.1.</p>
+      </section>
 
       <section class="changelog-section" id="interface">
         <h2>Integração e interface</h2>

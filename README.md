@@ -5,6 +5,15 @@ the desktop application. It reads the active PoE 1 build, uses PoB's calculated
 numbers as the source of truth, proposes validated changes, and applies them only
 after a preview.
 
+## V1.1: PoE 3.29 support
+
+The current release syncs the fork with Path of Building Community's 3.29 tree
+update. It includes standard and Ruthless 3.29 passive-tree data, makes 3.29 the
+latest tree for new builds, and retains support for existing tree versions.
+
+The integrated AI workflow remains unchanged: PoB calculates the character state,
+previews proposed changes, and requires user confirmation before applying them.
+
 ## V1: improve an existing build
 
 The first release is intentionally narrow: open a build, ask a question, review the
@@ -73,7 +82,7 @@ generation are not part of V1.
 
 ## Download and first run
 
-1. Download `PathOfAIBuilding-v1.0.0-Windows-Portable.zip` from this fork's
+1. Download `PathOfAIBuilding-v1.1.0-Windows-Portable.zip` from this fork's
    [Releases](https://github.com/kaiqueramos/PathOfAIBuilding/releases) page.
 2. Extract the archive to a writable directory and run `Path of Building.exe`.
    Linux users can run the same executable through Wine or Proton.

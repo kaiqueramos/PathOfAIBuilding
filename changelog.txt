@@ -1,3 +1,12 @@
+VERSION[1.1.0][2026/07/23]
+
+--- 3.29 Support ---
+* Sync upstream Path of Building Community changes through the 3.29 tree update
+* Add standard and Ruthless 3.29 passive tree data, sprites, and tree assets
+* Select 3.29 as the latest tree version for new builds and tree imports
+* Add 3.29 import/export mappings and updated passive-tree sprite handling
+* Include current upstream calculation, comparison, import, and runtime fixes
+
 VERSION[1.0.0][2026/07/22]
 
 --- PathOfAIBuilding V1 ---

@@ -5,14 +5,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0a0c0f">
-  <meta name="description" content="Technical changelog for PathOfAIBuilding v1.0.0: Lua architecture, LLM protocol, selective context, PoB simulations, 18 actions, preflight, and security.">
+  <meta name="description" content="Technical changelog for PathOfAIBuilding v1.1.0: 3.29 passive-tree support, upstream sync, and AI integration history.">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="PathOfAIBuilding v1.0.0 — Technical changelog">
-  <meta property="og:description" content="Complete technical change list for PathOfAIBuilding v1.0.0.">
+  <meta property="og:title" content="PathOfAIBuilding v1.1.0 — 3.29 passive tree">
+  <meta property="og:description" content="3.29 passive-tree support, upstream sync, and the technical history of the AI integration.">
   <meta property="og:url" content="https://kaiqueramos.github.io/PathOfAIBuilding/en/changelog/">
   <meta property="og:image" content="https://kaiqueramos.github.io/PathOfAIBuilding/assets/ai-chat.webp">
   <meta name="twitter:card" content="summary_large_image">
-  <title>Technical changelog v1.0.0 — PathOfAIBuilding</title>
+  <title>Technical changelog v1.1.0 — PathOfAIBuilding</title>
   <link rel="canonical" href="https://kaiqueramos.github.io/PathOfAIBuilding/en/changelog/">
   <link rel="alternate" hreflang="pt-BR" href="https://kaiqueramos.github.io/PathOfAIBuilding/changelog/">
   <link rel="alternate" hreflang="en" href="https://kaiqueramos.github.io/PathOfAIBuilding/en/changelog/">
@@ -51,18 +51,18 @@
     <header class="changelog-header">
       <div class="shell changelog-shell">
         <span class="changelog-label">Release notes</span>
-        <h1>PathOfAIBuilding <em>v1.0.0</em></h1>
-        <p>First public release of the AI integration for Path of Building Community. This is the technical list of delivered changes.</p>
+        <h1>PathOfAIBuilding <em>v1.1.0</em></h1>
+        <p>Passive-tree support update for 3.29, synced from Path of Building Community. The complete V1.0 technical history of the AI integration remains on this page.</p>
         <dl class="changelog-meta">
-          <div><dt>Date</dt><dd>22 July 2026</dd></div>
-          <div><dt>Base</dt><dd>PoB Community 2.65.0</dd></div>
-          <div><dt>Tree</dt><dd>3.28</dd></div>
+          <div><dt>Date</dt><dd>23 July 2026</dd></div>
+          <div><dt>Base</dt><dd>PoB Community dev</dd></div>
+          <div><dt>Tree</dt><dd>3.29 · standard and Ruthless</dd></div>
           <div><dt>Platform</dt><dd>Windows · Wine/Proton</dd></div>
           <div><dt>Licence</dt><dd>MIT · free application</dd></div>
         </dl>
         <div class="changelog-links">
-          <a class="button button-primary" href="https://github.com/kaiqueramos/PathOfAIBuilding/releases/tag/v1.0.0">Download v1.0.0</a>
-          <a class="button button-ghost" href="https://github.com/kaiqueramos/PathOfAIBuilding/tree/v1.0.0">Release source</a>
+          <a class="button button-primary" href="https://github.com/kaiqueramos/PathOfAIBuilding/releases/tag/v1.1.0">Download v1.1.0</a>
+          <a class="button button-ghost" href="https://github.com/kaiqueramos/PathOfAIBuilding/tree/v1.1.0">Release source</a>
         </div>
         <p class="changelog-cost"><strong>Price:</strong> the application is free and open source. The user-configured AI API may have its own usage cost.</p>
       </div>
@@ -70,12 +70,14 @@
 
     <article class="shell changelog-shell changelog-content">
       <nav class="changelog-toc" aria-label="Changelog index">
-        <strong>In this release</strong>
+        <strong>On this page</strong>
         <ol>
+          <li><a href="#v1-1-3-29">V1.1 — 3.29 support</a></li>
+          <li><a href="#v1-0">V1.0 — AI integration</a></li>
           <li><a href="#interface">Integration and interface</a></li>
           <li><a href="#context">Serialisation and context</a></li>
           <li><a href="#api">API and transport</a></li>
-          <li><a href="#simulations">Simulations</a></li>
+          <li><a href="#simulations">Simulations and shortlists</a></li>
           <li><a href="#actions">Action protocol</a></li>
           <li><a href="#preflight">Preflight and Apply</a></li>
           <li><a href="#technical-security">Configuration and security</a></li>
@@ -83,6 +85,24 @@
           <li><a href="#limits">Known limitations</a></li>
         </ol>
       </nav>
+
+      <section class="changelog-section" id="v1-1-3-29">
+        <h2>V1.1.0 — 3.29 passive-tree support</h2>
+        <p class="section-intro">Compatibility update for the current PoE 1 passive tree, integrated from the Path of Building Community <code>dev</code> branch.</p>
+        <ul class="change-list">
+          <li><span class="change-kind added">Tree</span><div>Added <code>TreeData/3_29</code> and <code>TreeData/3_29_ruthless</code>, including <code>tree.lua</code>, sprites, textures, and passive-tree assets.</div></li>
+          <li><span class="change-kind changed">Default</span><div><code>GameVersions.lua</code> registers standard and Ruthless 3.29; <code>latestTreeVersion</code> now resolves to 3.29 for new builds.</div></li>
+          <li><span class="change-kind added">Import</span><div>Import/export mappings now recognise 3.29 and its Ruthless variant.</div></li>
+          <li><span class="change-kind fixed">Tree UI</span><div>Passive-tree sprite loading accepts the coordinate shape used by the 3.29 data; the UI also recognises the Luminary ascendancy while importing characters.</div></li>
+          <li><span class="change-kind changed">Sync</span><div>Synced upstream commits after V1.0, including calculation, comparison, import, and SimpleGraphic runtime fixes.</div></li>
+          <li><span class="change-kind fixed">AI</span><div>The AI tab, local configuration, preflight, and V1.0 guards were preserved through the upstream merge.</div></li>
+        </ul>
+      </section>
+
+      <section class="changelog-section" id="v1-0">
+        <h2>V1.0.0 — AI integration</h2>
+        <p class="section-intro">Technical history for the first public release. The sections below describe the architecture, validation, and limits that remain in force in V1.1.</p>
+      </section>
 
       <section class="changelog-section" id="interface">
         <h2>Integration and interface</h2>
