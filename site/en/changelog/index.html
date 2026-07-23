@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a0c0f">
+  <meta name="description" content="The complete PathOfAIBuilding V1 changelog: AI chat, build context, PoB comparisons, 18 applicable changes, safety, and installation.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="PathOfAIBuilding V1 — Complete changelog">
+  <meta property="og:description" content="Everything included in the first free release of PathOfAIBuilding.">
+  <meta property="og:url" content="https://kaiqueramos.github.io/PathOfAIBuilding/en/changelog/">
+  <meta property="og:image" content="https://kaiqueramos.github.io/PathOfAIBuilding/assets/ai-chat.webp">
+  <meta property="og:image:alt" content="PathOfAIBuilding analysing a real build inside Path of Building">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://kaiqueramos.github.io/PathOfAIBuilding/assets/ai-chat.webp">
+  <title>V1 Changelog — PathOfAIBuilding</title>
+  <link rel="canonical" href="https://kaiqueramos.github.io/PathOfAIBuilding/en/changelog/">
+  <link rel="alternate" hreflang="pt-BR" href="https://kaiqueramos.github.io/PathOfAIBuilding/changelog/">
+  <link rel="alternate" hreflang="en" href="https://kaiqueramos.github.io/PathOfAIBuilding/en/changelog/">
+  <link rel="alternate" hreflang="x-default" href="https://kaiqueramos.github.io/PathOfAIBuilding/changelog/">
+  <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../../styles.css">
+  <script src="../../script.js" defer></script>
+</head>
+<body class="release-page">
+  <a class="skip-link" href="#content">Skip to content</a>
+  <div class="page-noise" aria-hidden="true"></div>
+  <div class="ambient ambient-one" aria-hidden="true"></div>
+  <div class="ambient ambient-two" aria-hidden="true"></div>
+
+  <header class="site-header" data-header>
+    <div class="shell header-inner">
+      <a class="brand" href="../" aria-label="PathOfAIBuilding — home">
+        <span class="brand-mark" aria-hidden="true"><span class="brand-orbit"></span><span class="brand-core"></span></span>
+        <span class="brand-copy"><strong>PathOfAI</strong><span>Building</span></span>
+      </a>
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="primary-nav" data-nav-toggle">
+        <span class="sr-only">Open menu</span><span></span><span></span><span></span>
+      </button>
+      <nav class="primary-nav" id="primary-nav" aria-label="Main navigation" data-nav>
+        <a href="../#como-funciona">How it works</a>
+        <a href="../#recursos">Features</a>
+        <a href="../#primeiros-passos">How to use</a>
+        <a class="is-current" href="./" aria-current="page">Changelog</a>
+        <a href="../#seguranca">Security</a>
+        <div class="language-switch" aria-label="Language">
+          <a href="../../changelog/" lang="pt-BR">PT</a><span aria-hidden="true">/</span><a href="./" lang="en" aria-current="page">EN</a>
+        </div>
+        <a class="nav-github" href="https://github.com/kaiqueramos/PathOfAIBuilding" target="_blank" rel="noreferrer">GitHub<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3h8v8M13 3 4 12"/></svg></a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="content">
+    <section class="release-hero" id="start">
+      <div class="hero-grid" aria-hidden="true"></div>
+      <div class="hero-nodes" aria-hidden="true">
+        <span class="node node-one"></span><span class="node node-two"></span><span class="node node-three"></span><span class="node node-four"></span><span class="node node-five"></span>
+      </div>
+      <div class="shell release-hero-inner reveal">
+        <div class="eyebrow"><span></span> Version 1.0.0 <b>FREE</b></div>
+        <h1>The first release<br>of your <em>PoB copilot.</em></h1>
+        <p class="release-hero-lead">V1 puts optional AI inside Path of Building so it can discuss the open build, test improvements with PoB's calculations, and show the result before you decide.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="https://github.com/kaiqueramos/PathOfAIBuilding/releases/tag/v1.0.0"><span>Download V1 free</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10m0 0 4-4m-4 4-4-4M4 16h12"/></svg></a>
+          <a class="button button-ghost" href="../">Back to home</a>
+        </div>
+        <ul class="release-facts" aria-label="Release information">
+          <li><strong>Free</strong><span>and open source</span></li>
+          <li><strong>Windows</strong><span>Wine / Proton on Linux</span></li>
+          <li><strong>22 Jul 2026</strong><span>first public release</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <nav class="release-jump" aria-label="Changelog sections">
+      <div class="shell">
+        <a href="#overview">Overview</a><a href="#chat">Chat</a><a href="#context">Context</a><a href="#comparisons">Comparisons</a><a href="#changes">18 changes</a><a href="#safety">Safety</a><a href="#installation">Installation</a><a href="#limits">Limits</a>
+      </div>
+    </nav>
+
+    <section class="release-overview" id="overview" aria-labelledby="overview-title">
+      <div class="shell">
+        <div class="release-overview-grid">
+          <div class="release-overview-copy reveal">
+            <span class="section-kicker">Complete changelog</span>
+            <h2 id="overview-title">Everything included<br><em>in V1.</em></h2>
+            <p>This first release is designed to improve a character that already exists. Open your build, ask what could be better, and receive suggestions checked against Path of Building's real calculations.</p>
+          </div>
+          <aside class="free-callout reveal" aria-label="Pricing information">
+            <span class="free-badge">FREE</span>
+            <div><strong>PathOfAIBuilding has no subscription fee.</strong><p>You use your own key from a compatible AI service. That service may charge for usage under the plan you choose.</p></div>
+          </aside>
+        </div>
+        <div class="release-version-line reveal"><span>PathOfAIBuilding 1.0.0</span><span>PoB Community 2.65.0 base</span><span>Passive tree 3.28</span><span>MIT License</span></div>
+      </div>
+    </section>
+
+    <section class="release-block" id="chat" aria-labelledby="chat-title">
+      <div class="shell release-block-layout">
+        <div class="release-block-heading reveal">
+          <span class="release-number">01</span><span class="section-kicker">Conversation</span>
+          <h2 id="chat-title">An AI tab<br>inside PoB.</h2>
+          <p>No copying numbers into another app. The conversation sits next to the build you already have open.</p>
+        </div>
+        <div class="release-items">
+          <article class="release-item reveal"><span>01</span><div><h3>Integrated AI tab</h3><p>A new <b>AI</b> item opens the chat inside the normal Path of Building interface.</p></div></article>
+          <article class="release-item reveal"><span>02</span><div><h3>Open questions</h3><p>Type a question about the character, send it with Enter, and continue the conversation in the same session.</p></div></article>
+          <article class="release-item reveal"><span>03</span><div><h3>Responsive while waiting</h3><p>The request runs in the background and the text appears progressively while PoB remains responsive.</p></div></article>
+          <article class="release-item reveal"><span>04</span><div><h3>Ready-made prompts</h3><p>Buttons to start with the <b>best next upgrade</b>, <b>build weaknesses</b>, or the <b>best support gem</b>.</p></div></article>
+          <article class="release-item reveal"><span>05</span><div><h3>Session history</h3><p>Recent messages stay in the chat while PoB is open, so follow-up questions retain their context.</p></div></article>
+          <article class="release-item reveal"><span>06</span><div><h3>Visible status</h3><p>The panel shows when it is preparing the build, waiting for AI, receiving the answer, or validating a suggestion.</p></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="release-block release-block-alt" id="context" aria-labelledby="context-title">
+      <div class="shell release-block-layout">
+        <div class="release-block-heading reveal">
+          <span class="release-number">02</span><span class="section-kicker">Build understanding</span>
+          <h2 id="context-title">AI reads what<br>actually matters.</h2>
+          <p>Its context comes from the open build and the numbers already calculated by PoB.</p>
+        </div>
+        <div class="release-items">
+          <article class="release-item reveal"><span>01</span><div><h3>Character</h3><p>Class, ascendancy, level, bandit choice, pantheon, and main skill.</p></div></article>
+          <article class="release-item reveal"><span>02</span><div><h3>Damage and defence</h3><p>DPS, EHP, life, mana, energy shield, resistances, mitigation, and Max Hit by damage type.</p></div></article>
+          <article class="release-item reveal"><span>03</span><div><h3>Gems and skills</h3><p>Skill groups, active gems, supports, levels, quality, and which group is the main one.</p></div></article>
+          <article class="release-item reveal"><span>04</span><div><h3>Gear</h3><p>Equipped items, slots, modifiers, and jewels used by the current character.</p></div></article>
+          <article class="release-item reveal"><span>05</span><div><h3>Passive tree</h3><p>Starting class, ascendancy, allocated passives, masteries, tattoos, jewels, and available points.</p></div></article>
+          <article class="release-item reveal"><span>06</span><div><h3>Calculation settings</h3><p>Conditions selected in the Configuration tab that affect the build's result.</p></div></article>
+          <article class="release-item release-item-wide reveal"><span>07</span><div><h3>Selective context</h3><p>The question determines which extra details are needed. Gems, uniques, the tree, and configuration are expanded only when they help, rather than sending everything every time.</p></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="release-block" id="comparisons" aria-labelledby="compare-title">
+      <div class="shell release-block-layout">
+        <div class="release-block-heading reveal">
+          <span class="release-number">03</span><span class="section-kicker">Tests in the real engine</span>
+          <h2 id="compare-title">Suggestions with<br><em>calculated results.</em></h2>
+          <p>When a question calls for a comparison, V1 uses PoB itself to measure the candidates.</p>
+        </div>
+        <div class="release-items">
+          <article class="release-item reveal"><span>01</span><div><h3>Support gems</h3><p>Tests compatible supports in the main skill and ranks their real DPS gains.</p></div></article>
+          <article class="release-item reveal"><span>02</span><div><h3>Unique items</h3><p>Compares a selection of uniques in valid slots and shows their impact on DPS, EHP, and Max Hit.</p></div></article>
+          <article class="release-item reveal"><span>03</span><div><h3>Next passives</h3><p>Shows reachable notables and keystones within the available points to help guide the next choice.</p></div></article>
+          <article class="release-item reveal"><span>04</span><div><h3>Details on demand</h3><p>When an answer mentions a gem, unique, or passive, the bridge can load the exact data for that element before finishing.</p></div></article>
+          <article class="release-item reveal"><span>05</span><div><h3>The original build stays untouched</h3><p>Comparisons run in temporary copies. The open character remains intact during analysis.</p></div></article>
+          <article class="release-item reveal"><span>06</span><div><h3>One context expansion</h3><p>If a good answer needs more data, AI can request one extra set of information without entering an endless loop.</p></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="release-block release-block-alt" id="changes" aria-labelledby="actions-title">
+      <div class="shell release-block-layout">
+        <div class="release-block-heading reveal">
+          <span class="release-number">04</span><span class="section-kicker">Applicable changes</span>
+          <h2 id="actions-title">18 actions AI<br>can propose.</h2>
+          <p>These are known changes validated by the app — not arbitrary commands on your computer.</p>
+        </div>
+        <div class="release-action-groups">
+          <article class="release-action-group reveal"><header><span>06</span><h3>Character</h3></header><ul><li>Change level</li><li>Change class</li><li>Choose ascendancy</li><li>Choose secondary ascendancy</li><li>Choose bandit</li><li>Choose pantheon</li></ul></article>
+          <article class="release-action-group reveal"><header><span>04</span><h3>Skills and gems</h3></header><ul><li>Add a skill group</li><li>Remove a skill group</li><li>Choose the main skill</li><li>Choose a skill part</li></ul></article>
+          <article class="release-action-group reveal"><header><span>02</span><h3>Items</h3></header><ul><li>Equip an item</li><li>Equip a jewel in a socket</li></ul></article>
+          <article class="release-action-group reveal"><header><span>05</span><h3>Passive tree</h3></header><ul><li>Allocate a passive</li><li>Deallocate a passive</li><li>Choose a mastery effect</li><li>Apply a tattoo</li><li>Remove a tattoo</li></ul></article>
+          <article class="release-action-group release-action-group-wide reveal"><header><span>01</span><h3>Calculations</h3></header><ul><li>Change an option in the Configuration tab</li></ul></article>
+          <div class="release-total reveal"><strong>18</strong><span>types of change, each with its own validation before the preview.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="release-block" id="safety" aria-labelledby="safety-title">
+      <div class="shell release-block-layout">
+        <div class="release-block-heading reveal">
+          <span class="release-number">05</span><span class="section-kicker">You decide</span>
+          <h2 id="safety-title">Preview first.<br><em>Apply second.</em></h2>
+          <p>An AI answer never becomes an automatic change to the character.</p>
+        </div>
+        <div class="release-items">
+          <article class="release-item reveal"><span>01</span><div><h3>Restricted format</h3><p>Every suggestion must be one of the 18 accepted actions with the correct fields. Unknown actions are rejected.</p></div></article>
+          <article class="release-item reveal"><span>02</span><div><h3>Tested in a copy</h3><p>The entire batch is first applied to an isolated clone of the build and recalculated by the PoB engine.</p></div></article>
+          <article class="release-item reveal"><span>03</span><div><h3>Real before and after</h3><p>The preview shows calculated differences in DPS, EHP, Max Hit, life, resistances, points, and other affected numbers.</p></div></article>
+          <article class="release-item reveal"><span>04</span><div><h3>The full batch or nothing</h3><p>If one change fails, the preview is rejected. V1 does not present a partial result as though it were complete.</p></div></article>
+          <article class="release-item reveal"><span>05</span><div><h3>Stale preview protection</h3><p>If you edit the build after calculation, Apply is blocked and the suggestion must be tested again.</p></div></article>
+          <article class="release-item reveal"><span>06</span><div><h3>Deliberate Apply</h3><p>Only the <b>Apply</b> button changes the real build. The app also reports which actions were applied and which failed.</p></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="release-block release-block-alt" id="configuration" aria-labelledby="config-title">
+      <div class="shell release-block-layout">
+        <div class="release-block-heading reveal">
+          <span class="release-number">06</span><span class="section-kicker">Your AI, your key</span>
+          <h2 id="config-title">Local setup<br>with no middleman.</h2>
+          <p>The project does not sell an AI service. You choose the connection you want to use.</p>
+        </div>
+        <div class="release-items">
+          <article class="release-item reveal"><span>01</span><div><h3>Integrated AI Setup</h3><p>A popup inside PoB accepts the API key, HTTPS endpoint, and model name.</p></div></article>
+          <article class="release-item reveal"><span>02</span><div><h3>OpenAI-compatible format</h3><p>Works with services that provide an OpenAI-format API, without locking you into a single provider.</p></div></article>
+          <article class="release-item reveal"><span>03</span><div><h3>Connection test</h3><p>The <b>Test</b> button verifies the key, endpoint, and model before you save the configuration.</p></div></article>
+          <article class="release-item reveal"><span>04</span><div><h3>Masked and local key</h3><p>The field hides the key and its configuration file stays in the user data folder, outside the repository and download.</p></div></article>
+          <article class="release-item reveal"><span>05</span><div><h3>HTTPS required</h3><p>Insecure endpoints are rejected. Connection and total request timeouts are also enforced.</p></div></article>
+          <article class="release-item reveal"><span>06</span><div><h3>No project server</h3><p>PathOfAIBuilding has no proxy, telemetry, or analytics. The conversation goes directly from your computer to the service you chose.</p></div></article>
+          <aside class="release-disclosure release-item-wide reveal"><strong>What the AI service receives</strong><p>Your question, recent history, and the parts of the build required for the answer. The key is used only in the authorisation header. Choose a service you trust.</p></aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="release-block" id="installation" aria-labelledby="install-title">
+      <div class="shell release-block-layout">
+        <div class="release-block-heading reveal">
+          <span class="release-number">07</span><span class="section-kicker">Distribution</span>
+          <h2 id="install-title">Download, extract,<br>and open.</h2>
+          <p>The first version uses a portable package. This release does not include an installer.</p>
+        </div>
+        <div class="release-items">
+          <article class="release-item reveal"><span>01</span><div><h3>Portable Windows build</h3><p>Download the release ZIP, extract the folder, and open <b>Path of Building.exe</b>.</p></div></article>
+          <article class="release-item reveal"><span>02</span><div><h3>Linux through Wine or Proton</h3><p>The same package runs on Linux through compatibility tools. A native version is not part of V1 yet.</p></div></article>
+          <article class="release-item reveal"><span>03</span><div><h3>Current community base</h3><p>Built from Path of Building Community 2.65.0 with passive tree data 3.28.</p></div></article>
+          <article class="release-item reveal"><span>04</span><div><h3>Verifiable download</h3><p>The release publishes <b>SHA256SUMS.txt</b> so you can verify the downloaded archive.</p></div></article>
+          <article class="release-item reveal"><span>05</span><div><h3>Audited package</h3><p>The published ZIP was checked for keys, settings, logs, personal saves, duplicate paths, and unsafe files.</p></div></article>
+          <article class="release-item reveal"><span>06</span><div><h3>387 tests passed</h3><p>The AI integration and the full PoB suite passed on the published version, which also opened successfully in a clean Wine session.</p></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="release-block release-block-limits" id="limits" aria-labelledby="limits-title">
+      <div class="shell release-block-layout">
+        <div class="release-block-heading reveal">
+          <span class="release-number">08</span><span class="section-kicker">Honest scope</span>
+          <h2 id="limits-title">What V1<br>does not do yet.</h2>
+          <p>The first release is focused on reviewing and improving an existing build.</p>
+        </div>
+        <div class="release-items">
+          <article class="release-item release-limit reveal"><span>—</span><div><h3>It does not create a complete build from scratch</h3><p>You need to open an existing character before starting the conversation.</p></div></article>
+          <article class="release-item release-limit reveal"><span>—</span><div><h3>It does not check prices or execute trades</h3><p>V1 makes no promise about budgets, current prices, or automatically buying items.</p></div></article>
+          <article class="release-item release-limit reveal"><span>—</span><div><h3>It does not optimise the whole tree on its own</h3><p>It can guide nearby passives and apply proposed changes, but it does not solve the entire tree automatically.</p></div></article>
+          <article class="release-item release-limit reveal"><span>—</span><div><h3>Shortlists are not exhaustive catalogues</h3><p>Gem and unique comparisons use relevant candidates, not every possible combination in the game.</p></div></article>
+          <article class="release-item release-limit reveal"><span>—</span><div><h3>AI can still be wrong</h3><p>PoB checks the numbers and the preview reduces risk, but you remain responsible for reviewing the suggestion.</p></div></article>
+          <article class="release-item release-limit reveal"><span>—</span><div><h3>Your AI service may charge</h3><p>The app is free; API costs, usage limits, and privacy depend on the service you configure.</p></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="release-cta" aria-labelledby="release-cta-title">
+      <div class="final-grid" aria-hidden="true"></div>
+      <div class="shell release-cta-inner reveal">
+        <span class="section-kicker">Version 1.0.0 · free</span>
+        <h2 id="release-cta-title">Open your build.<br><em>Ask the first question.</em></h2>
+        <p>Download the portable package and connect the AI service you already use.</p>
+        <div><a class="button button-primary" href="https://github.com/kaiqueramos/PathOfAIBuilding/releases/tag/v1.0.0">Download V1 free</a><a class="button button-ghost" href="https://github.com/kaiqueramos/PathOfAIBuilding/blob/dev/changelog.txt">Read the technical changelog</a></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="shell footer-main">
+      <a class="brand" href="../" aria-label="PathOfAIBuilding — back to home"><span class="brand-mark" aria-hidden="true"><span class="brand-orbit"></span><span class="brand-core"></span></span><span class="brand-copy"><strong>PathOfAI</strong><span>Building</span></span></a>
+      <p>A community version of Path of Building for PoE 1, with optional AI.</p>
+      <nav aria-label="Footer links"><a href="./" aria-current="page">Changelog</a><a href="https://github.com/kaiqueramos/PathOfAIBuilding/releases">Releases</a><a href="https://github.com/kaiqueramos/PathOfAIBuilding/blob/dev/AI_SECURITY.md">Security</a><a href="https://github.com/kaiqueramos/PathOfAIBuilding/issues">Issues</a><a href="https://github.com/PathOfBuildingCommunity/PathOfBuilding">PoB Community</a></nav>
+    </div>
+    <div class="shell footer-bottom"><span>MIT License · Community project, not affiliated with Grinding Gear Games.</span><span>Built from Path of Building Community.</span></div>
+  </footer>
+</body>
+</html>
