@@ -1,6 +1,7 @@
 -- Path of Building AI Integration
 -- AI Chat Tab: conversational interface for build advice
 -- Follows the NotesTab pattern (ControlHost + Control)
+-- cspell:ignore translit
 
 local t_insert = table.insert
 local dkjson = require "dkjson"
@@ -248,6 +249,7 @@ function AIChatTabClass:SendMessage(text)
 	self.controls.send.enabled = false
 	self.pending = true
 	self.controls.status.label = "^7Thinking..."
+	local supersedesUnappliedActions = self.pendingActions and #self.pendingActions > 0
 	-- A new request supersedes any unapplied actions from the previous response.
 	self.pendingActions = nil
 	self.pendingActionsFingerprint = nil
@@ -293,7 +295,7 @@ function AIChatTabClass:SendMessage(text)
 			self.controls.status.label = self.controls.applyActions.shown
 				and "^2Ready - actions available below" or "^2Ready"
 		end
-	end, history)
+	end, history, supersedesUnappliedActions)
 end
 
 --- Start streaming a response (progressive reveal)

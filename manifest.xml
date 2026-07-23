@@ -1,11 +1,11 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <PoBVersion>
-	<Version number="1.1.1" />
+	<Version number="1.1.2" />
 	<Source part="default" url="https://raw.githubusercontent.com/kaiqueramos/PathOfAIBuilding/{branch}/" />
 	<Source part="runtime" platform="win32" url="https://raw.githubusercontent.com/kaiqueramos/PathOfAIBuilding/{branch}/runtime/" />
 	<Source part="program" url="https://raw.githubusercontent.com/kaiqueramos/PathOfAIBuilding/{branch}/src/" />
 	<Source part="tree" url="https://raw.githubusercontent.com/kaiqueramos/PathOfAIBuilding/{branch}/src/" />
-	<File name="changelog.txt" part="default" sha1="3f0b2ecf0d82ed33ee05657326914fd19021d50a" />
+	<File name="changelog.txt" part="default" sha1="b12ab418ac9ffe53a7ca227f7ce0fc6792a04923" />
 	<File name="help.txt" part="default" sha1="e486cb63a78f5ca355430b67fa23e02fd30f5771" />
 	<File name="LICENSE.md" part="default" sha1="c77635aa1ba0a2ffe8eb72f93b3376e3a3d2041a" />
 	<File name="Assets/ascendancypassiveheaderleft.png" part="program" sha1="6a65683dcc3b14382dc083198fe9361454e91b15" />
@@ -117,7 +117,7 @@
 	<File name="Assets/synthesisicon.png" part="program" sha1="057082f25ec8b6660fc0b3a2061589bd9fed2234" />
 	<File name="Assets/veiledicon.png" part="program" sha1="035479a7ee7847969ef50ff428e3bee897fba671" />
 	<File name="Assets/warlordicon.png" part="program" sha1="cca050c84884f5c0bb1380ece51d3c4b32be4900" />
-	<File name="Classes/AIChatTab.lua" part="program" sha1="f10c681c0df72ae90a2caa23c9e975c295af67a5" />
+	<File name="Classes/AIChatTab.lua" part="program" sha1="57df85d102ff21f4c61f846ded32cfdecdc588da" />
 	<File name="Classes/AIConfigPanel.lua" part="program" sha1="11011f13597589856c60012b4d3ba74388849806" />
 	<File name="Classes/BuildListControl.lua" part="program" sha1="dd5b90a9f901096ed9d88783398ca5060b2419bf" />
 	<File name="Classes/ButtonControl.lua" part="program" sha1="697870f9f43eee2c804be087849b46849c83153a" />
@@ -338,7 +338,7 @@
 	<File name="GameVersions.lua" part="program" sha1="2ba59bb7443d8f829861fdd5794c57db14c894b3" />
 	<File name="Launch.lua" part="program" sha1="fc295365f1b22662f67071da92f4778ad3cd0c33" />
 	<File name="LaunchServer.lua" part="program" sha1="223ba77d7e428904b1849d7b4416a42ea1c23a00" />
-	<File name="Modules/AIBridge.lua" part="program" sha1="71aa600cddfa09299bd855f67b4c17d7d2513a6d" />
+	<File name="Modules/AIBridge.lua" part="program" sha1="4567db491fe11ec27a4ec7333ee7d19e5dd718bc" />
 	<File name="Modules/AIConfig.lua" part="program" sha1="85496350c8b373d3de79303b3f1e921b9bcf0730" />
 	<File name="Modules/Build.lua" part="program" sha1="8c53bf11f30773002695768ba6dd0efb7130e9d7" />
 	<File name="Modules/BuildDisplayStats.lua" part="program" sha1="6fe2e80a3a9fb836d21279e37654047a2c6afcbd" />

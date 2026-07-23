@@ -1563,7 +1563,8 @@ end
 -- @param build The active build object
 -- @param callback function(response, errMsg, fingerprint) called with the result
 -- @param history optional array of prior {role, content} messages
-function AIBridge:Ask(build, userMessage, callback, history)
+-- @param supersedesUnappliedActions whether this request replaces a proposal that was not applied
+function AIBridge:Ask(build, userMessage, callback, history, supersedesUnappliedActions)
 	if self.pending then
 		callback(nil, "Request already in progress")
 		return
@@ -1656,6 +1657,14 @@ then the alloc_node actions. For cluster jewels, emit equip_jewel FIRST, then al
 for the cluster's internal nodes. After adding skills, emit set_main_skill so DPS is correct.
 Abyssal jewels: use equip_item with an abyssal slot name from state.abyssalSockets.
 Only include actions you are confident about.]]
+
+	if supersedesUnappliedActions then
+		systemPrompt = systemPrompt .. [[
+
+The previous action proposal in this conversation was NOT applied. The current serialized build
+state is authoritative. When the player asks for a correction or replacement, emit a fresh
+complete <actions> block for the requested change; never assume the previous proposal took effect.]]
+	end
 
 	local detailSections = {}
 	if self.lastMentions and #self.lastMentions > 0 then

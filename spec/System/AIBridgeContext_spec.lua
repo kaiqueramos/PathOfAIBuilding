@@ -186,7 +186,7 @@ describe("AI selective build serialization", function()
 		assert.are.equal("unique", mentions[2].type)
 	end)
 
-	it("sends a compact bounded request through the real Ask path", function()
+	it("sends a compact bounded request with an unapplied-action correction contract", function()
 		local bridge = LoadModule("Modules/AIBridge")
 		local aiConfig = findUpvalue(bridge.Ask, "AIConfig")
 		assert.is_table(aiConfig)
@@ -225,7 +225,7 @@ describe("AI selective build serialization", function()
 			bridge:Ask(build, "Can I tank this boss?", function(content, callbackError)
 				responseContent = content
 				responseError = callbackError
-			end, history)
+			end, history, true)
 		end)
 
 		aiConfig.Validate = originalValidate
@@ -241,6 +241,8 @@ describe("AI selective build serialization", function()
 
 		assert.are.equal(73, capturedOptions.timeout)
 		local request = assert(dkjson.decode(capturedOptions.body))
+		assert.is_truthy(request.messages[1].content:find("previous action proposal", 1, true))
+		assert.is_truthy(request.messages[1].content:find("NOT applied", 1, true))
 		assert.are.equal(6, #request.messages)
 		local historyChars = 0
 		for index = 2, #request.messages - 1 do

@@ -1,3 +1,10 @@
+VERSION[1.1.2][2026/07/23]
+
+--- AI Action Follow-up ---
+* Preserve the current build state when a player corrects an unapplied AI proposal
+* Tell the next AI request that the earlier proposal was not applied and require a fresh action batch
+* Keep the build unchanged until the player explicitly applies the replacement proposal
+
 VERSION[1.1.1][2026/07/23]
 
 --- AI Provider Configuration ---

@@ -5,6 +5,12 @@ the desktop application. It reads the active PoE 1 build, uses PoB's calculated
 numbers as the source of truth, proposes validated changes, and applies them only
 after a preview.
 
+## V1.1.2: replace unapplied AI proposals
+
+When a player asks to correct an AI proposal before applying it, the next request
+explicitly states that the earlier proposal was not applied. The current PoB build
+state remains authoritative, and the replacement response can open a fresh action batch.
+
 ## V1.1.1: provider request options
 
 AI Setup now exposes optional provider request JSON. This keeps the OpenAI-compatible
@@ -88,7 +94,7 @@ generation are not part of V1.
 
 ## Download and first run
 
-1. Download `PathOfAIBuilding-v1.1.1-Windows-Portable.zip` from this fork's
+1. Download `PathOfAIBuilding-v1.1.2-Windows-Portable.zip` from this fork's
    [Releases](https://github.com/kaiqueramos/PathOfAIBuilding/releases) page.
 2. Extract the archive to a writable directory and run `Path of Building.exe`.
    Linux users can run the same executable through Wine or Proton.

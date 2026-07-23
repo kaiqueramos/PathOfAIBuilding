@@ -1,8 +1,21 @@
+-- cspell:ignore Upvalue
 local function readFile(path)
 	local file = assert(io.open(path, "r"))
 	local content = file:read("*a")
 	file:close()
 	return content
+end
+
+local function findUpvalue(fn, targetName)
+	for index = 1, 32 do
+		local name, value = debug.getupvalue(fn, index)
+		if not name then
+			break
+		end
+		if name == targetName then
+			return value
+		end
+	end
 end
 
 local function changedLevel(level)
@@ -102,5 +115,36 @@ describe("AI safe action batch", function()
 		assert.is_truthy(message:find("Real PoB diff", 1, true))
 		assert.is_truthy(message:find("DPS:", 1, true))
 		assert.is_truthy(message:find("EHP:", 1, true))
+	end)
+
+	it("replaces an unapplied proposal with a fresh actionable correction", function()
+		local chat = build.aiChatTab
+		local bridge = assert(findUpvalue(chat.SendMessage, "AIBridge"))
+		local originalAsk = bridge.Ask
+		local originalLevel = build.characterLevel
+		local supersedesUnappliedActions
+		chat.pendingActions = { { type = "set_level", value = 98 } }
+		chat.pendingActionsFingerprint = assert(bridge:GetBuildFingerprint(build))
+		chat.controls.applyActions.shown = true
+
+		bridge.Ask = function(_, _, _, callback, _, supersedes)
+			supersedesUnappliedActions = supersedes
+			callback([[
+Use level 97 instead.
+<actions>
+[{"type":"set_level","value":97}]
+</actions>]], nil, assert(bridge:GetBuildFingerprint(build)))
+		end
+
+		local ok, err = pcall(function()
+			chat:SendMessage("Correct the previous suggestion: use level 97 instead.")
+		end)
+		bridge.Ask = originalAsk
+
+		assert(ok, err)
+		assert.is_true(supersedesUnappliedActions)
+		assert.same({ { type = "set_level", value = 97 } }, chat.pendingActions)
+		assert.is_true(chat.controls.applyActions.shown)
+		assert.are.equal(originalLevel, build.characterLevel)
 	end)
 end)
