@@ -4,9 +4,9 @@
 -- cspell:ignore aguent aljava alocar anel arma armas arvore ascs baixo bandido bloqueio botas
 -- cspell:ignore capacete cinto condicao condicoes configuracao dano defesa defensiva desalocar
 -- cspell:ignore distancia equipamento equipamentos esta frasco gema gemas habilidade invocacao invocacoes invocador joia luvas
--- cspell:ignore maestria melhor melhorar melhoro melhoria melhorias minion minions nodo nodos passiva proximo
--- cspell:ignore realocar recalc resistencias summon summoner suporte suportes supressao unico unicos
--- cspell:ignore jsontype
+-- cspell:ignore cria faca maestria melhor melhorar melhoro melhoria melhorias minion minions monta montar nivel nodo nodos passiva proximo
+-- cspell:ignore realocar recalc reconstruir refaz refazer resetar resistencias summon summoner suporte suportes supressao unico unicos zerar
+-- cspell:ignore elementalist jsontype
 
 local t_insert = table.insert
 local t_remove = table.remove
@@ -34,6 +34,107 @@ local CONTEXT_SCOPE_DESCRIPTIONS = {
 	uniques = "unique catalog, item bases, and simulated DPS/EHP upgrades",
 	tree = "reachable notable and keystone allocation candidates",
 	config = "current calculation settings and available configuration keys",
+}
+
+-- Tree recommendations are derived from skill mechanics and the player's stated
+-- goal, rather than from a build archetype hard-coded into the planner.
+local TREE_GOAL_RULES = {
+	{ id = "minion", label = "minion scaling", weight = 140, primary = true,
+		queryTerms = { "minion", "minions", "summon", "summoner", "zombie", "zombies", "skeleton", "skeletons", "spectre", "spectres", "invocador", "invocacao", "invocacoes" },
+		statTerms = { "minion", "minions" }, skillTypes = { "Minion", "CreatesMinion" } },
+	{ id = "totem", label = "totem scaling", weight = 125, primary = true,
+		queryTerms = { "totem", "totems" }, statTerms = { "totem", "totems" }, skillTypes = { "SummonsTotem", "Totem" } },
+	{ id = "trap", label = "trap scaling", weight = 125, primary = true,
+		queryTerms = { "trap", "traps", "armadilha", "armadilhas" }, statTerms = { "trap", "traps" }, skillTypes = { "Trap" } },
+	{ id = "mine", label = "mine scaling", weight = 125, primary = true,
+		queryTerms = { "mine", "mines", "mina", "minas" }, statTerms = { "mine", "mines" }, skillTypes = { "Mine" } },
+	{ id = "attack", label = "attack scaling", weight = 85, primary = true,
+		queryTerms = { "attack", "attacks", "ataque", "ataques", "bow", "arco", "melee", "corpo a corpo" },
+		statTerms = { "attack damage", "attack speed", "accuracy rating", "melee physical damage", "projectile attack damage" }, skillTypes = { "Attack" } },
+	{ id = "spell", label = "spell scaling", weight = 85, primary = true,
+		queryTerms = { "spell", "spells", "magia", "magias", "feitico", "feiticos" },
+		statTerms = { "spell damage", "cast speed", "spell critical strike" }, skillTypes = { "Spell" } },
+	{ id = "projectile", label = "projectile scaling", weight = 55,
+		queryTerms = { "projectile", "projectiles", "projeteis" },
+		statTerms = { "projectile damage", "projectile speed", "additional projectile" }, skillTypes = { "Projectile" } },
+	{ id = "melee", label = "melee scaling", weight = 55,
+		queryTerms = { "melee", "corpo a corpo" }, statTerms = { "melee damage", "melee attack speed", "melee physical" }, skillTypes = { "Melee" } },
+	{ id = "fire", label = "fire scaling", weight = 75, primary = true,
+		queryTerms = { "fire", "fogo", "ignite", "ignition", "ignicao" },
+		statTerms = { "fire damage", "fire penetration", "burning damage", "ignite" }, skillTypes = { "Fire" } },
+	{ id = "cold", label = "cold scaling", weight = 75, primary = true,
+		queryTerms = { "cold", "frio", "freeze", "congel" },
+		statTerms = { "cold damage", "cold penetration", "cold damage over time", "freeze" }, skillTypes = { "Cold" } },
+	{ id = "lightning", label = "lightning scaling", weight = 75, primary = true,
+		queryTerms = { "lightning", "raio", "shock", "choque" },
+		statTerms = { "lightning damage", "lightning penetration", "shock effect" }, skillTypes = { "Lightning" } },
+	{ id = "chaos", label = "chaos scaling", weight = 75, primary = true,
+		queryTerms = { "chaos", "caos", "poison", "veneno" },
+		statTerms = { "chaos damage", "chaos damage over time", "chaos resistance" }, skillTypes = { "Chaos" } },
+	{ id = "physical", label = "physical scaling", weight = 70, primary = true,
+		queryTerms = { "physical", "fisico", "bleed", "bleeding", "sangramento" },
+		statTerms = { "physical damage", "physical damage over time", "impale" }, skillTypes = { "Physical" } },
+	{ id = "damage_over_time", label = "damage over time scaling", weight = 90, primary = true,
+		queryTerms = { "damage over time", "dot", "dano ao longo do tempo" },
+		statTerms = { "damage over time", "damage over time multiplier", "dot multiplier" }, skillTypes = { "DamageOverTime" } },
+	{ id = "critical", label = "critical scaling", weight = 50,
+		queryTerms = { "crit", "critical", "critico", "criticos" },
+		statTerms = { "critical strike chance", "critical strike multiplier" }, skillTypes = { "CriticalStrike" } },
+	{ id = "aura", label = "aura scaling", weight = 65,
+		queryTerms = { "aura", "auras" }, statTerms = { "aura effect", "reservation efficiency", "mana reservation" }, skillTypes = { "Aura" } },
+	{ id = "life", label = "life", weight = 35,
+		queryTerms = { "life", "vida", "survivability", "defense", "defences", "defesa", "defensiva", "tank", "ehp" },
+		statTerms = { "maximum life", "increased maximum life", "life regeneration" } },
+	{ id = "energy_shield", label = "energy shield", weight = 45,
+		queryTerms = { "energy shield", "es", "escudo de energia" },
+		statTerms = { "energy shield", "es recharge", "energy shield recharge" } },
+	{ id = "armour", label = "armour", weight = 35,
+		queryTerms = { "armour", "armor", "armadura" }, statTerms = { "armour", "armor", "physical damage reduction" } },
+	{ id = "evasion", label = "evasion", weight = 35,
+		queryTerms = { "evasion", "evasao" }, statTerms = { "evasion", "chance to evade" } },
+	{ id = "block", label = "block", weight = 35,
+		queryTerms = { "block", "bloqueio" }, statTerms = { "block chance", "spell block" } },
+	{ id = "suppression", label = "spell suppression", weight = 35,
+		queryTerms = { "suppression", "supressao" }, statTerms = { "spell suppression", "suppression chance" } },
+}
+
+local TREE_GOAL_BY_ID = {}
+for _, rule in ipairs(TREE_GOAL_RULES) do
+	TREE_GOAL_BY_ID[rule.id] = rule
+end
+
+local PLANNING_CLASS_RULES = {
+	{ className = "Marauder", terms = { "marauder", "juggernaut", "berserker", "chieftain" } },
+	{ className = "Ranger", terms = { "ranger", "deadeye", "raider", "pathfinder", "warden" } },
+	{ className = "Witch", terms = { "witch", "necromancer", "occultist", "elementalist" } },
+	{ className = "Duelist", terms = { "duelist", "slayer", "gladiator", "champion" } },
+	{ className = "Templar", terms = { "templar", "inquisitor", "hierophant", "guardian" } },
+	{ className = "Shadow", terms = { "shadow", "assassin", "saboteur", "trickster" } },
+	{ className = "Scion", terms = { "scion", "ascendant" } },
+}
+
+-- These thresholds mirror PoB's progress estimator. They deliberately make
+-- unavailable campaign/lab rewards unavailable to AI actions as well.
+local QUEST_POINT_STEPS = {
+	{ level = 67, points = 23 },
+	{ level = 64, points = 20 },
+	{ level = 60, points = 18 },
+	{ level = 54, points = 15 },
+	{ level = 50, points = 12 },
+	{ level = 44, points = 9 },
+	{ level = 40, points = 7 },
+	{ level = 32, points = 6 },
+	{ level = 22, points = 4 },
+	{ level = 12, points = 2 },
+	{ level = 1, points = 0 },
+}
+
+local ASCENDANCY_POINT_STEPS = {
+	{ level = 75, points = 8 },
+	{ level = 68, points = 6 },
+	{ level = 55, points = 4 },
+	{ level = 33, points = 2 },
+	{ level = 1, points = 0 },
 }
 
 local function getChatCompletionURL(endpoint)
@@ -129,6 +230,257 @@ local function resolveGemAlias(build, name)
 	return candidate or name
 end
 
+local function pointsAtLevel(steps, level)
+	for _, step in ipairs(steps) do
+		if level >= step.level then
+			return step.points
+		end
+	end
+	return 0
+end
+
+local function isFreeStartNode(node)
+	return node.type == "ClassStart" or node.type == "AscendClassStart"
+end
+
+--- Return the campaign-legal passive and ascendancy point caps for this build.
+--- The cap is intentionally based on level and completed campaign milestones,
+--- not on an optimistic level-100 total.
+function AIBridge:GetPassivePointLimits(build, levelOverride, includeExtraPoints)
+	local level = math.floor(tonumber(levelOverride or (build and build.characterLevel)) or 1)
+	level = math.max(1, math.min(level, 100))
+
+	local extraPoints = 0
+	if includeExtraPoints ~= false then
+		local output = build and build.calcsTab and build.calcsTab.mainOutput
+		if output then
+			extraPoints = math.max(0, tonumber(output.ExtraPoints) or 0)
+		end
+
+		local configInput = build and build.configTab and build.configTab.input
+		local bandit = configInput and configInput.bandit
+		if level < 22 then
+			extraPoints = 0
+		elseif bandit == "None" then
+			-- BuildModList has already changed, but mainOutput may not yet have been
+			-- recalculated when set_bandit and alloc_node share an action batch.
+			extraPoints = math.max(extraPoints, 1)
+		elseif bandit and extraPoints == 1 then
+			-- Avoid retaining a stale kill-all-bandits point after switching away.
+			extraPoints = 0
+		end
+	end
+
+	local mainPoints = level - 1 + pointsAtLevel(QUEST_POINT_STEPS, level) + extraPoints
+	local ascendancyPoints = pointsAtLevel(ASCENDANCY_POINT_STEPS, level)
+	return mainPoints, ascendancyPoints
+end
+
+--- Compute the newly consumed points when PoB allocates node.path.
+--- This mirrors PassiveSpec:CountAllocNodes: normal passives cost main points,
+--- while real ascendancy nodes cost ascendancy points; starts are free.
+local function getNodeAllocationPath(node)
+	local path
+	if node.intuitiveLeapLikesAffecting and #node.intuitiveLeapLikesAffecting > 0 then
+		path = { node }
+	else
+		path = node.path or {}
+	end
+	if #path == 0 then
+		path = { node }
+	end
+	return path
+end
+
+--- Compute the newly consumed points when PoB allocates node.path.
+--- reservedNodes lets a planner account for paths already selected earlier.
+function AIBridge:GetAllocationCosts(node, reservedNodes)
+	local mainCost, ascendancyCost = 0, 0
+	local seen = {}
+	for _, pathNode in ipairs(getNodeAllocationPath(node)) do
+		local key = pathNode.id or pathNode
+		if not seen[key] and not pathNode.alloc and not (reservedNodes and reservedNodes[key]) then
+			seen[key] = true
+			if not isFreeStartNode(pathNode) then
+				if pathNode.ascendancyName and not pathNode.isMultipleChoiceOption then
+					ascendancyCost = ascendancyCost + 1
+				else
+					mainCost = mainCost + 1
+				end
+			end
+		end
+	end
+	return mainCost, ascendancyCost
+end
+
+local function reserveNodeAllocationPath(node, reservedNodes)
+	for _, pathNode in ipairs(getNodeAllocationPath(node)) do
+		reservedNodes[pathNode.id or pathNode] = true
+	end
+end
+
+local function getNodeStatLines(node)
+	local rawStats = node.sd
+	if type(rawStats) ~= "table" or #rawStats == 0 then
+		rawStats = node.stats
+	end
+	local stats = {}
+	if type(rawStats) == "table" then
+		for _, stat in ipairs(rawStats) do
+			if type(stat) == "string" and stat ~= "" then
+				t_insert(stats, stat)
+			end
+		end
+	elseif type(rawStats) == "string" and rawStats ~= "" then
+		t_insert(stats, rawStats)
+	end
+	return stats
+end
+
+local function scoreTreeCandidate(name, nodeType, stats, mainPointCost, goals)
+	if nodeType == "Keystone" then
+		-- Keystones have build-defining tradeoffs. A planner must never infer one
+		-- from a matching keyword; the player must request it explicitly.
+		return -1000, "keystone requires an explicit request"
+	end
+
+	local text = ((name or "") .. " " .. table.concat(stats, " ")):lower()
+	local score = 0
+	local reasons = {}
+	for _, goalId in ipairs(goals or {}) do
+		local rule = TREE_GOAL_BY_ID[goalId]
+		if rule and containsAny(text, rule.statTerms) then
+			score = score + rule.weight
+			t_insert(reasons, rule.label)
+		end
+	end
+	if score > 0 then
+		score = score - mainPointCost * 2
+	end
+	return score, #reasons > 0 and table.concat(reasons, ", ") or nil
+end
+
+--- Return reachable notable and keystone candidates with their real PoB stat lines.
+--- Scoring is driven by generic skill mechanics, never by a named build archetype.
+function AIBridge:CollectTreeCandidates(spec, mainAvailable, ascendancyAvailable, goals)
+	local candidates = {}
+	for _, node in pairs(spec.nodes or {}) do
+		if (node.type == "Notable" or node.type == "Keystone") and node.name and not node.alloc and node.path then
+			local mainPointCost, ascendancyPointCost = self:GetAllocationCosts(node)
+			if mainPointCost <= mainAvailable and ascendancyPointCost <= ascendancyAvailable then
+				local stats = getNodeStatLines(node)
+				local goalScore, goalReason =
+					scoreTreeCandidate(node.name, node.type, stats, mainPointCost, goals)
+				t_insert(candidates, {
+					name = node.name,
+					type = node.type,
+					stats = stats,
+					pathLength = #node.path,
+					mainPointCost = mainPointCost,
+					ascendancyPointCost = ascendancyPointCost,
+					goalScore = goalScore,
+					goalReason = goalReason,
+				})
+			end
+		end
+	end
+
+	table.sort(candidates, function(a, b)
+		if #goals > 0 and a.goalScore ~= b.goalScore then
+			return a.goalScore > b.goalScore
+		end
+		if a.pathLength ~= b.pathLength then
+			return a.pathLength < b.pathLength
+		end
+		return a.name < b.name
+	end)
+
+	if #candidates > 50 then
+		candidates = { unpack(candidates, 1, 50) }
+	end
+	return candidates
+end
+
+--- Select a bounded, path-aware sequence from the mechanic-matched notables.
+function AIBridge:BuildTreeRecommendationPlan(spec, candidates, mainAvailable, ascendancyAvailable, goals)
+	if #goals == 0 then
+		return {}, 0, 0
+	end
+
+	local nodesByName = {}
+	for _, node in pairs(spec.nodes or {}) do
+		if node.name then
+			nodesByName[node.name:lower()] = node
+		end
+	end
+
+	local reservedNodes = {}
+	local plan = {}
+	local mainUsed, ascendancyUsed = 0, 0
+	for _, candidate in ipairs(candidates) do
+		if candidate.goalScore > 0 then
+			local node = nodesByName[candidate.name:lower()]
+			if node then
+				local mainCost, ascendancyCost = self:GetAllocationCosts(node, reservedNodes)
+				if (mainCost > 0 or ascendancyCost > 0)
+					and mainUsed + mainCost <= mainAvailable
+					and ascendancyUsed + ascendancyCost <= ascendancyAvailable then
+					mainUsed = mainUsed + mainCost
+					ascendancyUsed = ascendancyUsed + ascendancyCost
+					reserveNodeAllocationPath(node, reservedNodes)
+					t_insert(plan, {
+						name = candidate.name,
+						type = candidate.type,
+						stats = candidate.stats,
+						goalReason = candidate.goalReason,
+						mainPointCost = mainCost,
+						ascendancyPointCost = ascendancyCost,
+						cumulativeMainPoints = mainUsed,
+						cumulativeAscendancyPoints = ascendancyUsed,
+					})
+					if #plan == 12 then
+						break
+					end
+				end
+			end
+		end
+	end
+	return plan, mainUsed, ascendancyUsed
+end
+
+--- Reject a requested allocation before it can over-spend the current build.
+function AIBridge:ValidateNodeAllocationBudget(build, node)
+	local spec = build and build.spec
+	if not spec or not spec.CountAllocNodes then
+		return true
+	end
+
+	local ok, mainUsed, ascendancyUsed = pcall(spec.CountAllocNodes, spec)
+	if not ok then
+		return false, "Could not count allocated passive points: " .. tostring(mainUsed)
+	end
+
+	local mainCost, ascendancyCost = self:GetAllocationCosts(node)
+	local mainLimit, ascendancyLimit = self:GetPassivePointLimits(build)
+	if mainUsed + mainCost > mainLimit then
+		return false, string.format(
+			"Not enough passive points: %d/%d used, allocation needs %d more",
+			mainUsed,
+			mainLimit,
+			mainCost
+		)
+	end
+	if ascendancyUsed + ascendancyCost > ascendancyLimit then
+		return false, string.format(
+			"Not enough ascendancy points: %d/%d used, allocation needs %d more",
+			ascendancyUsed,
+			ascendancyLimit,
+			ascendancyCost
+		)
+	end
+	return true
+end
+
 --- Classify a question locally so expensive context is built only when useful.
 -- Input typed in the PoB UI is already transliterated to ASCII.
 -- @param userMessage Player question
@@ -155,6 +507,28 @@ function AIBridge:ClassifyQuestion(userMessage)
 		"tree", "passive", "node", "nodes", "notable", "keystone", "mastery", "allocate",
 		"deallocate", "pathing", "arvore", "passiva", "nodo", "nodos", "maestria",
 		"alocar", "realocar", "desalocar",
+	})
+	local buildCreation = containsAny(text, {
+		"create a build", "make a build", "build me a", "starter build", "league starter",
+		"cria uma build", "monta uma build", "monte uma build", "faz uma build",
+		"faca uma build", "montar uma build",
+	})
+	local targetLevel = tonumber(text:match("level%s+(%d+)") or text:match("nivel%s+(%d+)"))
+	if not targetLevel or targetLevel < 1 or targetLevel > 100 then
+		targetLevel = nil
+	end
+	local planningClass
+	if buildCreation then
+		for _, rule in ipairs(PLANNING_CLASS_RULES) do
+			if containsAny(text, rule.terms) then
+				planningClass = rule.className
+				break
+			end
+		end
+	end
+	local resetTreePlanning = buildCreation or containsAny(text, {
+		"reset tree", "resetar tree", "resetar arvore", "refaz", "refazer", "rebuild tree",
+		"reconstruir arvore", "zerar tree", "zerar arvore",
 	})
 	local config = containsAny(text, {
 		"config", "configuration", "boss config", "boss setting", "set boss", "enemy condition",
@@ -197,12 +571,100 @@ function AIBridge:ClassifyQuestion(userMessage)
 		intents = intents,
 		includeGemShortlist = general or gems,
 		includeUniqueShortlist = general or items,
-		includeTreeCandidates = general or tree,
+		includeTreeCandidates = general or tree or buildCreation,
+		targetLevel = targetLevel,
+		treeGoals = self:DeriveTreeGoals(nil, userMessage),
+		planningClass = planningClass,
+		resetTreePlanning = resetTreePlanning,
 		includeGemReference = gems and not general,
 		includeUniqueReference = items and not general,
 		includeItemBases = items and not general,
 		includeConfigReference = config,
 	}
+end
+
+local function addSkillTypes(skillTypes, gemData)
+	local grantedEffect = gemData and gemData.grantedEffect
+	if grantedEffect and type(grantedEffect.skillTypes) == "table" then
+		for skillTypeId in pairs(grantedEffect.skillTypes) do
+			skillTypes[skillTypeId] = true
+		end
+	end
+end
+
+local function collectMainSkillTypes(build, skillTypes)
+	local skillsTab = build and build.skillsTab
+	local activeSet = skillsTab and skillsTab.skillSets and skillsTab.skillSets[skillsTab.activeSkillSetId]
+	local group = activeSet and activeSet.socketGroupList
+		and activeSet.socketGroupList[build.mainSocketGroup or 1]
+	if group and group.gemList then
+		for _, gem in ipairs(group.gemList) do
+			local gemData = gem.gemData
+			if gemData and gemData.grantedEffect and not gemData.grantedEffect.support then
+				addSkillTypes(skillTypes, gemData)
+			end
+		end
+	end
+end
+
+local function collectMentionedSkillTypes(build, text, skillTypes)
+	local gems = build and build.data and build.data.gems
+	if type(gems) ~= "table" then
+		return
+	end
+	for _, gemData in pairs(gems) do
+		local name = gemData and gemData.name
+		if type(name) == "string" and #name >= 4 and text:find(name:lower(), 1, true) then
+			addSkillTypes(skillTypes, gemData)
+		end
+	end
+end
+
+local function ruleMatchesSkillTypes(rule, skillTypes)
+	if type(SkillType) ~= "table" then
+		return false
+	end
+	for _, skillTypeName in ipairs(rule.skillTypes or {}) do
+		local skillTypeId = SkillType[skillTypeName]
+		if skillTypeId and skillTypes[skillTypeId] then
+			return true
+		end
+	end
+	return false
+end
+
+--- Derive mechanic goals from actual active/mentioned skills and the player's words.
+--- This allows the same planner to support every class and damage archetype.
+function AIBridge:DeriveTreeGoals(build, userMessage)
+	local text = (userMessage or ""):lower()
+	local skillTypes = {}
+	collectMainSkillTypes(build, skillTypes)
+	collectMentionedSkillTypes(build, text, skillTypes)
+
+	local selected = {}
+	local hasPrimary = false
+	for _, rule in ipairs(TREE_GOAL_RULES) do
+		if containsAny(text, rule.queryTerms) or ruleMatchesSkillTypes(rule, skillTypes) then
+			selected[rule.id] = true
+			hasPrimary = hasPrimary or rule.primary or false
+		end
+	end
+
+	-- Summons use their own minion modifiers, not the caster's generic spell damage.
+	if selected.minion then
+		selected.spell = nil
+	end
+	if hasPrimary and not selected.life then
+		selected.life = true
+	end
+
+	local goals = {}
+	for _, rule in ipairs(TREE_GOAL_RULES) do
+		if selected[rule.id] then
+			t_insert(goals, rule.id)
+		end
+	end
+	return goals
 end
 
 --- Keep the newest contiguous conversation history within a character budget.
@@ -320,17 +782,31 @@ function AIBridge:SerializeBuild(build, context)
 		end
 	end
 
-	-- Passive points: used vs available
+	-- Passive points: cap recommendations to the character's actual campaign progress.
 	if spec and spec.CountAllocNodes then
 		local used, ascUsed = spec:CountAllocNodes()
-		local extra = build.calcsTab and build.calcsTab.mainOutput and build.calcsTab.mainOutput.ExtraPoints or 0
-		local level = build.characterLevel or 1
-		local totalMain = (level - 1) + 23 + extra  -- level points + quest points
+		local totalMain, totalAscendancy = self:GetPassivePointLimits(build)
 		state.tree.pointsUsed = used
 		state.tree.pointsTotal = totalMain
 		state.tree.pointsAvailable = math.max(totalMain - used, 0)
 		state.tree.ascendancyUsed = ascUsed
-		state.tree.ascendancyTotal = 8
+		state.tree.ascendancyTotal = totalAscendancy
+		state.tree.ascendancyAvailable = math.max(totalAscendancy - ascUsed, 0)
+
+		-- A request such as "build me to level 30" needs candidates for that
+		-- future level, even when the currently open build is still level 1.
+		-- Exclude a possible bandit point so this planning cap stays safe.
+		local currentLevel = math.floor(tonumber(build.characterLevel) or 1)
+		local planningLevel = context.targetLevel
+		if planningLevel and planningLevel > currentLevel then
+			local planningMain, planningAscendancy =
+				self:GetPassivePointLimits(build, planningLevel, false)
+			state.tree.planningLevel = planningLevel
+			state.tree.planningPointsTotal = planningMain
+			state.tree.planningPointsAvailable = math.max(planningMain - used, 0)
+			state.tree.planningAscendancyTotal = planningAscendancy
+			state.tree.planningAscendancyAvailable = math.max(planningAscendancy - ascUsed, 0)
+		end
 	end
 
 	-- Stats from mainOutput (the calculated values)
@@ -453,26 +929,67 @@ function AIBridge:SerializeBuild(build, context)
 		state.tree.allocatedNodes = nodeIds
 	end
 
-	-- Available nodes for allocation (only reachable ones with a valid path)
-	-- Excludes anoint-only nodes and disconnected nodes
+	-- Reachable tree candidates which fit the relevant level-appropriate budget.
+	-- A requested class or reset is projected into a clone before candidates are
+	-- serialized, so paths always match the route the actions will create.
 	if includeTreeCandidates and spec and spec.nodes then
-		local availableNodes = {}
-		for nodeId, node in pairs(spec.nodes) do
-			if (node.type == "Notable" or node.type == "Keystone") and not node.alloc and node.path then
-				t_insert(availableNodes, {
-					id = nodeId,
-					name = node.name,
-					type = node.type,
-					pathLength = #node.path,
-				})
+		local candidateSpec = spec
+		local candidateMainUsed = state.tree.pointsUsed or 0
+		local candidateAscendancyUsed = state.tree.ascendancyUsed or 0
+		local candidateClass
+		local projectsClass = context.planningClass and spec.curClassName ~= context.planningClass
+		local projectsReset = context.resetTreePlanning
+		local candidateResetsTree
+		if (projectsClass or projectsReset) and build.SaveDB and spec.tree and spec.tree.classNameMap then
+			local snapshotOk, snapshotXml = pcall(build.SaveDB, build)
+			if snapshotOk and snapshotXml then
+				local cloneOk, projectedBuild = pcall(new, "CompareEntry", snapshotXml, "AI tree planning")
+				local projectedSpec = cloneOk and projectedBuild and projectedBuild.spec
+				local classId = projectsClass and projectedSpec
+					and projectedSpec.tree.classNameMap[context.planningClass]
+				if projectedSpec and (not projectsClass or classId) then
+					projectedSpec:ResetNodes()
+					if projectsClass then
+						projectedSpec:SelectClass(classId)
+					elseif projectedSpec.BuildAllDependsAndPaths then
+						projectedSpec:BuildAllDependsAndPaths()
+					end
+					candidateSpec = projectedSpec
+					candidateMainUsed, candidateAscendancyUsed = projectedSpec:CountAllocNodes()
+					candidateClass = projectsClass and context.planningClass or nil
+					candidateResetsTree = (projectsClass or projectsReset) or nil
+				end
 			end
 		end
-		-- Sort by path length (closest first) and limit to 50
-		table.sort(availableNodes, function(a, b) return a.pathLength < b.pathLength end)
-		if #availableNodes > 50 then
-			availableNodes = {unpack(availableNodes, 1, 50)}
-		end
+
+		local mainTotal = state.tree.planningPointsTotal or state.tree.pointsTotal or 0
+		local ascendancyTotal = state.tree.planningAscendancyTotal or state.tree.ascendancyTotal or 0
+		local mainAvailable = math.max(mainTotal - candidateMainUsed, 0)
+		local ascendancyAvailable = math.max(ascendancyTotal - candidateAscendancyUsed, 0)
+		local goals = context.treeGoals or {}
+		local availableNodes =
+			self:CollectTreeCandidates(candidateSpec, mainAvailable, ascendancyAvailable, goals)
 		state.tree.availableNodes = availableNodes
+		if #goals > 0 then
+			local recommendedPlan, planMainPoints, planAscendancyPoints =
+				self:BuildTreeRecommendationPlan(
+					candidateSpec,
+					availableNodes,
+					mainAvailable,
+					ascendancyAvailable,
+					goals
+				)
+			state.tree.goals = goals
+			state.tree.recommendedPlan = recommendedPlan
+			state.tree.recommendedPlanMainPoints = planMainPoints
+			state.tree.recommendedPlanAscendancyPoints = planAscendancyPoints
+		end
+		if candidateClass then
+			state.tree.candidateClass = candidateClass
+		end
+		if candidateResetsTree then
+			state.tree.candidateResetsTree = true
+		end
 	end
 
 	-- Jewel sockets: allocated sockets and what's in them
@@ -1438,12 +1955,14 @@ function AIBridge:BuildContextManifest(context, escalated)
 	return included, available, escalated and 0 or 1
 end
 
---- Parse one structured context request, ignoring surrounding prose but never actions.
--- Valid form: <context_request>["gems","tree"]</context_request>
+--- Parse one structured context request, ignoring surrounding prose.
+--- Valid form: <context_request>["gems","tree"]</context_request>
+--- When allowActions is true, any accompanying action block is intentionally
+--- discarded while the bridge obtains the requested context and retries.
 -- @return string displayText
 -- @return table|nil scopes
 -- @return string|nil error
-function AIBridge:ParseContextRequest(content)
+function AIBridge:ParseContextRequest(content, allowActions)
 	if type(content) ~= "string" then
 		return content, nil, "AI response content must be a string"
 	end
@@ -1470,7 +1989,7 @@ function AIBridge:ParseContextRequest(content)
 	if openCount ~= 1 or closeCount ~= 1 then
 		return content, nil, "Context request must contain exactly one block"
 	end
-	if lower:find("<actions", 1, true) or lower:find("</actions", 1, true) then
+	if not allowActions and (lower:find("<actions", 1, true) or lower:find("</actions", 1, true)) then
 		return content, nil, "Context request cannot include actions"
 	end
 
@@ -1494,8 +2013,12 @@ end
 
 --- Build only the optional state required by the current question.
 -- @return table|nil state, table|string contextOrError
-function AIBridge:BuildQuestionState(build, userMessage, fingerprint, requestedScopes, escalated)
+function AIBridge:BuildQuestionState(build, userMessage, fingerprint, requestedScopes, escalated, contextOverrides)
 	local context = self:ClassifyQuestion(userMessage)
+	for key, value in pairs(contextOverrides or {}) do
+		context[key] = value
+	end
+	context.treeGoals = self:DeriveTreeGoals(build, userMessage)
 	local normalizedScopes = {}
 	if requestedScopes then
 		local scopeError
@@ -1509,6 +2032,20 @@ function AIBridge:BuildQuestionState(build, userMessage, fingerprint, requestedS
 	local state, err = self:SerializeBuild(build, context)
 	if not state then
 		return nil, err
+	end
+
+	-- A named notable/keystone is an explicit player decision, not an automatic
+	-- recommendation. Preserve that escape hatch while keeping starter plans safe.
+	local explicitNodeNames = {}
+	local lowerMessage = (userMessage or ""):lower()
+	for _, node in ipairs(state.tree.availableNodes or {}) do
+		if type(node.name) == "string" and #node.name >= 3
+			and lowerMessage:find(node.name:lower(), 1, true) then
+			explicitNodeNames[node.name:lower()] = true
+		end
+	end
+	if next(explicitNodeNames) then
+		state.tree.explicitNodeNames = explicitNodeNames
 	end
 
 	if context.includeGemShortlist then
@@ -1525,6 +2062,10 @@ function AIBridge:BuildQuestionState(build, userMessage, fingerprint, requestedS
 		gemShortlist = context.includeGemShortlist,
 		uniqueShortlist = context.includeUniqueShortlist,
 		treeCandidates = context.includeTreeCandidates,
+		targetLevel = context.targetLevel,
+		treeGoals = context.treeGoals,
+		planningClass = context.planningClass,
+		resetTreePlanning = context.resetTreePlanning,
 		gemReference = context.includeGemReference,
 		uniqueReference = context.includeUniqueReference,
 		itemBases = context.includeItemBases,
@@ -1536,6 +2077,121 @@ function AIBridge:BuildQuestionState(build, userMessage, fingerprint, requestedS
 		escalationRemaining = escalationRemaining,
 	}
 	return state, context
+end
+
+--- Derive the smallest safe projection needed to re-evaluate a proposed tree.
+function AIBridge:GetTreeActionRecoveryOverrides(actions, state)
+	local currentClass = state and state.meta and state.meta.className
+	local requestedClass
+	local requestsReset = false
+	local hasAllocation = false
+	for _, action in ipairs(actions or {}) do
+		if type(action) == "table" and action.type == "set_class" and type(action.name) == "string" then
+			requestedClass = action.name
+		elseif type(action) == "table" and action.type == "reset_tree" then
+			requestsReset = true
+		elseif type(action) == "table" and action.type == "alloc_node" then
+			hasAllocation = true
+		end
+	end
+
+	local overrides = {}
+	local changesClass = hasAllocation and requestedClass and type(currentClass) == "string"
+		and currentClass:lower() ~= requestedClass:lower()
+	if changesClass then
+		overrides.planningClass = requestedClass
+		overrides.resetTreePlanning = true
+	elseif hasAllocation and requestsReset then
+		overrides.resetTreePlanning = true
+	end
+	return overrides
+end
+
+--- Ensure an AI allocation refers to the tree data actually provided to it.
+--- This catches invented names and forces a fresh projection after a class/reset change.
+function AIBridge:ValidateTreeActionReferences(actions, state)
+	if type(actions) ~= "table" then
+		return true
+	end
+
+	local candidateNames = {}
+	local treeCandidates = state and state.context and state.context.treeCandidates
+	local treeState = state and state.tree or {}
+	if treeCandidates and treeState.availableNodes then
+		for _, node in ipairs(treeState.availableNodes) do
+			if type(node.name) == "string" then
+				candidateNames[node.name:lower()] = true
+			end
+		end
+	end
+
+	local currentClass = state and state.meta and state.meta.className
+	local requestedClass
+	local requestsReset = false
+	local hasAllocation = false
+	for _, action in ipairs(actions) do
+		if type(action) == "table" and action.type == "set_class" and type(action.name) == "string" then
+			requestedClass = action.name
+		elseif type(action) == "table" and action.type == "reset_tree" then
+			requestsReset = true
+		elseif type(action) == "table" and action.type == "alloc_node" then
+			hasAllocation = true
+		end
+	end
+
+	local candidateClass = treeState.candidateClass
+	local classChanges = hasAllocation and requestedClass and type(currentClass) == "string"
+		and currentClass:lower() ~= requestedClass:lower()
+	local projectedClassMatches = candidateClass and requestedClass
+		and candidateClass:lower() == requestedClass:lower()
+	if classChanges and not projectedClassMatches then
+		return false, "alloc_node requires candidates projected for set_class " .. requestedClass
+	end
+	if hasAllocation and requestsReset and not treeState.candidateResetsTree then
+		return false, "alloc_node requires candidates projected from reset_tree"
+	end
+
+	local plannedNodeNames = {}
+	for _, node in ipairs(treeState.recommendedPlan or {}) do
+		if type(node.name) == "string" then
+			plannedNodeNames[node.name:lower()] = true
+		end
+	end
+	local explicitNodeNames = treeState.explicitNodeNames or {}
+	local plannedClassSelected = not candidateClass or (type(currentClass) == "string"
+		and currentClass:lower() == candidateClass:lower())
+	local resetApplied = not treeState.candidateResetsTree
+	for _, action in ipairs(actions) do
+		if type(action) == "table" and action.type == "reset_tree" then
+			resetApplied = true
+		elseif type(action) == "table" and action.type == "set_class"
+			and type(action.name) == "string" and candidateClass
+			and action.name:lower() == candidateClass:lower() then
+			plannedClassSelected = true
+		elseif type(action) == "table" and action.type == "alloc_node" then
+			if not treeCandidates then
+				return false, "alloc_node requires tree context"
+			end
+			if candidateClass and not plannedClassSelected then
+				return false, "alloc_node candidates require set_class " .. candidateClass .. " first"
+			end
+			if not resetApplied then
+				return false, "alloc_node candidates require reset_tree first"
+			end
+			if type(action.name) ~= "string" or action.name == "" then
+				return false, "alloc_node must use a tree candidate name"
+			end
+			local name = action.name:lower()
+			if not candidateNames[name] then
+				return false, "alloc_node is not a supplied tree candidate: " .. action.name
+			end
+			if treeState.candidateResetsTree and next(plannedNodeNames)
+				and not plannedNodeNames[name] and not explicitNodeNames[name] then
+				return false, "alloc_node is not in the supplied verified tree plan: " .. action.name
+			end
+		end
+	end
+	return true
 end
 
 --- Verify an unsaved OpenAI-compatible configuration with a minimal chat request.
@@ -1659,6 +2315,7 @@ When suggesting changes, explain the expected impact (e.g. "+15% DPS", "+200 lif
 Be concise. Use PoB color codes: ^2=green/good, ^1=red/bad, ^7=white, ^8=gray.
 If the user asks "how do I improve", focus on the top 3 highest-impact changes.
 Format responses for readability in a game tool UI.
+Reply in the same language as the player; use Portuguese when the player writes in Portuguese.
 
 state.context declares which optional sections are included and lists omitted sections in
 availableContexts. Missing data does not mean that no candidates exist.
@@ -1668,9 +2325,10 @@ with one valid JSON array inside this exact block:
 ["gems","tree"]
 </context_request>
 Allowed scopes are: "gems", "uniques", "tree", and "config". Request only the smallest set needed.
-Never include prose or an <actions> block with a context request. The bridge will obtain the
-requested PoB data and repeat the original question automatically. If escalationRemaining is 0,
-do not request more context; answer from the available evidence and state any limitation.
+Never include prose with a context request. Do not include actions either: if you do,
+the bridge safely discards them, obtains the requested PoB data, and repeats the original
+question automatically. If escalationRemaining is 0, do not request more context; answer
+from the available evidence and state any limitation.
 
 The simulated uniqueShortlist is a preselected sample, not an exhaustive proof about every
 unique in the catalog. If no entry improves both DPS and EHP, say "none among the tested
@@ -1679,11 +2337,30 @@ If the build has no configured main skill or has near-zero DPS/EHP, state that u
 is not meaningful yet and ask the player to load/configure the intended build before concluding.
 
 When state.context.treeCandidates is true, tree.availableNodes contains reachable notables and
-keystones. Use tree.pointsAvailable and these candidates to know what can be allocated now.
-
+keystones with their real PoB stat lines and allocation cost. Never claim a stat that is absent.
+tree.pointsAvailable and tree.ascendancyAvailable are hard caps at the current character level.
+When tree.planningLevel exists, it is the requested future level: use planningPointsAvailable
+and planningAscendancyAvailable as conservative caps, and emit set_level to that target BEFORE
+allocations. Do not allocate an ascendancy node while the relevant ascendancy cap is 0.
+If tree.candidateClass exists and differs from meta.className, the listed routes were projected
+from that class: emit set_class with tree.candidateClass, then reset_tree, BEFORE every
+alloc_node action. If tree.candidateResetsTree is true, emit reset_tree BEFORE every alloc_node
+action; those candidates assume a clean tree and must not be mixed with the old route.
+tree.goals lists mechanics derived from the actual/mentioned skill and the player's request.
+When tree.recommendedPlan is non-empty, it is a deterministic, path-aware plan under the current
+point cap: use only its entries, in listed order, for a new or reset build. Each entry includes
+its incremental and cumulative allocation cost. Do not substitute a superficially related node.
+Keystones are build-defining tradeoffs: never choose one automatically; use one only when the
+player explicitly names it.
+For alloc_node, use ONLY an exact name from tree.availableNodes; NEVER invent a node or use a
+numeric ID. If treeCandidates is false, request the "tree" context before proposing alloc_node.
+If state.context.actionRecovery is present, the previous action batch was rejected because its
+tree data did not match the requested class/reset/plan. Replace it with one complete, ordered
+batch using the supplied projected candidates and plan.
 When the user asks you to make a change (allocate, level up, change class, add a skill, etc.),
 DO IT by emitting actions. Don't tell the user to do it manually - you can do it for them.
-End your message with an actions block on its own line, exactly like this (valid JSON array):
+Never claim the build changed unless you emit a valid actions block. End your message with one
+actions block on its own line, exactly like this (valid JSON array):
 <actions>
 [{"type":"set_level","value":100},{"type":"alloc_node","name":"Resolute Technique"}]
 </actions>
@@ -1694,9 +2371,10 @@ Supported action types:
 - {"type":"set_ascendancy","name":"<ascendancy>"}  -- e.g. "Inquisitor", "Necromancer"
 - {"type":"set_bandit","value":"None|Oak|Kraityn|Alira"}  -- None = kill all
 - {"type":"set_pantheon","major":"<god>","minor":"<god>"}  -- e.g. major="TheBrineKing", minor="Gruthkul"
-- {"type":"alloc_node","name":"<exact node name>"} or {"type":"alloc_node","id":<node id>}
-  (allocating a distant node auto-paths through intermediate nodes; needs enough points)
+- {"type":"alloc_node","name":"<exact name from tree.availableNodes>"}
+  (only after treeCandidates is true; allocating a distant node also allocates its path)
 - {"type":"dealloc_node","name":"..."} or {"type":"dealloc_node","id":...}
+- {"type":"reset_tree"}  -- remove all allocated passive and ascendancy nodes, retaining class choices
 - {"type":"add_skill","label":"<group name>","gems":[{"name":"Righteous Fire","level":20,"quality":0},{"name":"Efficacy"}]}
 - {"type":"remove_skill","label":"<group name>"} or {"type":"remove_skill","name":"<gem name>"}
 - {"type":"equip_item","slot":"<slot>","raw":"<full item text>"}
@@ -1845,16 +2523,10 @@ complete <actions> block for the requested change; never assume the previous pro
 			end
 
 			local lowerContent = content:lower()
-			local hasContextMarker = lowerContent:find("<context_request", 1, true)
-				or lowerContent:find("</context_request", 1, true)
 			local hasActionMarker = lowerContent:find("<actions", 1, true)
 				or lowerContent:find("</actions", 1, true)
-			if hasContextMarker and hasActionMarker then
-				fail("AI cannot return actions while requesting additional context")
-				return
-			end
-
-			local _, requestedScopes, contextRequestError = self:ParseContextRequest(content)
+			local _, requestedScopes, contextRequestError =
+				self:ParseContextRequest(content, hasActionMarker)
 			if contextRequestError then
 				fail("Invalid AI context request: " .. contextRequestError)
 				return
@@ -1898,6 +2570,50 @@ complete <actions> block for the requested change; never assume the previous pro
 				sendRequest(expandedState, expandedContextOrError, expansionsUsed + 1)
 				return
 			end
+
+			local displayText, proposedActions, actionParseError = self:ParseActions(content)
+			local treeActionsValid, treeActionError =
+				self:ValidateTreeActionReferences(proposedActions, currentState)
+			if not actionParseError and proposedActions and not treeActionsValid then
+				if expansionsUsed >= 1 then
+					complete(
+						displayText .. "\n\n^1Action proposal ignored: " .. treeActionError,
+						currentState
+					)
+					return
+				end
+
+				local recoveryScopes = currentState.context and currentState.context.treeCandidates
+					and nil or { "tree" }
+				local recoveryOverrides = self:GetTreeActionRecoveryOverrides(proposedActions, currentState)
+				local recoveryState, recoveryContextOrError = self:BuildQuestionState(
+					build,
+					userMessage,
+					requestFingerprint,
+					recoveryScopes,
+					true,
+					recoveryOverrides
+				)
+				if not recoveryState then
+					fail("Could not validate AI tree actions: " .. tostring(recoveryContextOrError))
+					return
+				end
+				recoveryState.context.actionRecovery = treeActionError
+
+				local recoveryFingerprint, recoveryFingerprintError = self:GetBuildFingerprint(build)
+				if not recoveryFingerprint then
+					fail(recoveryFingerprintError)
+					return
+				end
+				if recoveryFingerprint ~= requestFingerprint then
+					fail("Build changed while validating AI tree actions")
+					return
+				end
+
+				sendRequest(recoveryState, recoveryContextOrError, expansionsUsed + 1)
+				return
+			end
+
 
 			complete(content, currentState)
 		end
@@ -2008,6 +2724,7 @@ local SUPPORTED_ACTION_TYPES = {
 	equip_item = true,
 	alloc_node = true,
 	dealloc_node = true,
+	reset_tree = true,
 	set_config = true,
 	set_level = true,
 	set_class = true,
@@ -2647,6 +3364,8 @@ function AIBridge:ExecuteAction(build, action)
 		return self:ActionAllocNode(build, action)
 	elseif actionType == "dealloc_node" then
 		return self:ActionDeallocNode(build, action)
+	elseif actionType == "reset_tree" then
+		return self:ActionResetTree(build, action)
 	elseif actionType == "set_config" then
 		return self:ActionSetConfig(build, action)
 	elseif actionType == "set_level" then
@@ -2740,6 +3459,11 @@ function AIBridge:ActionAllocNode(build, action)
 		return false, "Node not reachable: " .. node.name
 	end
 
+	local budgetOk, budgetError = self:ValidateNodeAllocationBudget(build, node)
+	if not budgetOk then
+		return false, budgetError
+	end
+
 	spec:AllocNode(node)
 	build.treeTab.modFlag = true
 
@@ -2766,6 +3490,31 @@ function AIBridge:ActionDeallocNode(build, action)
 	build.treeTab.modFlag = true
 
 	return true, "Deallocated: " .. node.name
+end
+
+--- Reset every allocated passive and ascendancy node while retaining class choices.
+function AIBridge:ActionResetTree(build)
+	local spec = build.spec
+	if not spec then
+		return false, "No passive tree spec"
+	end
+	if not spec.ResetNodes then
+		return false, "Passive tree cannot be reset"
+	end
+
+	spec:ResetNodes()
+	if spec.BuildAllDependsAndPaths then
+		spec:BuildAllDependsAndPaths()
+	end
+	if spec.AddUndoState then
+		spec:AddUndoState()
+	end
+	if build.treeTab then
+		build.treeTab.modFlag = true
+	end
+	build.buildFlag = true
+
+	return true, "Reset all passive and ascendancy nodes"
 end
 
 --- Set a configuration option
@@ -3178,6 +3927,13 @@ function AIBridge:ActionSetMastery(build, action)
 	local effect = spec.tree.masteryEffects[effectId]
 	if not effect then
 		return false, "Invalid mastery effect id: " .. tostring(effectId)
+	end
+
+	if not node.alloc then
+		local budgetOk, budgetError = self:ValidateNodeAllocationBudget(build, node)
+		if not budgetOk then
+			return false, budgetError
+		end
 	end
 
 	-- Apply the effect (mirrors TreeTab:SaveMasteryPopup)

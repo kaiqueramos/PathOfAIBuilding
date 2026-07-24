@@ -42,6 +42,19 @@ describe("AI question context", function()
 		assert.is_true(minionStarter.includeGemReference)
 
 
+		local requestedBuild = bridge:ClassifyQuestion("Cria uma build de minion ate nivel 30 pra mim")
+		assert.same({ "gems" }, requestedBuild.intents)
+		assert.is_true(requestedBuild.includeGemReference)
+		assert.is_true(requestedBuild.includeTreeCandidates)
+		assert.is_true(requestedBuild.resetTreePlanning)
+
+		local minionTree = bridge:ClassifyQuestion(
+			"Create a minion starter to level 30 and allocate its passive tree"
+		)
+		assert.same({ "gems", "tree" }, minionTree.intents)
+		assert.is_true(minionTree.includeGemReference)
+		assert.is_true(minionTree.includeTreeCandidates)
+
 		local items = bridge:ClassifyQuestion("Which unique amulet is best for this build?")
 		assert.same({ "items" }, items.intents)
 		assert.is_true(items.includeUniqueShortlist)
@@ -148,6 +161,220 @@ describe("AI selective build serialization", function()
 		local treeContext = assert(bridge:SerializeBuild(build, { includeTreeCandidates = true }))
 		assert.is_truthy(treeContext.tree.availableNodes)
 		assert.is_nil(treeContext.reference)
+	end)
+
+	it("caps tree candidates and point totals at the current level", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		build.characterLevel = 30
+		build.characterLevelAutoMode = false
+		build.configTab.input.bandit = "None"
+		build.configTab:BuildModList()
+		build.spec:ResetNodes()
+		build.spec:BuildAllDependsAndPaths()
+
+		local state = assert(bridge:SerializeBuild(build, { includeTreeCandidates = true }))
+		assert.are.equal(34, state.tree.pointsTotal)
+		assert.are.equal(34, state.tree.pointsAvailable)
+		assert.are.equal(0, state.tree.ascendancyTotal)
+		assert.are.equal(0, state.tree.ascendancyAvailable)
+		for _, candidate in ipairs(state.tree.availableNodes) do
+			assert.is_true(candidate.mainPointCost <= state.tree.pointsAvailable)
+			assert.are.equal(0, candidate.ascendancyPointCost)
+		end
+	end)
+
+	it("provides conservative tree candidates for an explicitly requested future level", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		build.characterLevel = 1
+		build.characterLevelAutoMode = false
+		build.configTab.input.bandit = "None"
+		build.configTab:BuildModList()
+		build.spec:ResetNodes()
+		build.spec:BuildAllDependsAndPaths()
+
+		local context = bridge:ClassifyQuestion("Cria uma build de minion ate nivel 30 pra mim")
+		local state = assert(bridge:SerializeBuild(build, context))
+		assert.are.equal(30, context.targetLevel)
+		assert.are.equal(1, state.meta.level)
+		assert.are.equal(0, state.tree.pointsAvailable)
+		assert.are.equal(30, state.tree.planningLevel)
+		assert.are.equal(33, state.tree.planningPointsAvailable)
+		assert.are.equal(0, state.tree.planningAscendancyAvailable)
+		assert.is_true(#state.tree.availableNodes > 0)
+		for _, candidate in ipairs(state.tree.availableNodes) do
+			assert.is_true(candidate.mainPointCost <= state.tree.planningPointsAvailable)
+			assert.are.equal(0, candidate.ascendancyPointCost)
+		end
+	end)
+
+	it("projects a mechanic-matched plan from an explicitly requested class", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		build.spec:ResetNodes()
+		build.spec:SelectClass(assert(build.spec.tree.classNameMap.Scion))
+		build.characterLevel = 1
+		build.characterLevelAutoMode = false
+
+		local context = bridge:ClassifyQuestion("Cria uma build Witch de minions ate nivel 30 starter league")
+		local state = assert(bridge:SerializeBuild(build, context))
+		assert.are.equal("Witch", context.planningClass)
+		assert.is_true(table.concat(context.treeGoals, ","):find("minion", 1, true) ~= nil)
+		assert.are.equal("Scion", state.meta.className)
+		assert.are.equal("Witch", state.tree.candidateClass)
+		assert.is_true(state.tree.candidateResetsTree)
+		assert.is_true(#state.tree.recommendedPlan > 0)
+
+		local lordOfTheDead
+		for _, candidate in ipairs(state.tree.availableNodes) do
+			assert.is_table(candidate.stats)
+			assert.is_nil(candidate.id)
+			if candidate.name == "Lord of the Dead" then
+				lordOfTheDead = candidate
+			end
+		end
+		local hasLordOfTheDead = false
+		for _, candidate in ipairs(state.tree.recommendedPlan) do
+			assert.are_not.equal("Keystone", candidate.type)
+			assert.are_not.equal("Totemic Zeal", candidate.name)
+			local text = (candidate.name .. " " .. table.concat(candidate.stats, " ")):lower()
+			assert.is_truthy(text:find("minion", 1, true) or text:find("maximum life", 1, true))
+			hasLordOfTheDead = hasLordOfTheDead or candidate.name == "Lord of the Dead"
+		end
+		assert.is_true(hasLordOfTheDead)
+		assert.is_table(lordOfTheDead)
+		assert.is_truthy(table.concat(lordOfTheDead.stats, " "):find("Raised Zombies", 1, true))
+
+		local planNames = {}
+		for _, candidate in ipairs(state.tree.recommendedPlan) do
+			planNames[candidate.name] = true
+		end
+		local outsidePlan
+		for _, candidate in ipairs(state.tree.availableNodes) do
+			if candidate.type == "Notable" and not planNames[candidate.name] then
+				outsidePlan = candidate
+				break
+			end
+		end
+		assert.is_table(outsidePlan)
+
+		local validationState = {
+			context = { treeCandidates = true },
+			meta = state.meta,
+			tree = state.tree,
+		}
+		local valid, validationError = bridge:ValidateTreeActionReferences({
+			{ type = "alloc_node", name = lordOfTheDead.name },
+		}, validationState)
+		assert.is_false(valid)
+		assert.is_truthy(validationError:find("set_class Witch first", 1, true))
+
+		valid, validationError = bridge:ValidateTreeActionReferences({
+			{ type = "set_class", name = "Witch" },
+			{ type = "alloc_node", name = lordOfTheDead.name },
+		}, validationState)
+		assert.is_false(valid)
+		assert.is_truthy(validationError:find("reset_tree first", 1, true))
+
+		valid, validationError = bridge:ValidateTreeActionReferences({
+			{ type = "set_class", name = "Witch" },
+			{ type = "reset_tree" },
+			{ type = "alloc_node", name = lordOfTheDead.name },
+		}, validationState)
+		assert.is_true(valid, validationError)
+
+		valid, validationError = bridge:ValidateTreeActionReferences({
+			{ type = "set_class", name = "Witch" },
+			{ type = "reset_tree" },
+			{ type = "alloc_node", name = outsidePlan.name },
+		}, validationState)
+		assert.is_false(valid)
+		assert.is_truthy(validationError:find("verified tree plan", 1, true))
+
+		local preflight = bridge:PreflightActions(build, {
+			{ type = "set_level", value = 30 },
+			{ type = "set_class", name = "Witch" },
+			{ type = "reset_tree" },
+			{ type = "alloc_node", name = lordOfTheDead.name },
+		}, assert(build:SaveDB()))
+		assert.is_true(preflight.ok, preflight.results[1] and preflight.results[1].msg)
+	end)
+
+	it("requires reset_tree before applying candidates projected from a clean tree", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local context = bridge:ClassifyQuestion("Refaz a arvore de minions focando em Raise Zombie")
+		local state = assert(bridge:SerializeBuild(build, context))
+		assert.is_true(context.resetTreePlanning)
+		assert.is_true(state.tree.candidateResetsTree)
+
+		local candidate = assert(state.tree.recommendedPlan[1])
+		local validationState = {
+			context = { treeCandidates = true },
+			meta = state.meta,
+			tree = state.tree,
+		}
+		local valid, validationError = bridge:ValidateTreeActionReferences({
+			{ type = "alloc_node", name = candidate.name },
+		}, validationState)
+		assert.is_false(valid)
+		assert.is_truthy(validationError:find("reset_tree first", 1, true))
+
+		valid, validationError = bridge:ValidateTreeActionReferences({
+			{ type = "reset_tree" },
+			{ type = "alloc_node", name = candidate.name },
+		}, validationState)
+		assert.is_true(valid, validationError)
+	end)
+
+	it("recovers any class-changing tree proposal with projected candidates", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		build.spec:ResetNodes()
+		build.spec:SelectClass(assert(build.spec.tree.classNameMap.Scion))
+		build.characterLevel = 1
+		build.characterLevelAutoMode = false
+
+		local message = "Cria uma build Fireball starter ate nivel 30"
+		local state = assert(bridge:BuildQuestionState(build, message, "fingerprint"))
+		assert.is_nil(state.tree.candidateClass)
+		assert.is_true(table.concat(state.context.treeGoals, ","):find("fire", 1, true) ~= nil)
+		assert.is_true(table.concat(state.context.treeGoals, ","):find("spell", 1, true) ~= nil)
+
+		local actions = {
+			{ type = "set_class", name = "Witch" },
+			{ type = "reset_tree" },
+			{ type = "alloc_node", name = "Not a Scion candidate" },
+		}
+		local valid, validationError = bridge:ValidateTreeActionReferences(actions, state)
+		assert.is_false(valid)
+		assert.is_truthy(validationError:find("projected for set_class Witch", 1, true))
+
+		local overrides = bridge:GetTreeActionRecoveryOverrides(actions, state)
+		assert.are.equal("Witch", overrides.planningClass)
+		assert.is_true(overrides.resetTreePlanning)
+		local projectedState = assert(bridge:BuildQuestionState(
+			build,
+			message,
+			"fingerprint",
+			nil,
+			true,
+			overrides
+		))
+		for _, plannedNode in ipairs(projectedState.tree.recommendedPlan) do
+			assert.is_truthy(
+				plannedNode.goalReason:find("spell", 1, true)
+					or plannedNode.goalReason:find("fire", 1, true)
+					or plannedNode.goalReason:find("life", 1, true)
+			)
+		end
+		assert.are.equal("Witch", projectedState.tree.candidateClass)
+		assert.is_true(projectedState.tree.candidateResetsTree)
+		local candidate = assert(projectedState.tree.recommendedPlan[1])
+		assert.are_not.equal("Keystone", candidate.type)
+
+		valid, validationError = bridge:ValidateTreeActionReferences({
+			{ type = "set_class", name = "Witch" },
+			{ type = "reset_tree" },
+			{ type = "alloc_node", name = candidate.name },
+		}, projectedState)
+		assert.is_true(valid, validationError)
 	end)
 
 	it("supplies canonical gem names for minion starter questions", function()

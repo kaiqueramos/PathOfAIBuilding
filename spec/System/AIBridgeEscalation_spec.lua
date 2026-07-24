@@ -269,23 +269,62 @@ describe("AI context escalation", function()
 		assert.is_false(bridge.pending)
 	end)
 
-	it("blocks actions attached to an intermediate context request", function()
+	it("discards actions attached to an intermediate context request and retries", function()
 		local bridge = LoadModule("Modules/AIBridge")
 		local originalLevel = build.characterLevel
+		local callbackContent
 		local callbackError
 
-		withMockedTransport(bridge, function()
-			return '<context_request>["config"]</context_request>\n'
-				.. '<actions>[{"type":"set_level","value":100}]</actions>'
+		withMockedTransport(bridge, function(attempt)
+			if attempt == 1 then
+				return '<context_request>["config"]</context_request>\n'
+					.. '<actions>[{"type":"set_level","value":100}]</actions>'
+			end
+			return "Final answer after discarding intermediate actions"
 		end, function(requests)
-			bridge:Ask(build, "Explain this build", function(_, err)
+			bridge:Ask(build, "Explain this build", function(content, err)
+				callbackContent = content
 				callbackError = err
 			end, {})
-			assert.are.equal(1, #requests)
+			assert.are.equal(2, #requests)
+			local expandedState = extractState(requests[2])
+			assert.same({ "config" }, expandedState.context.requestedContexts)
 		end)
 
 		assert.are.equal(originalLevel, build.characterLevel)
-		assert.is_truthy(callbackError:find("cannot return actions", 1, true))
+		assert.are.equal("Final answer after discarding intermediate actions", callbackContent)
+		assert.is_nil(callbackError)
+		assert.is_false(bridge.pending)
+	end)
+
+	it("retries with tree candidates before exposing an unsourced allocation", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local callbackContent
+		local callbackError
+
+		withMockedTransport(bridge, function(attempt, request)
+			if attempt == 1 then
+				return "I will allocate the tree.\n"
+					.. '<actions>[{"type":"alloc_node","id":21050}]</actions>'
+			end
+			return "Recovered after receiving tree candidates."
+		end, function(requests)
+			bridge:Ask(build, "Explain this build", function(content, err)
+				callbackContent = content
+				callbackError = err
+			end, {})
+
+			assert.are.equal(2, #requests)
+			local initialState = extractState(requests[1])
+			local recoveryState = extractState(requests[2])
+			assert.is_false(initialState.context.treeCandidates)
+			assert.is_true(recoveryState.context.treeCandidates)
+			assert.same({ "tree" }, recoveryState.context.requestedContexts)
+			assert.are.equal("alloc_node requires tree context", recoveryState.context.actionRecovery)
+		end)
+
+		assert.is_nil(callbackError)
+		assert.are.equal("Recovered after receiving tree candidates.", callbackContent)
 		assert.is_false(bridge.pending)
 	end)
 

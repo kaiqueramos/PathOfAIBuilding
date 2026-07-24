@@ -145,6 +145,32 @@ describe("AI action structural contracts", function()
 		assert.are.equal("Unknown action type: delete_build", validationError)
 	end)
 
+	it("accepts reset_tree without additional fields", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local valid, validationError = bridge:ValidateActionShape({ type = "reset_tree" })
+		assert.is_true(valid, validationError)
+		assert.is_nil(validationError)
+	end)
+
+	it("requires AI allocation actions to use supplied tree candidate names", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local state = {
+			context = { treeCandidates = true },
+			tree = { availableNodes = { { name = "Lord of the Dead" } } },
+		}
+
+		local valid, validationError = bridge:ValidateTreeActionReferences({
+			{ type = "alloc_node", name = "lord of the dead" },
+		}, state)
+		assert.is_true(valid, validationError)
+
+		valid, validationError = bridge:ValidateTreeActionReferences({
+			{ type = "alloc_node", id = 21050 },
+		}, state)
+		assert.is_false(valid)
+		assert.is_truthy(validationError:find("candidate name", 1, true))
+	end)
+
 	it("rejects sparse gem and action arrays", function()
 		local bridge = LoadModule("Modules/AIBridge")
 		local valid, validationError = bridge:ValidateActionShape({

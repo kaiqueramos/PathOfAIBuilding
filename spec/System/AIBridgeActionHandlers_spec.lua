@@ -81,6 +81,26 @@ local function newFakeBuild()
 	function spec:AddUndoState()
 		self.undoAdded = true
 	end
+	function spec:CountAllocNodes()
+		local mainPoints, ascendancyPoints = 0, 0
+		for _, node in pairs(self.allocNodes) do
+			if node.type ~= "ClassStart" and node.type ~= "AscendClassStart" then
+				if node.ascendancyName and not node.isMultipleChoiceOption then
+					ascendancyPoints = ascendancyPoints + 1
+				else
+					mainPoints = mainPoints + 1
+				end
+			end
+		end
+		return mainPoints, ascendancyPoints
+	end
+	function spec:ResetNodes()
+		for _, node in pairs(self.nodes) do
+			node.alloc = false
+		end
+		self.allocNodes = {}
+		self.masterySelections = {}
+	end
 
 	local itemsTab = {
 		added = {},
@@ -193,6 +213,13 @@ local CASES = {
 	{
 		name = "dealloc_node", action = { type = "dealloc_node", id = 1 },
 		verify = function(fake) assert.is_false(fake.spec.nodes[1].alloc) end,
+	},
+	{
+		name = "reset_tree", action = { type = "reset_tree" },
+		verify = function(fake)
+			assert.is_nil(next(fake.spec.allocNodes))
+			assert.is_true(fake.spec.pathsRebuilt)
+		end,
 	},
 	{
 		name = "set_config", action = { type = "set_config", key = "testFlag", value = true },
@@ -359,5 +386,35 @@ describe("AI action semantic handlers", function()
 		assert.is_false(ok)
 		assert.are.equal(99, fake.mainSocketGroup)
 		assert.are.equal(1, groups[1].mainActiveSkill)
+	end)
+
+	it("enforces level-appropriate passive and ascendancy budgets", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local fake = newFakeBuild()
+		fake.characterLevel = 30
+
+		local mainTotal, ascendancyTotal = bridge:GetPassivePointLimits(fake)
+		assert.are.equal(34, mainTotal)
+		assert.are.equal(0, ascendancyTotal)
+
+		local ascendancyNode = {
+			id = 5,
+			name = "Forbidden Ascendancy Node",
+			type = "Notable",
+			ascendancyName = "Occultist",
+			alloc = false,
+			path = {},
+		}
+		fake.spec.nodes[5] = ascendancyNode
+		local ok, message = bridge:ExecuteAction(fake, { type = "alloc_node", id = 5 })
+		assert.is_false(ok)
+		assert.is_truthy(message:find("Not enough ascendancy points", 1, true))
+		assert.is_false(ascendancyNode.alloc)
+
+		fake.characterLevel = 1
+		ok, message = bridge:ExecuteAction(fake, { type = "alloc_node", id = 2 })
+		assert.is_false(ok)
+		assert.is_truthy(message:find("Not enough passive points", 1, true))
+		assert.is_false(fake.spec.nodes[2].alloc)
 	end)
 end)
