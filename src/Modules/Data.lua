@@ -3,7 +3,7 @@
 -- Module: Data
 -- Contains static data used by other modules.
 --
-
+local dkjson = require("dkjson")
 LoadModule("Data/Global")
 
 local m_min = math.min
@@ -352,6 +352,7 @@ data.keystones = {
 	"Arrow Dancing",
 	"Arsenal of Vengeance",
 	"Avatar of Fire",
+	"Bitter Frost",
 	"Blood Magic",
 	"Bloodsoaked Blade",
 	"Call to Arms",
@@ -389,6 +390,7 @@ data.keystones = {
 	"Power of Purpose",
 	"Precise Technique",
 	"Resolute Technique",
+	"Roiling Tempest",
 	"Runebinder",
 	"Solipsism",
 	"Supreme Decadence",
@@ -399,6 +401,7 @@ data.keystones = {
 	"Unwavering Stance",
 	"Vaal Pact",
 	"Versatile Combatant",
+	"Voracious Flame",
 	"Wicked Ward",
 	"Wind Dancer",
 	"Zealot's Oath",
@@ -893,6 +896,11 @@ data.timelessJewelSeedMin = {
 	[4] = 2000,
 	[5] = 2000 / 20,
 	[6] = 100,
+	[7] = 100,
+	[8] = 100,
+	[9] = 100,
+	[10] = 100,
+	[11] = 100,
 }
 data.timelessJewelSeedMax = {
 	[1] = 8000,
@@ -901,9 +909,14 @@ data.timelessJewelSeedMax = {
 	[4] = 10000,
 	[5] = 160000 / 20,
 	[6] = 8000,
+	[7] = 8000,
+	[8] = 8000,
+	[9] = 8000,
+	[10] = 8000,
+	[11] = 8000,
 }
 data.timelessJewelTradeIDs = LoadModule("Data/TimelessJewelData/LegionTradeIds")
-data.timelessJewelAdditions = 96 -- #legionAdditions
+data.timelessJewelAdditions = 337 -- #legionAdditions
 data.nodeIDList = LoadModule("Data/TimelessJewelData/NodeIndexMapping")
 data.timelessJewelLUTs = { }
 data.readLUT, data.repairLUTs = LoadModule("Modules/DataLegionLookUpTableHelper")
@@ -1235,4 +1248,7 @@ data.itemMods.WatchersEye = unsortedMods
 LoadModule("Data/Uniques/Special/Generated")
 LoadModule("Data/Uniques/Special/New")
 
+local mapFile = io.open("Data/ModFoulbornMap.jsonc", "r")
+data.foulbornMap = dkjson.decode(mapFile:read("*a"))
+mapFile:close()
 data.flavourText = LoadModule("Data/FlavourText")
