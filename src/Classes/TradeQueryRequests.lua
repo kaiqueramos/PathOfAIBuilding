@@ -5,6 +5,7 @@
 --
 
 local dkjson = require "dkjson"
+local utils = LoadModule("Modules/Utils")
 
 ---@class TradeQueryRequests
 local TradeQueryRequestsClass = newClass("TradeQueryRequests", function(self, rateLimiter)
@@ -16,6 +17,7 @@ local TradeQueryRequestsClass = newClass("TradeQueryRequests", function(self, ra
 		["fetch"] = {},
 	}
 	self.hostName = "https://www.pathofexile.com/"
+	self.hostNamePattern = "h?t?t?p?s?:?/?/?w?w?w?%.?pathofexile%.com/"
 end)
 
 ---Main routine for processing request queue
@@ -220,7 +222,7 @@ function TradeQueryRequestsClass:PerformSearch(realm, league, query, callback)
 				if response.error then
 					if not (response.error.code and response.error.message) then
 						errMsg = "Encountered unknown error, check console for details."
-						ConPrintf("Unknown error: %s", stringify(response.error))
+						ConPrintf("Unknown error: %s", utils.stringify(response.error))
 						callback(response, errMsg)
 					end
 					if response.error.message:find("Logging in will increase this limit") then
@@ -288,14 +290,89 @@ function TradeQueryRequestsClass:FetchResultBlock(url, callback)
 			end
 			local items = {}
 			for _, trade_entry in pairs(response.result) do
+				local item = trade_entry.item
+				local t_insert = table.insert
+
+				local rawLines = {}
+				t_insert(rawLines, "Rarity: " .. item.rarity)
+				-- item.name is empty when magic and full magic name is in typeLine but typeLine == baseType when rare.
+				if item.name ~= "" then
+					t_insert(rawLines, item.name)
+				end
+				t_insert(rawLines, item.typeLine)
+				-- note that PoB MUST parse these properties, or otherwise item
+				-- parsing will consider anything after a non-matching property
+				-- an explicit mod line
+				if item.properties then
+					for _, property in ipairs(item.properties) do
+						local name = escapeGGGString(property.name)
+						if property.values[1] then
+							t_insert(rawLines, string.format("%s: %s", name, property.values[1][1]))
+						else
+							t_insert(rawLines, name)
+						end
+					end
+				end
+
+				if item.ilvl then
+					t_insert(rawLines, "Item Level: " .. item.ilvl)
+				end
+				if item.sockets then
+					local socketString = ""
+					local colours = {}
+					for _, socket in ipairs(item.sockets) do
+						table.insert(colours, socket.sColour)
+					end
+					socketString = table.concat(colours, "-")
+					t_insert(rawLines, "Sockets: " .. socketString)
+				end
+
+
+				-- TODO: crucible mods
+				for _, field in ipairs({ "enchantMods", "implicitMods", "scourgeMods", "explicitMods" }) do
+					if not item[field] then
+						item[field] = {}
+					end
+				end
+
+				local function processLine(modLine)
+					local s = ""
+					for flagName, flag in pairs(modLine.flags or {}) do
+						if flag then
+							s = s .. string.format("{%s}", flagName)
+						end
+					end
+					return s .. escapeGGGString(modLine.description)
+				end
+				t_insert(rawLines, "Implicits: " .. (#item.enchantMods + #item.scourgeMods + #item.implicitMods))
+				for _, modLine in ipairs(item.enchantMods) do
+					t_insert(rawLines, "{enchant}" .. processLine(modLine))
+				end
+				for _, modLine in ipairs(item.scourgeMods) do
+					t_insert(rawLines, "{scourge}" .. processLine(modLine))
+				end
+				for _, modLine in ipairs(item.implicitMods) do
+					t_insert(rawLines, processLine(modLine))
+				end
+				for _, modLine in ipairs(item.explicitMods) do
+					t_insert(rawLines, processLine(modLine))
+				end
+				if item.duplicated then
+					t_insert(rawLines, "Mirrored")
+				end
+				if item.corrupted then
+					t_insert(rawLines, "Corrupted")
+				end
+				local pseudoMod = trade_entry.item.pseudoMods and trade_entry.item.pseudoMods[1]
+				local pseudoModLine = pseudoMod and (pseudoMod.description or pseudoMod)
 				table.insert(items, {
 					amount = trade_entry.listing.price.amount,
 					currency = trade_entry.listing.price.currency,
 					priceType = trade_entry.listing.price.type,
-					item_string = common.base64.decode(trade_entry.item.extended.text),
+					item_string = table.concat(rawLines, "\n"),
 					whisper = trade_entry.listing.whisper,
 					trader = trade_entry.listing.account.name,
-					weight = trade_entry.item.pseudoMods and trade_entry.item.pseudoMods[1]:match("Sum: (.+)") or "0",
+					weight = pseudoModLine and pseudoModLine:match("Sum: (.+)") or "0",
 					id = trade_entry.id
 				})
 			end
@@ -306,7 +383,7 @@ end
 
 ---@param callback fun(items:table, errMsg:string, query: string?)
 function TradeQueryRequestsClass:SearchWithURL(url, callback)
-	local subpath = url:match(self.hostName .. "trade/search/(.+)$")
+	local subpath = url:match(self.hostNamePattern .. "trade/search/(.+)$")
 	local paths = {}
 	for path in subpath:gmatch("[^/]+") do
 		table.insert(paths, path)
@@ -379,7 +456,12 @@ function TradeQueryRequestsClass:FetchLeagues(realm, callback)
 				end
 				local json_data = dkjson.decode(response.body)
 				if not json_data or json_data.error then
-					errMsg = json_data and json_data.error or "Failed to parse trade leagues JSON"
+					local apiError = json_data and json_data.error
+					errMsg = apiError or "Failed to parse trade leagues JSON"
+					if type(apiError) == "table" then
+						errMsg = apiError.message or (apiError.code and tostring(apiError.code)) or "Failed to parse trade leagues JSON"
+					end
+					return callback({"Standard", "Hardcore"}, errMsg)
 				end
 				local leagues = {}
 				for _, value in pairs(json_data.result) do
@@ -402,7 +484,7 @@ function TradeQueryRequestsClass:buildUrl(root, realm, league, queryId)
 	local result = root
 	if realm and realm ~='pc' then
 		result = result .. "/" .. realm
-	end	
+	end
 	local encodedLeague = league:gsub("[^%w%-%.%_%~]", function(c)
 		return string.format("%%%02X", string.byte(c))
 	end):gsub(" ", "+")
@@ -410,5 +492,5 @@ function TradeQueryRequestsClass:buildUrl(root, realm, league, queryId)
 	if queryId then
 		result = result .. "/" .. queryId
 	end
-	return result	
+	return result
 end

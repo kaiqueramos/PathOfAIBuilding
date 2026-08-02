@@ -61,7 +61,8 @@ for _, entry in pairs(data.flavourText) do
 end
 
 local function isAnointable(item)
-	return (item.canBeAnointed or item.base.type == "Amulet")
+	return item and item.base and not item.base.cannotBeAnointed
+		and (item.canBeAnointed or item.base.type == "Amulet")
 end
 
 local function buildModSortList()
@@ -733,7 +734,7 @@ holding Shift will put it in the second.]])
 			return range
 		end
 		drop = new("DropDownControl", {"TOPLEFT",prev,"TOPLEFT"}, {i==1 and 40 or 0, 0, 418, 20}, nil, function(index, value)
-			local affix = { modId = "None" }
+			local affix = { modId = "None", fractured = self.displayItem[drop.outputTable][drop.outputIndex].fractured }
 			if value.modId then
 				affix.modId = value.modId
 				affix.range = slider.val
@@ -940,36 +941,137 @@ holding Shift will put it in the second.]])
 	end
 
 	-- Section: Modifier Range
-	self.controls.displayItemSectionRange = new("Control", {"TOPLEFT",self.controls.displayItemSectionCustom,"BOTTOMLEFT"}, {0, 0, 0, function()
+	local labelFontSize = 14
+	self.controls.displayItemSectionRange = new("Control", { "TOPLEFT", self.controls.displayItemSectionCustom, "BOTTOMLEFT" }, { 0, 0, 0, function()
 		if not self.displayItem or not self.displayItem.rangeLineList[1] then
 			return 0
 		end
 		if main.showAllItemAffixes and self.displayItem.rarity == "UNIQUE" then
-			local count = #self.displayItem.rangeLineList
-			return count * 22 + 4
+			local height = 0
+			for i = 1, #self.displayItem.rangeLineList do
+				local label = self.controls["displayItemStackedRangeLine" .. i]
+				height = height + math.max(22, (label.lineCount or 0) * labelFontSize)
+			end
+			return height + 4
 		else
 			return 28
 		end
 	end})
+	local foulbornIcon = NewImageHandle()
+	foulbornIcon:Load("Assets/breachicon.png")
 	self.controls.displayItemRangeLine = new("DropDownControl", {"TOPLEFT",self.controls.displayItemSectionRange,"TOPLEFT"}, {0, 0, 350, 18}, nil, function(index, value)
 		self.controls.displayItemRangeSlider.val = self.displayItem.rangeLineList[index].range
 	end)
 	self.controls.displayItemRangeLine.shown = function()
 		return self.displayItem and self.displayItem.rangeLineList[1] ~= nil and not (main.showAllItemAffixes and self.displayItem.rarity == "UNIQUE")
 	end
-	self.controls.displayItemRangeSlider = new("SliderControl", {"LEFT",self.controls.displayItemRangeLine,"RIGHT"}, {8, 0, 100, 18}, function(val)
-		self.displayItem.rangeLineList[self.controls.displayItemRangeLine.selIndex].range = val
+	local function getSelectedModLine()
+		return self.displayItem and self.displayItem.rangeLineList[self.controls.displayItemRangeLine.selIndex] or nil
+	end
+	local box = new("CheckBoxControl", { "LEFT", self.controls.displayItemRangeLine, "RIGHT", true }, { 0, 0, 18 }, nil)
+	box.changeFunc = function(val)
+		local line = getSelectedModLine()
+		if line and line.modId and line.newModId then
+			self.displayItem:MutateMod(line.modId, line.newModId, not line.mutated)
+			self:UpdateDisplayItemTooltip()
+			self:UpdateCustomControls()
+			self:UpdateDisplayItemRangeLines()
+		end
+	end
+	box.RealDraw = box.Draw
+	function box:Draw(...)
+		local x, y = self:GetPos()
+		SetDrawColor(1, 1, 1)
+		DrawImage(foulbornIcon, x - 24, y - 1, 20, 20)
+		return box:RealDraw(...)
+	end
+
+	box.shown = function()
+		local line = getSelectedModLine()
+		-- hack: set property according to item. the state is not a prop and so can't be set as a function value
+		if line and line.mutated then
+			box.state = true
+		else
+			box.state = false
+		end
+		return not main.showAllItemAffixes and line and line.modId and line.newModId
+	end
+	-- fix spacing
+	box.x = function()
+		if box:IsShown() then
+			return 25
+		else
+			return 8
+		end
+	end
+	self.controls.displayItemMutatedCheckbox = box
+	local slider = new("SliderControl", { "LEFT", self.controls.displayItemMutatedCheckbox, "RIGHT", true }, { 4, 0, 100, 18 }, function(val)
+		local line = getSelectedModLine()
+		line.range = val
 		self.displayItem:BuildAndParseRaw()
 		self:UpdateDisplayItemTooltip()
 		self:UpdateCustomControls()
 	end)
+	slider.shown = function()
+		local modLine = self.displayItem and not (main.showAllItemAffixes and self.displayItem.rarity == "UNIQUE") and self.displayItem.rangeLineList[self.controls.displayItemRangeLine.selIndex]
+		if modLine then
+			-- it's possible for the range to change while this slider is
+			-- hidden, so correct the slider to show the same value
+			slider.val = modLine.range or slider.val
+			return modLine.showSlider
+		else
+			return false
+		end
+	end
+	self.controls.displayItemRangeSlider = slider
 
 	for i = 1, 20 do
-		local baseControl = i == 1 and self.controls.displayItemSectionRange or self.controls["displayItemStackedRangeSlider"..(i-1)]
+		local baseControl = self.controls.displayItemSectionRange
 
-		self.controls["displayItemStackedRangeSlider"..i] = new("SliderControl", {"TOPLEFT",baseControl,"TOPLEFT"}, {0, function()
-			return i == 1 and 2 or 22
-		end, 100, 18}, function(val)
+		-- layout: [box] <- [slider] <- text
+
+		local box = new("CheckBoxControl", { "TOPLEFT", baseControl, "TOPLEFT", true }, { 0, 0, 18 }, nil, function(val)
+			local line = self.displayItem and self.displayItem.rangeLineList[i]
+			if line and line.modId and line.newModId then
+				self.displayItem:MutateMod(line.modId, line.newModId, not line.mutated)
+				self:UpdateDisplayItemTooltip()
+				self:UpdateCustomControls()
+			end
+		end)
+		-- fix spacing
+		box.x = function()
+			if box:IsShown() then
+				return 24
+			else
+				return 0
+			end
+		end
+		box.y = function()
+			local prevBox = self.controls["displayItemStackedMutatedCheckbox" .. (i - 1)]
+			local prevLabel = self.controls["displayItemStackedRangeLine" .. (i - 1)]
+			return i == 1 and 2 or prevBox:GetProperty("y") + math.max(22, (prevLabel.lineCount or 0) * 14)
+		end
+		box.shown = function()
+			local line = (self.displayItem and self.displayItem.rangeLineList[i]) or nil
+			-- hack: set property according to item. the state is not a prop and so can't be set as a function value
+			if line and line.mutated then
+				box.state = true
+			else
+				box.state = false
+			end
+			return main.showAllItemAffixes and line and line.modId and line.newModId
+		end
+		box.RealDraw = box.Draw
+		function box:Draw(...)
+			local x, y = self:GetPos()
+			SetDrawColor(1, 1, 1)
+			DrawImage(foulbornIcon, x - 24, y, 20, 20)
+			return box:RealDraw(...)
+		end
+
+		self.controls["displayItemStackedMutatedCheckbox" .. i] = box
+
+		local slider = new("SliderControl", { "LEFT", box, "RIGHT", true }, { 4, 0, 100, 18 }, function(val)
 			if self.displayItem and self.displayItem.rangeLineList[i] then
 				self.displayItem.rangeLineList[i].range = val
 				self.displayItem:BuildAndParseRaw()
@@ -977,21 +1079,35 @@ holding Shift will put it in the second.]])
 				self:UpdateCustomControls()
 			end
 		end)
-		self.controls["displayItemStackedRangeLine"..i] = new("LabelControl", {"LEFT",self.controls["displayItemStackedRangeSlider"..i],"RIGHT"}, {8, -2, 350, 14}, function()
-			if self.displayItem and self.displayItem.rangeLineList[i] then
-				return "^7" .. self.displayItem.rangeLineList[i].line
+		slider.shown = function()
+			local modLine = main.showAllItemAffixes and self.displayItem and self.displayItem.rarity == "UNIQUE" and self.displayItem.rangeLineList[i]
+			if modLine then
+				-- it's possible for the range to change while this slider is
+				-- hidden, so correct the slider to show the same value
+				slider.val = modLine.range or slider.val
+				return modLine.showSlider
+			else
+				return false
+			end
+		end
+
+		self.controls["displayItemStackedRangeSlider" .. i] = slider
+
+		self.controls["displayItemStackedRangeLine" .. i] = new("LabelControl", { "LEFT", slider, "RIGHT", true }, { 4, -2, 350, labelFontSize }, function()
+			local modLine = self.displayItem.rangeLineList[i]
+			if self.displayItem and modLine then
+				local colour = modLine.mutated and colorCodes.MUTATED or "^7"
+				local text = table.concat(main:WrapString(modLine.line, labelFontSize, 370), "\n")
+				local _, lineCount = text:gsub("\n", "")
+				self.controls["displayItemStackedRangeLine" .. i].lineCount = lineCount + 1
+				return colour .. text
 			end
 			return ""
 		end)
-		self.controls["displayItemStackedRangeSlider"..i].shown = function()
-			return main.showAllItemAffixes and self.displayItem and self.displayItem.rarity == "UNIQUE" and self.displayItem.rangeLineList[i] ~= nil
-		end
-
-		self.controls["displayItemStackedRangeLine"..i].shown = function()
-			return self.controls["displayItemStackedRangeSlider"..i]:IsShown()
+		self.controls["displayItemStackedRangeLine" .. i].shown = function()
+			return slider:IsShown() or box:IsShown()
 		end
 	end
-
 	-- Tooltip anchor
 	self.controls.displayItemTooltipAnchor = new("Control", {"TOPLEFT",self.controls.displayItemSectionRange,"BOTTOMLEFT"})
 
@@ -1728,10 +1844,11 @@ function ItemsTabClass:SetDisplayItem(item)
 				end
 			end
 		end
-		self.controls.displayItemInfluence:SetSel(influence1, true) -- Don't call the selection function for the first influence dropdown as the second dropdown isn't properly set yet.
-		self.controls.displayItemInfluence2:SetSel(influence2) -- The selection function for the second dropdown properly handles everything for both dropdowns
+		-- Initialising these controls must not re-craft the parsed item.
+		self.controls.displayItemInfluence:SetSel(influence1, true)
+		self.controls.displayItemInfluence2:SetSel(influence2, true)
 		self.controls.displayItemQualityEdit:SetText(item.quality)
-		self.controls.displayItemCatalyst:SetSel((item.catalyst or 0) + 1)
+		self.controls.displayItemCatalyst:SetSel((item.catalyst or 0) + 1, true)
 		if item.catalystQuality then
 			self.controls.displayItemCatalystQualityEdit:SetText(m_max(item.catalystQuality, 0))
 		else
@@ -1827,7 +1944,7 @@ function ItemsTabClass:UpdateAffixControls()
 	self:UpdateCustomControls()
 end
 
-function ItemsTabClass:UpdateAffixControl(control, item, type, outputTable, outputIndex)
+function ItemsTabClass:UpdateAffixControl(control, item, affixType, outputTable, outputIndex)
 	local extraTags = { }
 	local excludeGroups = { }
 	for _, table in ipairs({"prefixes","suffixes"}) do
@@ -1857,7 +1974,7 @@ function ItemsTabClass:UpdateAffixControl(control, item, type, outputTable, outp
 	local affixList = { }
 	local retainedAffixes = { }
 	for modId, mod in pairs(item.affixes) do
-		if mod.type == type and not excludeGroups[mod.group] and not item:CheckIfModIsDelve(mod) then
+		if mod.type == affixType and not excludeGroups[mod.group] and not item:CheckIfModIsDelve(mod) then
 			if item:GetModSpawnWeight(mod, extraTags) > 0 then
 				t_insert(affixList, modId)
 			elseif modId == selAffix then
@@ -1937,7 +2054,10 @@ function ItemsTabClass:UpdateAffixControl(control, item, type, outputTable, outp
 	if control.list[control.selIndex].haveRange then
 		control.slider.divCount = #control.list[control.selIndex].modList
 		local index = isValueInArray(control.list[control.selIndex].modList, selAffix)
-		local range = item[outputTable][outputIndex].range or 0.5
+		-- Imported legacy rolls can sit outside the current 0-1 affix range.
+		-- Keep that value on the affix, but show the nearest slider endpoint.
+		local affixRange = item[outputTable][outputIndex].range
+		local range = m_min(1, m_max(0, type(affixRange) == "table" and affixRange[1] or affixRange or 0.5))
 		-- Avoid exact integer boundary that slider:GetDivVal's ceil would assign to the previous segment
 		if range == 0 and index > 1 then
 			range = 1e-4
@@ -2004,10 +2124,9 @@ end
 function ItemsTabClass:UpdateDisplayItemRangeLines()
 	if self.displayItem and self.displayItem.rangeLineList[1] then
 		wipeTable(self.controls.displayItemRangeLine.list)
-		for i, modLine in ipairs(self.displayItem.rangeLineList) do
-			t_insert(self.controls.displayItemRangeLine.list, modLine.line)
-			if self.controls["displayItemStackedRangeSlider"..i] then
-				self.controls["displayItemStackedRangeSlider"..i].val = modLine.range
+		for _, modLine in ipairs(self.displayItem.rangeLineList) do
+			if (modLine.modId and modLine.newModId) or modLine.range then
+				t_insert(self.controls.displayItemRangeLine.list, { modLine = modLine, label = modLine.line })
 			end
 		end
 		self.controls.displayItemRangeLine.selIndex = 1
@@ -2513,7 +2632,7 @@ end
 ---@param item table @The item to inspect
 ---@return number @How many additional anoints can still be applied
 function ItemsTabClass:getMissingAnointCount(item)
-	if not item or not item.base or not (item.canBeAnointed or item.base.type == "Amulet") then
+	if not isAnointable(item) then
 		return 0
 	end
 	local maxAnoints = item.canHaveFourEnchants and 4 or item.canHaveThreeEnchants and 3 or item.canHaveTwoEnchants and 2 or 1
@@ -4157,7 +4276,6 @@ function ItemsTabClass:AddItemTooltip(tooltip, item, slot, dbMode, maxWidth)
 			end
 		end
 	end
-	
 	if item.catalyst and item.catalyst > 0 and item.catalyst <= #catalystQualityFormat and item.catalystQuality and item.catalystQuality > 0 then
 		tooltip:AddLine(fontSizeBig, s_format(catalystQualityFormat[item.catalyst], item.catalystQuality), "FONTIN SC")
 		tooltip:AddSeparator(10)
@@ -4194,8 +4312,18 @@ function ItemsTabClass:AddItemTooltip(tooltip, item, slot, dbMode, maxWidth)
 	end
 	tooltip:AddSeparator(10)
 
+	if item.memoryStrands then
+		tooltip:AddLine(fontSizeBig, colorCodes.CRAFTED.."Memory Strands: ^7"..item.memoryStrands, "FONTIN SC")
+		tooltip:AddSeparator(10)
+	end
+
 	if item.talismanTier then
 		tooltip:AddLine(fontSizeBig, "^x7F7F7FTalisman Tier ^xFFFFFF"..item.talismanTier, "FONTIN SC")
+		tooltip:AddSeparator(10)
+	end
+
+	if item.intangibility then
+		tooltip:AddLine(fontSizeBig, colorCodes.INTANGIBILITY .. s_format("Intangibility: ^7%d%%", item.intangibility), "FONTIN SC")
 		tooltip:AddSeparator(10)
 	end
 
