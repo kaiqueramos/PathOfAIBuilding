@@ -3,7 +3,7 @@
 -- Module: Data
 -- Contains static data used by other modules.
 --
-
+local dkjson = require("dkjson")
 LoadModule("Data/Global")
 
 local m_min = math.min
@@ -166,6 +166,7 @@ data.powerStatList = {
 	{ stat="IgniteChance", label="Ignite Chance" },
 	{ stat="ShockChance", label="Shock Chance" },
 	{ stat="EffectiveMovementSpeedMod", label="Move speed" },
+	{ stat="LightRadiusMod", label="Light Radius" },
 	{ stat="BlockChance", label="Block Chance" },
 	{ stat="SpellBlockChance", label="Spell Block Chance" },
 	{ stat="SpellSuppressionChance", label="Spell Suppression Chance" },
@@ -212,6 +213,7 @@ local minionNonApplicableStats = {
 	Int = true,
 	Spirit = true,
 	EffectiveLootRarityMod = true,
+	LightRadiusMod = true,
 }
 for i = 1, #data.powerStatList do
 	local statEntry = data.powerStatList[i]
@@ -292,6 +294,7 @@ data.misc = { -- magic numbers
 	PvpElemental2 = 150,
 	PvpNonElemental1 = 0.57,
 	PvpNonElemental2 = 90,
+	MatchingSocketQualityBonus = 10,
 }
 
 data.skillColorMap = { colorCodes.STRENGTH, colorCodes.DEXTERITY, colorCodes.INTELLIGENCE, colorCodes.NORMAL }
@@ -352,6 +355,7 @@ data.keystones = {
 	"Arrow Dancing",
 	"Arsenal of Vengeance",
 	"Avatar of Fire",
+	"Bitter Frost",
 	"Blood Magic",
 	"Bloodsoaked Blade",
 	"Call to Arms",
@@ -389,6 +393,7 @@ data.keystones = {
 	"Power of Purpose",
 	"Precise Technique",
 	"Resolute Technique",
+	"Roiling Tempest",
 	"Runebinder",
 	"Solipsism",
 	"Supreme Decadence",
@@ -399,6 +404,7 @@ data.keystones = {
 	"Unwavering Stance",
 	"Vaal Pact",
 	"Versatile Combatant",
+	"Voracious Flame",
 	"Wicked Ward",
 	"Wind Dancer",
 	"Zealot's Oath",
@@ -885,6 +891,11 @@ data.timelessJewelTypes = {
 	[4] = "Militant Faith",
 	[5] = "Elegant Hubris",
 	[6] = "Heroic Tragedy",
+	[7] = "Abyss Tecrod",
+	[8] = "Abyss Ulaman",
+	[9] = "Abyss Kurgal",
+	[10] = "Abyss Amanamu",
+	[11] = "Abyss Zorath",
 }
 data.timelessJewelSeedMin = {
 	[1] = 100,
@@ -893,6 +904,11 @@ data.timelessJewelSeedMin = {
 	[4] = 2000,
 	[5] = 2000 / 20,
 	[6] = 100,
+	[7] = 100,
+	[8] = 100,
+	[9] = 100,
+	[10] = 100,
+	[11] = 100,
 }
 data.timelessJewelSeedMax = {
 	[1] = 8000,
@@ -901,12 +917,19 @@ data.timelessJewelSeedMax = {
 	[4] = 10000,
 	[5] = 160000 / 20,
 	[6] = 8000,
+	[7] = 8000,
+	[8] = 8000,
+	[9] = 8000,
+	[10] = 8000,
+	[11] = 8000,
 }
 data.timelessJewelTradeIDs = LoadModule("Data/TimelessJewelData/LegionTradeIds")
-data.timelessJewelAdditions = 96 -- #legionAdditions
+data.timelessJewelAdditions = 337 -- #legionAdditions
 data.nodeIDList = LoadModule("Data/TimelessJewelData/NodeIndexMapping")
+data.abyssNotableNames = LoadModule("Data/TimelessJewelData/AbyssNotableNames")
 data.timelessJewelLUTs = { }
 data.readLUT, data.repairLUTs = LoadModule("Modules/DataLegionLookUpTableHelper")
+data.readAbyssJewelLUT, data.resolveAbyssJewelComponent, data.getAbyssJewelComponentRoll = LoadModule("Modules/DataAbyssJewelLookUpTableHelper")
 
 -- this runs if the "size" key is missing from nodeIDList and attempts to rebuild all jewel LUTs and the nodeIDList
 -- note this should only run in dev mode
@@ -1235,4 +1258,7 @@ data.itemMods.WatchersEye = unsortedMods
 LoadModule("Data/Uniques/Special/Generated")
 LoadModule("Data/Uniques/Special/New")
 
+local mapFile = io.open("Data/ModFoulbornMap.jsonc", "r")
+data.foulbornMap = dkjson.decode(mapFile:read("*a"))
+mapFile:close()
 data.flavourText = LoadModule("Data/FlavourText")

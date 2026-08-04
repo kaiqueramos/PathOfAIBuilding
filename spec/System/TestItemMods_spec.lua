@@ -7,6 +7,43 @@ describe("TetsItemMods", function()
 		-- newBuild() takes care of resetting everything in setup()
 	end)
 
+	it("shows versioned reusable variant groups", function()
+		build.itemsTab:CreateDisplayItemFromRaw([[
+			Rarity: Unique
+			Grouped Test Item
+			Plate Vest
+			Version: Pre 3.28.0
+			Version: Current
+			Variant: Life
+			Variant: Energy Shield
+			Variant: Mana
+			Variant: Armour
+			Implicits: 0
+			{version:1}{variant:1}{group:1,2}+10 to maximum Life
+			{version:2}{variant:2}{group:1,2}+10 to maximum Energy Shield
+			{variant:3}{group:1,2}+10 to maximum Mana
+			{variant:4}{group:1,2}+10 to Armour
+			]])
+
+		local versionControl = build.itemsTab.controls.displayItemVersion
+		local group1 = build.itemsTab.controls.displayItemVariant
+		local group2 = build.itemsTab.controls.displayItemAltVariant
+		assert.is_true(versionControl:IsShown())
+		assert.are.equals(2, versionControl.selIndex)
+		assert.are.equals("Energy Shield", group1.list[1].label)
+		assert.are.equals("Mana", group2.list[1].label)
+
+		group2:SetSel(2)
+		group1:SetSel(2)
+		assert.are.equals(3, build.itemsTab.displayItem.variantGroupSelections[1])
+		versionControl:SetSel(1)
+		assert.are.equals(3, build.itemsTab.displayItem.variantGroupSelections[1])
+		assert.are.equals("Life", group1.list[1].label)
+		assert.are.equals("Mana", group1.list[2].label)
+		assert.are.equals("Life", group2.list[1].label)
+		assert.are.equals("Armour", group2.list[2].label)
+	end)
+
 	it("Dialla's socket mods", function()
 		build.skillsTab:PasteSocketGroup("Slot: Body Armour\nArc 20/0  1\nArc 20/0  1\n")
 		runCallback("OnFrame")
@@ -65,6 +102,18 @@ describe("TetsItemMods", function()
 		runCallback("OnFrame")
 
 		assert.are_not.equals(lightningResBefore, build.calcsTab.mainOutput.LightningResist)
+	end)
+
+	it("caps socketed gem multipliers in gem order", function()
+		build.itemsTab:CreateDisplayItemFromRaw("Test Gloves\nIron Gauntlets\nSockets: R-R-R-R")
+		build.itemsTab:AddDisplayItem()
+		build.skillsTab:PasteSocketGroup("Slot: Gloves\nHeavy Strike 20/0  1\nHeavy Strike 20/0  1\nHeavy Strike 20/0  1\nHeavy Strike 20/0  1\nArc 20/0  1\n")
+		runCallback("OnFrame")
+
+		local multipliers = build.calcsTab.mainEnv.itemModDB.multipliers
+		assert.are.equals(4, multipliers.SocketedGemsInGloves)
+		assert.are.equals(4, multipliers.SocketedRedGemsInGloves)
+		assert.are.equals(0, multipliers.SocketedBlueGemsInGloves)
 	end)
 
 	it("Doomsower vaal pact and extra phys as fire", function()
@@ -133,6 +182,47 @@ describe("TetsItemMods", function()
 		runCallback("OnFrame")
 
 		assert.are_not.equals(nonElusiveCritMult, build.calcsTab.mainOutput.CritMultiplier)
+	end)
+
+	it("Runegraft of the Agile affects average Elusive effect", function()
+		build.skillsTab:PasteSocketGroup("Smite 20/0  1\n")
+		build.configTab.input.customMods = "Gain Elusive on Critical Strike"
+		build.configTab.input.buffElusive = true
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+
+		assert.are.equals(50, build.calcsTab.mainOutput.ElusiveEffectMod)
+
+		build.configTab.input.customMods = [[Gain Elusive on Critical Strike
+		Elusive's Effect on you is increased instead for the first 2 seconds]]
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+
+		assert.are.near(730 / 9, build.calcsTab.mainOutput.ElusiveEffectMod, 10 ^ -9)
+
+		build.configTab.input.customMods = [[Gain Elusive on Critical Strike
+		Elusive's Effect on you is increased instead for the first 2 seconds
+		Elusive on you reduces in effect 50% slower
+		Elusive is removed from you at 20% Effect]]
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+
+		assert.are.near(244 / 3, build.calcsTab.mainOutput.ElusiveEffectMod, 10 ^ -9)
+
+		build.configTab.input.customMods = [[Gain Elusive on Critical Strike
+		Elusive's Effect on you is increased instead for the first 2 seconds
+		100% increased Elusive Effect
+		Elusive is removed from you at 100% Effect]]
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+
+		assert.are.near(1630 / 9, build.calcsTab.mainOutput.ElusiveEffectMod, 10 ^ -9)
+
+		build.configTab.input.overrideBuffElusive = 220
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+
+		assert.are.equals(220, build.calcsTab.mainOutput.ElusiveEffectMod)
 	end)
 
 	it("Varunastra works with close combat support", function()

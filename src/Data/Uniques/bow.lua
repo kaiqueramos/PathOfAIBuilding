@@ -31,6 +31,19 @@ Implicits: 1
 {variant:1,2,3}30% increased Attack, Cast and Movement Speed while you do not have Iron Reflexes
 {variant:1,2,3}You have Far Shot while you do not have Iron Reflexes
 ]],[[
+The Bane of Hope
+Maraketh Bow
+League: Mirage
+Source: No longer obtainable
+Requires Level 71
+Implicits: 1
+10% increased Movement Speed
+(90-130)% increased Physical Damage
++(28-35)% to Physical Damage over Time Multiplier
+Adds (20-30) to (40-50) Physical Damage
+(15-30)% chance to Impale Enemies on Hit with Attacks
+Trigger Level 20 Tears of Rot when Equipped
+]],[[
 Chin Sol
 Assassin Bow
 Variant: Pre 1.0.0
@@ -250,6 +263,20 @@ Implicits: 2
 {variant:1,2,3}Gain 110% of Weapon Physical Damage as Extra Damage of each Element
 {variant:4}Gain 100% of Weapon Physical Damage as Extra Damage of each Element
 ]],[[
+The Flame of Hope
+Maraketh Bow
+League: Mirage
+Source: No longer obtainable
+Requires Level 71
+Implicits: 1
+10% increased Movement Speed
+(90-110)% increased Fire Damage
+Adds (180-230) to (310-360) Fire Damage
+(14-18)% increased Attack Speed
+Inflict Fire Exposure on Hit against Enemies with
+5 Cinderflame, applying -25% to Fire Resistance
+Trigger Level 20 Cinders when Equipped
+]],[[
 The Gluttonous Tide
 Citadel Bow
 Source: Drops from unique{The Eater of Worlds}
@@ -272,7 +299,7 @@ Adds (130-150) to (270-300) Cold Damage
 {variant:2}+(400-500) to Accuracy Rating
 {variant:1}+(400-500) to Accuracy Rating
 4% increased Movement Speed per Frenzy Charge
-2% chance to Avoid Elemental Damage from Hits per Frenzy Charge
+2% chance to Avoid Damage of each Element from Hits per Frenzy Charge
 12 to 14 Added Cold Damage per Frenzy Charge
 0.5% of Attack Damage Leeched as Life per Frenzy Charge
 {variant:1}400 Cold Damage taken per second per Frenzy Charge while moving

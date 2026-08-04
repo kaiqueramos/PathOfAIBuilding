@@ -83,6 +83,20 @@ Implicits: 2
 {variant:4,5}Attacks with this Weapon have Added Maximum Lightning Damage equal to 20% of Player's Maximum Energy Shield
 {variant:6}Attacks with this Weapon have Added Maximum Lightning Damage equal to (10-15)% of Player's Maximum Energy Shield
 ]],[[
+Fleshrender
+Exquisite Blade
+League: Mirage
+Source: No longer obtainable
+Implicits: 1
++50% to Global Critical Strike Multiplier
+(180-240)% increased Physical Damage
++(20-40)% to Damage over Time Multiplier
+(20-40)% increased Critical Strike Chance
+Cannot Poison Enemies with at least 12 Poisons on them
+Inflict (2-3) additional Poisons on the same Target
+when you inflict Poison with this weapon
+Wither on Hit with this weapon against Enemies with at least 12 Poisons on them
+]],[[
 The Goddess Scorned
 Elegant Sword
 Source: Vendor Recipe
@@ -275,18 +289,23 @@ Twilight Blade
 Variant: Pre 1.3.0
 Variant: Pre 2.6.0
 Variant: Pre 3.7.0
+Variant: Pre 3.29.0
 Variant: Current
 Implicits: 2
 {variant:1,2}18% increased Global Accuracy Rating
-{variant:3,4}40% increased Global Accuracy Rating
+{variant:3,4,5}40% increased Global Accuracy Rating
 {variant:1}+10% Chance to Block Attack Damage while Dual Wielding
-{variant:2,3,4}+8% Chance to Block Attack Damage while Dual Wielding
+{variant:2,3,4,5}+8% Chance to Block Attack Damage while Dual Wielding
 {variant:1,2,3}Adds (20-30) to (31-40) Physical Damage
-{variant:4}Adds (60-70) to (71-80) Physical Damage
-25% increased Global Physical Damage with Weapons per Red Socket
-12% increased Global Attack Speed per Green Socket
-0.4% of Physical Attack Damage Leeched as Mana per Blue Socket
-+0.2 metres to Melee Strike Range per White Socket
+{variant:4,5}Adds (60-70) to (71-80) Physical Damage
+{variant:1,2,3,4}25% increased Global Physical Damage per Red Socket
+{variant:5}(25-35)% increased Global Physical Damage per Red Socket
+{variant:1,2,3,4}12% increased Global Attack Speed per Green Socket
+{variant:5}(10-14)% increased Global Attack Speed per Green Socket
+{variant:1,2,3,4}0.4% of Physical Attack Damage Leeched as Mana per Blue Socket
+{variant:5}(0.6-0.8)% of Physical Attack Damage Leeched as Mana per Blue Socket
+{variant:1,2,3,4}+0.2 metres to Melee Strike Range per White Socket
+{variant:5}+(0.2-0.3) metres to Melee Strike Range per White Socket
 ]],[[
 Razor of the Seventh Sun
 Midnight Blade
@@ -399,6 +418,21 @@ Adds 1 to (60-70) Lightning Damage
 Adds 1 to (60-70) Lightning Damage to Spells
 10% increased Area of Effect
 ]],[[
+Skysunder
+Exquisite Blade
+League: Mirage
+Source: No longer obtainable
+Implicits: 1
++50% to Global Critical Strike Multiplier
+(130-160)% increased Physical Damage
++(20-40)% to Damage over Time Multiplier
+(20-40)% increased Critical Strike Chance
+100% of Physical Damage Converted to Fire Damage
+Ignites you cause are reflected back to you
+50% less Duration of Ignites you inflict
+Ignites you inflict with this weapon spread to other Enemies within 2.8 metres
+Unaffected by Ignite
+]],[[
 The Surging Thoughts
 Legion Sword
 Implicits: 1
@@ -428,18 +462,25 @@ Adds (16-22) to (40-45) Physical Damage
 Scaeva
 Gladius
 Variant: Pre 2.6.0
+Variant: Pre 3.29.0
 Variant: Current
 Implicits: 2
 {variant:1}18% increased Global Accuracy Rating
-{variant:2}40% increased Global Accuracy Rating
+{variant:2,3}40% increased Global Accuracy Rating
 Adds (75-92) to (125-154) Physical Damage
-(15-25)% increased Critical Strike Chance
-0.3% of Physical Attack Damage Leeched as Life per Red Socket
-+10% to Global Critical Strike Multiplier per Green Socket
-0.3% of Physical Attack Damage Leeched as Mana per Blue Socket
-8% increased Global Defences per White Socket
-(60-80)% increased Global Critical Strike Chance when in Main Hand
-+8% Chance to Block Attack Damage when in Off Hand
+{variant:1,2}(15-25)% increased Critical Strike Chance
+{variant:3}(30-50)% increased Critical Strike Chance
+{variant:1,2}0.3% of Physical Attack Damage Leeched as Life per Red Socket
+{variant:3}(8-12)% increased Area of Effect per Red Socket
+{variant:1,2}+10% to Global Critical Strike Multiplier per Green Socket
+{variant:3}+(10-15)% to Global Critical Strike Multiplier per Green Socket
+{variant:3}(20-30)% increased Global Critical Strike Chance per Blue Socket
+{variant:1,2}0.3% of Physical Attack Damage Leeched as Mana per Blue Socket
+{variant:3}(6-8)% increased Global Defences per Empty Socket
+{variant:1,2}8% increased Global Defences per White Socket
+{variant:1,2}(60-80)% increased Global Critical Strike Chance when in Main Hand
+{variant:1,2}+8% Chance to Block Attack Damage when in Off Hand
+{variant:3}+(10-15)% Chance to Block Attack Damage when in Off Hand
 ]],[[
 The Redblade
 Gladius
