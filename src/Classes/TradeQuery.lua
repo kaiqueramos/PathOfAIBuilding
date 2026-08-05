@@ -35,10 +35,9 @@ local TradeQueryClass = newClass("TradeQuery", function(self, itemsTab)
 	-- default set of trade item sort selection
 	self.slotTables = { }
 	self.pbItemSortSelectionIndex = 1
-	-- for each league, a table of values of each currency in div
-	--- @type table<string, table<string, integer>>
-	self.pbCurrencyConversion = { }
-	self.lastCurrencyConversionRequest = 0
+	-- for each realm and league, a table of values of each currency in div
+	--- @type table<string, table<string, table<string, number>>>
+	self.pbCurrencyConversion = {}
 	self.lastCurrencyFileTime = { }
 	self.pbFileTimestampDiff = { }
 	self.pbRealm = ""
@@ -62,38 +61,11 @@ local TradeQueryClass = newClass("TradeQuery", function(self, itemsTab)
 		main.api = new("PoEAPI", main.lastToken, main.lastRefreshToken, main.tokenExpiry)
 	end
 
-	-- set
 	self.hostName = "https://www.pathofexile.com/"
+	-- www. optional
+	self.hostNamePattern = "h?t?t?p?s?:?/?/?w?w?w?%.?pathofexile%.com/"
 end)
 
----Fetch currency short-names from Poe API (used for PoeNinja price pairing)
----@param callback fun()
-function TradeQueryClass:FetchCurrencyConversionTable(callback)
-	launch:DownloadPage(
-		"https://www.pathofexile.com/api/trade/data/static",
-		function(response, errMsg)
-			if errMsg then
-				-- SKIP CALLBACK ON ERROR TO PREVENT PARTIAL DATA
-				return
-			end
-			local obj = dkjson.decode(response.body)
-			local currencyConversionTradeMap = {}
-			local currencyTable
-			for _, value in pairs(obj.result) do
-				if value.id and value.id == "Currency" then
-					currencyTable = value.entries
-					break
-				end
-			end
-			for _, value in pairs(currencyTable) do
-				currencyConversionTradeMap[value.text:lower()] = value.id
-			end
-			self.currencyConversionTradeMap = currencyConversionTradeMap
-			if callback then
-				callback()
-			end
-		end)
-end
 
 
 -- Method to pull down and interpret available leagues from PoE
@@ -124,7 +96,6 @@ function TradeQueryClass:PullLeagueList()
 				self.controls.league:SetList(self.itemsTab.leagueDropList)
 				self.controls.league.selIndex = 1
 				self.pbLeague = self.itemsTab.leagueDropList[self.controls.league.selIndex]
-				self:SetCurrencyConversionButton()
 			end
 		end)
 end
@@ -133,76 +104,149 @@ end
 --- @param amount integer
 --- @return number?
 function TradeQueryClass:ConvertCurrencyToDivs(currencyId, amount)
-	local map = self.pbCurrencyConversion[self.pbLeague]
+	local map = self.pbCurrencyConversion[self.pbRealm] and self.pbCurrencyConversion[self.pbRealm][self.pbLeague]
 	if map and map[currencyId] then
 		return amount * map[currencyId]
 	end
 end
 
--- Method to pull down and interpret the PoE.Ninja JSON endpoint data
-function TradeQueryClass:PullPoENinjaCurrencyConversion(league)
+local generalCurrencies = {
+	["Metadata/Items/Currency/CurrencyModValues"] = true,
+	["Metadata/Items/Currency/CurrencyRerollRare"] = true
+}
+
+-- Method to pull down and interpret the Currency Exchange JSON endpoint data
+function TradeQueryClass:PullCXData()
+	local realm = self.pbRealm
+	if realm == "" then
+		return
+	end
 	local now = get_time()
-	-- Limit PoE Ninja Currency Conversion request to 1 per hour
-	if (now - self.lastCurrencyConversionRequest) < 3600 then
-		self:SetNotice(self.controls.pbNotice, "PoE Ninja Rate Limit Exceeded: " .. tostring(3600 - (now - self.lastCurrencyConversionRequest)))
+	-- Limit Currency Conversion request to 1 per hour
+	if self.pbCurrencyConversion[realm] and ((now - self.pbCurrencyConversion[realm].timestamp) < 61 * 60) then
 		return
 	end
 
-	self.pbCurrencyConversion[league] = { }
-	self.lastCurrencyConversionRequest = now
-	launch:DownloadPage(
-		"https://poe.ninja/poe1/api/economy/exchange/current/overview?type=Currency&league=" .. urlEncode(league),
-		function(response, errMsg)
+	-- download json containing short names for each item id
+	launch:DownloadPage("https://www.pathofexile.com/api/trade/data/static", function(response, errMsg)
+		if errMsg then
+			self:SetNotice(self.controls.pbNotice, "Error: " .. tostring(errMsg))
+			return
+		end
+
+		local static = dkjson.decode(response.body)
+		if not static then
+			self:SetNotice(self.controls.pbNotice, "Could not decode static trade data")
+			return
+		end
+		local url = "https://web.poecdn.com/api/currency-exchange"
+		if realm ~= "pc" then
+			url = url .. "/" .. realm
+		end
+		local hourSeconds = 60 * 60
+		url = url .. "/" .. ((math.floor(now / hourSeconds) - 1) * hourSeconds)
+		launch:DownloadPage(url, function(response, errMsg)
 			if errMsg then
 				self:SetNotice(self.controls.pbNotice, "Error: " .. tostring(errMsg))
 				return
 			end
-			local json_data = dkjson.decode(response.body)
-			if not json_data or not json_data.lines then
-				self:SetNotice(self.controls.pbNotice, "Failed to Get PoE Ninja response")
+			local json = dkjson.decode(response.body)
+			if not json then
+				self:SetNotice(self.controls.pbNotice, "Malformed CX API response")
 				return
 			end
-			if not self:PriceBuilderProcessPoENinjaResponse(json_data.lines) then
-				-- don't edit json on failure
+
+			if json.error then
+				self:SetNotice(self.controls.pbNotice, "CX error: " .. json.error.message)
 				return
 			end
-			local print_str = ""
-			for key, value in pairs(self.pbCurrencyConversion[self.pbLeague]) do
-				print_str = print_str .. '"'..key..'": '..tostring(value)..','
+			local success, result = pcall(function()
+				-- short currency names for each base item type id
+				local currencyNames = {}
+				local currencyIdMap = {}
+				for id, name in pairs(require("Data.CurrencyNames")) do
+					currencyIdMap[name] = id
+				end
+				for _, entry in ipairs(static.result[1].entries) do
+					if entry.id ~= "sep" then
+						local itemID = currencyIdMap[entry.text]
+						-- Not every bulk trade item is exported as currency.
+						if itemID then
+							currencyNames[itemID] = entry.id
+						end
+					end
+				end
+
+				local out = {}
+				for _, entry in ipairs(json.markets) do
+					local league = entry.league
+					if not out[league] then
+						out[league] = {}
+					end
+					local leagueOut = out[league]
+
+					-- Base type IDs are in the form Metadata/Items/.../CurrencyModValues.
+					local fromID = entry.market_pair[1]
+					local toID = entry.market_pair[2]
+
+					-- Normalize entries to price each currency in chaos or divines.
+					if generalCurrencies[fromID] and toID ~= "Metadata/Items/Currency/CurrencyModValues" then
+						fromID, toID = toID, fromID
+					end
+
+					local fromShort = currencyNames[fromID]
+					local toShort = currencyNames[toID]
+					if not fromShort or not generalCurrencies[toID] or entry.lowest_ratio[fromID] == 0 then
+						goto CXContinue
+					end
+
+					local newEntry = {
+						currency = toShort,
+						price = entry.lowest_ratio[toID] / entry.lowest_ratio[fromID],
+						stock = entry.highest_stock[fromID]
+					}
+					-- Only keep the most popular option.
+					if not leagueOut[fromShort] or leagueOut[fromShort].stock < newEntry.stock then
+						leagueOut[fromShort] = newEntry
+					end
+					::CXContinue::
+				end
+
+				-- Convert any chaos prices to divine equivalent prices.
+				for leagueName, leagueEntries in pairs(out) do
+					for from, to in pairs(leagueEntries) do
+						if to.currency ~= "divine" then
+							local divEntry = leagueEntries[to.currency]
+							if not divEntry then
+								leagueEntries[from] = nil
+							else
+								leagueEntries[from] = divEntry.price * to.price
+							end
+						end
+					end
+					for from, to in pairs(leagueEntries) do
+						if type(to) == "table" then
+							leagueEntries[from] = to.price
+						end
+					end
+					if not next(leagueEntries) then
+						out[leagueName] = nil
+					else
+						leagueEntries.divine = 1
+					end
+				end
+
+				return out
+			end)
+			if not success then
+				self:SetNotice(self.controls.pbNotice, "Failed to process CX response")
+				ConPrintf("CX error: %s", result)
+				return
 			end
-			local foo = io.open("../"..self.pbLeague.."_currency_values.json", "w")
-			foo:write("{" .. print_str .. '"updateTime": ' .. tostring(get_time()) .. "}")
-			foo:close()
-			self:SetCurrencyConversionButton()
+			result.timestamp = now
+			self.pbCurrencyConversion[realm] = result
 		end)
-
-end
-
--- Method to process the PoE.Ninja response
---- @param responseLines table[]
---- @return bool
-function TradeQueryClass:PriceBuilderProcessPoENinjaResponse(responseLines)
-	-- Populate the divine-converted values for each tradeId
-	for _, currencyDetails in ipairs(responseLines) do
-		-- these use the same ids as the trade site, which are also short
-		-- readable names, like "transmute" or "aug", which means there's no
-		-- need for conversion.
-		local id = currencyDetails.id
-		-- poe.ninja uses divs as the primary currency, and as far as I know,
-		-- this figure is equivalent to the best ratio in equivalent divs
-		local divs = currencyDetails.primaryValue
-		if not id or not divs then
-			self:SetNotice(self.controls.pbNotice, "Currencies not updated: malformed PoE Ninja response")
-			return false
-		end
-		self.pbCurrencyConversion[self.pbLeague][id] = divs
-	end
-	-- if nothing was actually found, we should add a notice
-	if next(self.pbCurrencyConversion[self.pbLeague]) == nil then
-		self:SetNotice(self.controls.pbNotice, "No currencies received from PoE Ninja")
-		return false
-	end
-	return true
+	end)
 end
 
 local function initStatSortSelectionList(list)
@@ -253,17 +297,17 @@ function TradeQueryClass:PriceItem()
 		return #self.itemsTab.itemSetOrderList > 1
 	end
 
-	self.loginStatus = function() 
+	self.loginStatus = function()
 		if main.api.authToken then
 			self.clickTime = nil
 			return "Authenticated"
 		elseif self.clickTime then
-			local left = m_max(0,(self.clickTime + 30) - os.time())
+			local left = m_max(0,(self.clickTime + 60) - os.time())
 			if left == 0 then
 				self.clickTime = nil
 				return "Not authenticated"
 			else
-				return "Logging in... (" .. left .. ")"
+				return "Logging in... (" .. left .. ") - URL copied to clipboard"
 			end
 		else
 			return colorCodes.WARNING.."Not authenticated"
@@ -413,14 +457,16 @@ Highest Weight - Displays the order retrieved from trade]]
 	self.controls.realmLabel = new("LabelControl", {"LEFT", self.controls.setSelect, "RIGHT"}, {18, 0, 20, row_height - 4}, "^7Realm:")
 	self.controls.realm = new("DropDownControl", {"LEFT", self.controls.realmLabel, "RIGHT"}, {6, 0, 150, row_height}, self.realmDropList, function(index, value)
 		self.pbRealmIndex = index
-		self.pbRealm = self.realmIds[value]
+		if self.pbRealm ~= self.realmIds[value] then
+			self.pbRealm = self.realmIds[value]
+			self:PullCXData()
+		end
 		local function setLeagueDropList()
 			self.itemsTab.leagueDropList = copyTable(self.allLeagues[self.pbRealm])
 			self.controls.league:SetList(self.itemsTab.leagueDropList)
 			-- invalidate selIndex to trigger select function call in the SetSel
 			self.controls.league.selIndex = nil
 			self.controls.league:SetSel(self.pbLeagueIndex)
-			self:SetCurrencyConversionButton()
 		end
 		if self.allLeagues[self.pbRealm] then
 			setLeagueDropList()
@@ -455,7 +501,6 @@ Highest Weight - Displays the order retrieved from trade]]
 	self.controls.league = new("DropDownControl", {"LEFT", self.controls.leagueLabel, "RIGHT"}, {6, 0, 150, row_height}, self.itemsTab.leagueDropList, function(index, value)
 		self.pbLeagueIndex = index
 		self.pbLeague = value
-		self:SetCurrencyConversionButton()
 	end)
 	self.controls.league:SetSel(self.pbLeagueIndex)
 	self.controls.league.enabled = function()
@@ -501,7 +546,11 @@ Highest Weight - Displays the order retrieved from trade]]
 		end
 	end
 	table.sort(activeSocketList)
+	local activeUniqueJewelSocket
 	for _, nodeId in ipairs(activeSocketList) do
+		if not activeUniqueJewelSocket and not self.itemsTab.build.spec.nodes[nodeId].containJewelSocket then
+			activeUniqueJewelSocket = nodeId
+		end
 		t_insert(slotTables, { slotName = self.itemsTab.sockets[nodeId].label, nodeId = nodeId })
 	end
 
@@ -535,7 +584,7 @@ Highest Weight - Displays the order retrieved from trade]]
 		return hideRowFunc(self, #slotTables+1)
 	end
 	local row_count = #slotTables + 1
-	self.slotTables[row_count] = { slotName = "Megalomaniac", unique = true, alreadyCorrupted = true }
+	self.slotTables[row_count] = { slotName = "Megalomaniac", unique = true, alreadyCorrupted = true, selectedJewelNodeId = activeUniqueJewelSocket }
 	self:PriceItemRowDisplay(row_count, top_pane_alignment_ref, row_vertical_padding, row_height)
 	self.controls["name"..row_count].y = self.controls["name"..row_count].y + (row_height + row_vertical_padding) -- Megalomaniac needs to drop an extra row for "Other Trades"
 	self.controls["name"..row_count].shown = function()
@@ -543,11 +592,11 @@ Highest Weight - Displays the order retrieved from trade]]
 	end
 	row_count = row_count + 1
 	-- Watcher's Eye
-	self.slotTables[row_count] = { slotName = "Watcher's Eye", unique = true }
+	self.slotTables[row_count] = { slotName = "Watcher's Eye", unique = true, selectedJewelNodeId = activeUniqueJewelSocket }
 	self:PriceItemRowDisplay(row_count, top_pane_alignment_ref, row_vertical_padding, row_height)
 	self.controls["name"..row_count].y = self.controls["name"..row_count].y + (row_height + row_vertical_padding)
 	self.controls["name"..row_count].shown = function()
-		return hideRowFunc(self, row_count) and self:findValidSlotForWatchersEye()
+		return hideRowFunc(self, row_count)
 	end
 
 	-- fix case where the row count is reduced from the last time the popup was
@@ -558,40 +607,23 @@ Highest Weight - Displays the order retrieved from trade]]
 			self.controls[k] = nil
 		end
 	end
-	
-	row_count = row_count + 1
+
+	row_count = row_count + 2
 
 	local effective_row_count = row_count - ((scrollBarShown and #slotTables >= 19) and #slotTables-19 or 0) + 2 + 2 -- Two top menu rows, two bottom rows, slots after #19 overlap the other controls at the bottom of the pane
 	self.effective_rows_height = row_height * (effective_row_count - #slotTables + (18 - (#slotTables > 37 and 3 or 0))) -- scrollBar height, "18 - slotTables > 37" logic is fine tuning whitespace after last row
 	self.pane_height = (row_height + row_vertical_padding) * effective_row_count + 3 * pane_margins_vertical + row_height / 2
-	local pane_width = 850 + (scrollBarShown and 25 or 0)
+	local pane_width = 885 + (scrollBarShown and 25 or 0)
 
 	self.controls.scrollBar = new("ScrollBarControl", {"TOPRIGHT", self.controls["StatWeightMultipliersButton"],"TOPRIGHT"}, {0, 25, 18, 0}, 50, "VERTICAL", false)
 	self.controls.scrollBar.shown = function() return scrollBarShown end
 
-	local function wipeItemControls()
-		for index, _ in pairs(self.controls) do
-			if index:match("%d") then
-				self.controls[index] = nil
-			end
-		end
-	end
 	self.controls.fullPrice = new("LabelControl", {"BOTTOM", nil, "BOTTOM"}, {0, -row_height - pane_margins_vertical - row_vertical_padding, pane_width - 2 * pane_margins_horizontal, row_height}, "")
 	self.controls.close = new("ButtonControl", {"BOTTOM", nil, "BOTTOM"}, {0, -pane_margins_vertical, 90, row_height}, "Done", function()
 		main:ClosePopup()
-		-- there's a case where if you have a socket(s) allocated, open TradeQuery, close it, dealloc, then open TradeQuery again
-		-- the deallocated socket controls were still showing, so this will remove all dynamically created controls from items
-
-		-- later note: this is disabled because it causes the trader to crash if
-		-- it's closed mid-search
-		-- wipeItemControls()
 	end)
 
-	self.controls.updateCurrencyConversion = new("ButtonControl", {"BOTTOMLEFT", nil, "BOTTOMLEFT"}, {pane_margins_horizontal, -pane_margins_vertical, 240, row_height}, "Get Currency Conversion Rates", function()
-		self:PullPoENinjaCurrencyConversion(self.pbLeague)
-	end)
 	self.controls.pbNotice = new("LabelControl",  {"BOTTOMRIGHT", nil, "BOTTOMRIGHT"}, {-row_height - pane_margins_vertical - row_vertical_padding, -pane_margins_vertical, 300, row_height}, "")
-	self:SetCurrencyConversionButton()
 
 	-- used in PopupDialog:Draw()
 	local function scrollBarFunc()
@@ -625,6 +657,7 @@ Highest Weight - Displays the order retrieved from trade]]
 			end
 		end
 	end
+	self:PullCXData()
 	main:OpenPopup(pane_width, self.pane_height, "Trader", self.controls, nil, nil, "close", (scrollBarShown and scrollBarFunc or nil))
 end
 
@@ -636,6 +669,7 @@ function TradeQueryClass:SetStatWeights(previousSelectionList)
 	local sliderController = { index = 1 }
 	local popupHeight = 500
 
+	local listYOffset = 45
 	-- account for top gap, bottom button size and gap, and a gap before buttons
 	local listHeight = popupHeight - 45 - 30 - 10
 
@@ -733,58 +767,6 @@ function TradeQueryClass:SetStatWeights(previousSelectionList)
 	main:OpenPopup(420, popupHeight, "Stat Weight Multipliers", controls)
 end
 
--- Method to update the Currency Conversion button label
-function TradeQueryClass:SetCurrencyConversionButton()
-	local currencyLabel = "Update Currency Conversion Rates"
-	self.pbFileTimestampDiff[self.controls.league.selIndex] = nil
-	if self.pbLeague == nil then
-		return
-	end
-	if self.pbRealm ~= "pc" then
-		self.controls.updateCurrencyConversion.label = "Currency Rates are not available"
-		self.controls.updateCurrencyConversion.enabled = false
-		self.controls.updateCurrencyConversion.tooltipFunc = function(tooltip)
-			tooltip:Clear()
-			tooltip:AddLine(16, "Currency Conversion rates are pulled from PoE Ninja")
-			tooltip:AddLine(16, "The data is only available for the PC realm.")
-		end
-		return
-	end
-	local values_file = io.open("../"..self.pbLeague.."_currency_values.json", "r")
-	if values_file then
-		local lines = values_file:read "*a"
-		values_file:close()
-		self.pbCurrencyConversion[self.pbLeague] = dkjson.decode(lines)
-		self.lastCurrencyFileTime[self.controls.league.selIndex]  = self.pbCurrencyConversion[self.pbLeague]["updateTime"]
-		self.pbFileTimestampDiff[self.controls.league.selIndex] = get_time() - self.lastCurrencyFileTime[self.controls.league.selIndex]
-		if self.pbFileTimestampDiff[self.controls.league.selIndex] < 3600 then
-			-- Less than 1 hour (60 * 60 = 3600)
-			currencyLabel = "Currency Rates are very recent"
-		elseif self.pbFileTimestampDiff[self.controls.league.selIndex] < (24 * 3600) then
-			-- Less than 1 day
-			currencyLabel = "Currency Rates are recent"
-		end
-	else
-		currencyLabel = "Get Currency Conversion Rates"
-	end
-	self.controls.updateCurrencyConversion.label = currencyLabel
-	self.controls.updateCurrencyConversion.enabled = function()
-		return self.pbFileTimestampDiff[self.controls.league.selIndex] == nil or self.pbFileTimestampDiff[self.controls.league.selIndex] >= 3600
-	end
-	self.controls.updateCurrencyConversion.tooltipFunc = function(tooltip)
-		tooltip:Clear()
-		if self.lastCurrencyFileTime[self.controls.league.selIndex] ~= nil then
-			self.pbFileTimestampDiff[self.controls.league.selIndex] = get_time() - self.lastCurrencyFileTime[self.controls.league.selIndex]
-		end
-		if self.pbFileTimestampDiff[self.controls.league.selIndex] == nil or self.pbFileTimestampDiff[self.controls.league.selIndex] >= 3600 then
-			tooltip:AddLine(16, "Currency Conversion rates are pulled from PoE Ninja")
-			tooltip:AddLine(16, "Updates are limited to once per hour and not necessary more than once per day")
-		elseif self.pbFileTimestampDiff[self.controls.league.selIndex] ~= nil and self.pbFileTimestampDiff[self.controls.league.selIndex] < 3600 then
-			tooltip:AddLine(16, "Conversion Rates are less than an hour old (" .. tostring(self.pbFileTimestampDiff[self.controls.league.selIndex]) .. " seconds old)")
-		end
-	end
-end
-
 -- Method to set the notice message in upper right of PoB Trader pane
 function TradeQueryClass:SetNotice(notice_control, msg)
 	if msg:find("No Matching Results") then
@@ -828,7 +810,9 @@ function TradeQueryClass:GetResultEvaluation(row_idx, result_index, calcFunc, ba
 		self.onlyWeightedBaseOutput[row_idx][result_index] = onlyWeightedBaseOutput
 		self.lastComparedWeightList[row_idx][result_index] = self.statSortSelectionList
 	end
-	local slotName = self.slotTables[row_idx].nodeId and "Jewel " .. tostring(self.slotTables[row_idx].nodeId) or self.slotTables[row_idx].slotName
+	local slotTbl = self.slotTables[row_idx]
+	local jewelNodeId = slotTbl.nodeId or slotTbl.selectedJewelNodeId
+	local slotName = jewelNodeId and "Jewel " .. tostring(jewelNodeId) or slotTbl.slotName
 	if slotName == "Megalomaniac" then
 		local addedNodes = {}
 		for nodeName in (result.item_string.."\r\n"):gmatch("1 Added Passive Skill is (.-)\r?\n") do
@@ -877,11 +861,19 @@ function TradeQueryClass:UpdateDropdownList(row_idx)
 	self.controls["resultDropdown".. row_idx].selIndex = 1
 	self.controls["resultDropdown".. row_idx]:SetList(dropdownLabels)
 end
+function TradeQueryClass:ResetResultRow(rowIdx)
+	self.itemIndexTbl[rowIdx] = nil
+	self.sortedResultTbl[rowIdx] = nil
+	self.resultTbl[rowIdx] = nil
+	self.totalPrice[rowIdx] = nil
+	self:UpdateDropdownList(rowIdx)
+	self.controls.fullPrice.label = "^7Total Price: " .. self:GetTotalPriceString()
+end
 function TradeQueryClass:UpdateControlsWithItems(row_idx)
 	local sortMode = self.itemSortSelectionList[self.pbItemSortSelectionIndex]
 	local sortedItems, errMsg = self:SortFetchResults(row_idx, sortMode)
 	if errMsg == "MissingConversionRates" then
-		self:SetNotice(self.controls.pbNotice, "^4Please update currency rates to sort by price. Falling back to Stat Value sort.")
+		self:SetNotice(self.controls.pbNotice, "^4Currency rates unavailable. Falling back to Stat Value sort.")
 		sortedItems, errMsg = self:SortFetchResults(row_idx, self.sortModes.StatValue)
 	elseif errMsg then
 		self:SetNotice(self.controls.pbNotice, "Error: " .. errMsg)
@@ -891,14 +883,19 @@ function TradeQueryClass:UpdateControlsWithItems(row_idx)
 	end
 
 	self.sortedResultTbl[row_idx] = sortedItems
-	local pb_index = self.sortedResultTbl[row_idx][1].index
+	if not sortedItems[1] then
+		self:ResetResultRow(row_idx)
+		self:SetNotice(self.controls.pbNotice, "^4No compatible items found for this slot.")
+		return
+	end
+	local pb_index = sortedItems[1].index
 	self.itemIndexTbl[row_idx] = pb_index
 	self.controls["priceButton".. row_idx].tooltipText = "Sorted by " .. self.itemSortSelectionList[self.pbItemSortSelectionIndex]
 	self.totalPrice[row_idx] = {
 		currency = self.resultTbl[row_idx][pb_index].currency,
 		amount = self.resultTbl[row_idx][pb_index].amount,
 	}
-	self.controls.fullPrice.label = "Total Price: " .. self:GetTotalPriceString()
+	self.controls.fullPrice.label = "^7Total Price: " .. self:GetTotalPriceString()
 	self:UpdateDropdownList(row_idx)
 end
 
@@ -909,7 +906,7 @@ function TradeQueryClass:SetFetchResultReturn(row_idx, index)
 			currency = self.resultTbl[row_idx][index].currency,
 			amount = self.resultTbl[row_idx][index].amount,
 		}
-		self.controls.fullPrice.label = "Total Price: " .. self:GetTotalPriceString()
+		self.controls.fullPrice.label = "^7Total Price: " .. self:GetTotalPriceString()
 	end
 end
 
@@ -929,7 +926,7 @@ function TradeQueryClass:SortFetchResults(row_idx, mode)
 	--- @return table<integer, number>?
 	local function getPriceTable()
 		--- @type table<integer, number>
-		local divPrices = {}	
+		local divPrices = {}
 		for idx, item in ipairs(self.resultTbl[row_idx]) do
 			if item.currency and item.amount then
 				local divs = self:ConvertCurrencyToDivs(item.currency, item.amount)
@@ -989,40 +986,37 @@ function TradeQueryClass:SortFetchResults(row_idx, mode)
 	return newTbl
 end
 
--- return valid slot for Watcher's Eye
--- Tries to first return an existing watcher's eye slot if possible
-function TradeQueryClass:findValidSlotForWatchersEye()
-	for _, socket in pairs(self.itemsTab.sockets) do
-		local socketItem = self.itemsTab.items[socket.selItemId]
-		if not socket.inactive and socketItem and socketItem.name and socketItem.name:find("Watcher's Eye") then
-			return socket
+-- ensure we only take in items that parse properly to avoid crash issues and fit in the
+-- provided slotName
+---@param itemEntries table
+---@param slotName string
+function TradeQueryClass:FilterToSafeItems(itemEntries, slotName)
+	local itemsSafe = {}
+	for _, entry in ipairs(itemEntries) do
+		local item = new("Item", entry.item_string)
+		if item.base and ((not slotName) or self.itemsTab:IsItemValidForSlot(item, slotName)) then
+			t_insert(itemsSafe, entry)
 		end
 	end
-	local tmpWE=nil
-	for _,v in ipairs(data.uniques.generated) do
-		if v:find("Watcher's Eye") then
-			tmpWE= new("Item",v)
-			break
-		end
-	end
-	for _,v in pairs(self.itemsTab.sockets) do
-		if not v.inactive and self.itemsTab:IsItemValidForSlot(tmpWE,v.slotName,self.itemsTab.activeItemSet) then
-			return self.itemsTab.sockets[v.nodeId]
-		end
-	end
+	return itemsSafe
 end
 -- Method to generate pane elements for each item slot
 function TradeQueryClass:PriceItemRowDisplay(row_idx, top_pane_alignment_ref, row_vertical_padding, row_height)
 	local controls = self.controls
 	local slotTbl = self.slotTables[row_idx]
 	local activeSlotRef = slotTbl.nodeId and self.itemsTab.activeItemSet[slotTbl.nodeId] or self.itemsTab.activeItemSet[slotTbl.slotName]
-	local activeSlot = slotTbl.nodeId and self.itemsTab.sockets[slotTbl.nodeId] or
-						slotTbl.slotName and (self.itemsTab.slots[slotTbl.slotName] or
-						slotTbl.slotName == "Watcher's Eye" and self:findValidSlotForWatchersEye() or
-						slotTbl.fullName and self.itemsTab.slots[slotTbl.fullName]) -- fullName for Abyssal Sockets
+	local nodeId = slotTbl.nodeId or slotTbl.selectedJewelNodeId
+	local activeSlot = nodeId and self.itemsTab.sockets[nodeId] or
+		slotTbl.slotName and (self.itemsTab.slots[slotTbl.slotName] or
+			-- fullName for Abyssal Sockets
+			slotTbl.fullName and self.itemsTab.slots[slotTbl.fullName])
+	local function getSelectedSlot()
+		local selectedNodeId = slotTbl.nodeId or slotTbl.selectedJewelNodeId
+		return selectedNodeId and self.itemsTab.sockets[selectedNodeId] or activeSlot
+	end
 	local nameColor = slotTbl.unique and colorCodes.UNIQUE or "^7"
-	controls["name"..row_idx] = new("LabelControl", top_pane_alignment_ref, {0, row_idx*(row_height + row_vertical_padding), 100, row_height - 4}, nameColor..slotTbl.slotName)
-	controls["bestButton"..row_idx] = new("ButtonControl", { "LEFT", controls["name"..row_idx], "LEFT"}, {100 + 8, 0, 80, row_height}, "Find best", function()
+	controls["name" .. row_idx] = new("LabelControl", top_pane_alignment_ref, { 0, row_idx * (row_height + row_vertical_padding), 135, row_height - 4 }, nameColor .. slotTbl.slotName)
+	controls["bestButton" .. row_idx] = new("ButtonControl", { "LEFT", controls["name" .. row_idx], "LEFT" }, { 135 + 8, 0, 80, row_height }, "Find best", function()
 		self.tradeQueryGenerator:RequestQuery(activeSlot, { slotTbl = slotTbl, controls = controls, row_idx = row_idx }, self.statSortSelectionList, function(context, query, errMsg)
 			if errMsg then
 				self:SetNotice(context.controls.pbNotice, colorCodes.NEGATIVE .. errMsg)
@@ -1048,25 +1042,28 @@ function TradeQueryClass:PriceItemRowDisplay(row_idx, top_pane_alignment_ref, ro
 						self:SetNotice(context.controls.pbNotice, "")
 					end
 
+					local selectedSlot = getSelectedSlot()
+					local itemsSafe = self:FilterToSafeItems(items, selectedSlot and selectedSlot.slotName)
 					-- replace eldritch mods or enchants if the user requested
 					-- so in TradeQueryGenerator
-					if self.tradeQueryGenerator.lastCopyEldritch or
-						self.tradeQueryGenerator.lastCopyEnchantMode == "Copy Current" then
-						for i, _ in ipairs(items) do
-							local item = new("Item", items[i].item_string)
+					for i, _ in ipairs(itemsSafe) do
+						local item = new("Item", itemsSafe[i].item_string)
+						-- assume the user will add quality if they buy the item
+						item:NormaliseQuality()
+						if self.tradeQueryGenerator.lastIncludeEldritch == "Copy Current" or
+							self.tradeQueryGenerator.lastCopyEnchantMode == "Copy Current" then
 							self.itemsTab:CopyAnointsAndEldritchImplicits(item, true, true, context.slotTbl.slotName)
-							items[i].item_string = item:BuildRaw()
-						end
-					elseif self.tradeQueryGenerator.lastCopyEnchantMode == "Remove" then
-						for i, _ in ipairs(items) do
-							local item = new("Item", items[i].item_string)
+						elseif self.tradeQueryGenerator.lastIncludeEldritch == "Remove" then
+							if item.tangle or item.cleansing then
+								item.implicitModLines = {}
+							end
+						elseif self.tradeQueryGenerator.lastCopyEnchantMode == "Remove" then
 							item.enchantModLines = {}
-							items[i].item_string = item:BuildRaw()
 						end
+						itemsSafe[i].item_string = item:BuildRaw()
 					end
 
-
-					self.resultTbl[context.row_idx] = items
+					self.resultTbl[context.row_idx] = itemsSafe
 					self:UpdateControlsWithItems(context.row_idx)
 					context.controls["priceButton"..context.row_idx].label =  "Price Item"
 				end,
@@ -1099,7 +1096,7 @@ you can add them, copy the link here, and press "Price Item" to evaluate the ite
 	end
 	local pbURL
 	controls["uri"..row_idx] = new("EditControl", { "TOPLEFT", controls["bestButton"..row_idx], "TOPRIGHT"}, {8, 0, 514, row_height}, nil, nil, "^%C\t\n", nil, function(buf)
-		local subpath = buf:match(self.hostName .. "trade/search/(.+)$") or ""
+		local subpath = buf:match(self.hostNamePattern .. "trade/search/(.+)$") or ""
 		local paths = {}
 		for path in subpath:gmatch("[^/]+") do
 			table.insert(paths, path)
@@ -1121,20 +1118,26 @@ you can add them, copy the link here, and press "Price Item" to evaluate the ite
 	end
 	controls["uri"..row_idx].tooltipFunc = function(tooltip)
 		tooltip:Clear()
-		if controls["uri"..row_idx].buf:find('^'..self.hostName..'trade/search/') ~= nil then
+		if controls["uri" .. row_idx].buf:find('^' .. self.hostNamePattern .. 'trade/search/') ~= nil then
 			tooltip:AddLine(16, "Control + click to open in web-browser")
 		end
 	end
 	controls["priceButton"..row_idx] = new("ButtonControl", { "TOPLEFT", controls["uri"..row_idx], "TOPRIGHT"}, {8, 0, 100, row_height}, "Price Item",
 		function()
 			controls["priceButton"..row_idx].label = "Searching..."
-			self.tradeQueryRequests:SearchWithURL(controls["uri"..row_idx].buf, function(items, errMsg, query)
+			local url = controls["uri" .. row_idx].buf
+			if not url:find("^https://") then
+				url = "https://" .. url
+			end
+			self.tradeQueryRequests:SearchWithURL(url, function(items, errMsg, query)
 				if errMsg then
 					self:SetNotice(controls.pbNotice, "Error: " .. errMsg)
 				else
 					self:SetNotice(controls.pbNotice, "")
 					self.lastQueries[row_idx] = query
-					self.resultTbl[row_idx] = items
+					local selectedSlot = getSelectedSlot()
+					local itemsSafe = self:FilterToSafeItems(items, selectedSlot and selectedSlot.slotName)
+					self.resultTbl[row_idx] = itemsSafe
 					self:UpdateControlsWithItems(row_idx)
 				end
 				controls["priceButton"..row_idx].label = "Price Item"
@@ -1144,7 +1147,9 @@ you can add them, copy the link here, and press "Price Item" to evaluate the ite
 		local isAuthorized = main.api.authToken ~= nil
 		local validURL = controls["uri"..row_idx].validURL
 		local isSearching = controls["priceButton"..row_idx].label == "Searching..."
-		return isAuthorized and validURL and not isSearching
+		local selectedJewelSlot = slotTbl.selectedJewelNodeId and self.itemsTab.sockets[slotTbl.selectedJewelNodeId]
+		local hasRequiredJewelSlot = not slotTbl.unique or selectedJewelSlot and not selectedJewelSlot.inactive
+		return isAuthorized and validURL and not isSearching and hasRequiredJewelSlot
 	end
 	controls["priceButton"..row_idx].tooltipFunc = function(tooltip)
 		tooltip:Clear()
@@ -1152,20 +1157,18 @@ you can add them, copy the link here, and press "Price Item" to evaluate the ite
 			tooltip:AddLine(16, "You must log in to use the search feature")
 		elseif not controls["uri"..row_idx].validURL then
 			tooltip:AddLine(16, "Enter a valid trade URL")
+		elseif slotTbl.unique and (not slotTbl.selectedJewelNodeId or not self.itemsTab.sockets[slotTbl.selectedJewelNodeId] or self.itemsTab.sockets[slotTbl.selectedJewelNodeId].inactive) then
+			tooltip:AddLine(16, "Requires an active Jewel Socket")
 		end
 	end
 	local clampItemIndex = function(index)
 		return m_min(m_max(index or 1, 1), self.sortedResultTbl[row_idx] and #self.sortedResultTbl[row_idx] or 1)
 	end
-	controls["changeButton"..row_idx] = new("ButtonControl", { "LEFT", controls["name"..row_idx], "LEFT"}, {100 + 8, 0, 80, row_height}, "<< Search", function()
-		self.itemIndexTbl[row_idx] = nil
-		self.sortedResultTbl[row_idx] = nil
-		self.resultTbl[row_idx] = nil
-		self.totalPrice[row_idx] = nil
-		self.controls.fullPrice.label = "Total Price: " .. self:GetTotalPriceString()
+	controls["changeButton" .. row_idx] = new("ButtonControl", { "LEFT", controls["name" .. row_idx], "LEFT" }, { 135 + 8, 0, 80, row_height }, "<< Search", function()
+		self:ResetResultRow(row_idx)
 	end)
 	controls["changeButton"..row_idx].shown = function() return self.resultTbl[row_idx] end
-	controls["resultDropdown"..row_idx] = new("DropDownControl", { "TOPLEFT", controls["changeButton"..row_idx], "TOPRIGHT"}, {8, 0, 325, row_height}, {}, function(index)
+	controls["resultDropdown" .. row_idx] = new("DropDownControl", { "TOPLEFT", controls["changeButton" .. row_idx], "TOPRIGHT" }, { 8, 0, 351, row_height }, {}, function(index)
 		self.itemIndexTbl[row_idx] = self.sortedResultTbl[row_idx][index].index
 		self:SetFetchResultReturn(row_idx, self.itemIndexTbl[row_idx])
 	end)
@@ -1196,13 +1199,8 @@ you can add them, copy the link here, and press "Price Item" to evaluate the ite
 		end
 		local item = new("Item", result.item_string)
 		tooltip:Clear()
-		if slotTbl.slotName == "Watcher's Eye" then
-			-- for watcher's eye we don't have a target slot. this will also
-			-- mean we compare against an existing watcher's eye if one exists
-			self.itemsTab:AddItemTooltip(tooltip, item, nil)
-		else
-			self.itemsTab:AddItemTooltip(tooltip, item, activeSlot)
-		end
+		local tooltipSlot = slotTbl.selectedJewelNodeId and self.itemsTab.sockets[slotTbl.selectedJewelNodeId] or activeSlot
+		self.itemsTab:AddItemTooltip(tooltip, item, tooltipSlot)
 		addMegalomaniacCompareToTooltipIfApplicable(tooltip, pb_index)
 		tooltip:AddSeparator(10)
 		tooltip:AddLine(16, string.format("^7Price: %s %s", result.amount, result.currency))
@@ -1213,8 +1211,9 @@ you can add them, copy the link here, and press "Price Item" to evaluate the ite
 		-- pass "true" to not auto equip it as we will have our own logic
 		self.itemsTab:AddDisplayItem(true)
 		-- Autoequip it
-		local slot = slotTbl.nodeId and self.itemsTab.sockets[slotTbl.nodeId] or self.itemsTab.slots[slotTbl.slotName]
-		if slot and slotTbl.slotName == slot.label and slot:IsShown() and self.itemsTab:IsItemValidForSlot(item, slot.slotName) then
+		local jewelNodeId = slotTbl.nodeId or slotTbl.selectedJewelNodeId
+		local slot = jewelNodeId and self.itemsTab.sockets[jewelNodeId] or self.itemsTab.slots[slotTbl.slotName]
+		if slot and (jewelNodeId or slotTbl.slotName == slot.label) and slot:IsShown() and self.itemsTab:IsItemValidForSlot(item, slot.slotName) then
 			slot:SetSelItemId(item.id)
 			self.itemsTab:PopulateSlots()
 			self.itemsTab:AddUndoState()
@@ -1226,16 +1225,9 @@ you can add them, copy the link here, and press "Price Item" to evaluate the ite
 		local selected_result_index = self.itemIndexTbl[row_idx]
 		local item_string = self.resultTbl[row_idx][selected_result_index].item_string
 		if selected_result_index and item_string then
-			-- TODO: item parsing bug caught here.
-			-- item.baseName is nil and throws error in the following AddItemTooltip func
-			-- if the item is unidentified
 			local item = new("Item", item_string)
-			if slotTbl.slotName == "Watcher's Eye" then
-				-- we have no comparison slot for the watcher's eye
-				self.itemsTab:AddItemTooltip(tooltip, item, nil, true)
-			else
-				self.itemsTab:AddItemTooltip(tooltip, item, activeSlot, true)
-			end
+			local tooltipSlot = slotTbl.selectedJewelNodeId and self.itemsTab.sockets[slotTbl.selectedJewelNodeId] or activeSlot
+			self.itemsTab:AddItemTooltip(tooltip, item, tooltipSlot, true)
 			addMegalomaniacCompareToTooltipIfApplicable(tooltip, selected_result_index)
 		end
 	end
@@ -1244,7 +1236,7 @@ you can add them, copy the link here, and press "Price Item" to evaluate the ite
 	end
 	-- Whisper so we can copy to clipboard
 	controls["whisperButton" .. row_idx] = new("ButtonControl",
-		{ "TOPLEFT", controls["importButton" .. row_idx], "TOPRIGHT" }, { 8, 0, 170, row_height }, function()
+		{ "TOPLEFT", controls["importButton" .. row_idx], "TOPRIGHT" }, { 8, 0, 155, row_height }, function()
 			local itemResult = self.itemIndexTbl[row_idx] and self.resultTbl[row_idx][self.itemIndexTbl[row_idx]]
 
 			if not itemResult then return "" end
@@ -1315,7 +1307,9 @@ function TradeQueryClass:GetTotalPriceString()
 	for currency, _ in pairs(prices) do
 		table.insert(currencies, currency)
 	end
-	local currencyMap = self.pbCurrencyConversion[self.pbLeague] or {}
+	local currencyMap = self.pbCurrencyConversion[self.pbRealm] and
+		self.pbCurrencyConversion[self.pbRealm][self.pbLeague]
+		or {}
 	table.sort(currencies, function(a, b)
 		if currencyMap[a] and currencyMap[b] then
 			return currencyMap[a] > currencyMap[b]
@@ -1353,12 +1347,12 @@ function TradeQueryClass:UpdateRealms()
 	end
 
 	-- use trade leagues api to get trade leagues including private leagues is valid.
+	self.allLeagues = {}
 	for _, realmId in pairs (self.realmIds) do
 		self.tradeQueryRequests:FetchLeagues(realmId, function(leagues, errMsg)
 			if errMsg then
 				self:SetNotice(self.controls.pbNotice, "Using Fallback Error while fetching league list: "..errMsg)
 			end
-			self.allLeagues = {}
 			for _, league in ipairs(leagues) do
 				if not self.allLeagues[realmId] then self.allLeagues[realmId] = {} end
 				t_insert(self.allLeagues[realmId], league)
@@ -1369,8 +1363,13 @@ function TradeQueryClass:UpdateRealms()
 	end
 
 	-- perform a generic search to make sure the authorization is valid.
-	self.tradeQueryRequests:PerformSearch("pc", "Standard", [[{"query":{"status":{"option":"online"},"stats":[{"type":"and","filters":[]}]},"sort":{"price":"asc"}}]], function(response, errMsg) 
+	self.tradeQueryRequests:PerformSearch("pc", "Standard", [[{"query":{"status":{"option":"online"},"stats":[{"type":"and","filters":[]}]},"sort":{"price":"asc"}}]], function(response, errMsg)
 		if errMsg then
+			-- a 403 here likely means that the user has an outdated scope
+			if errMsg == "Response code: 403" then
+				main.api:ResetDetails()
+				errMsg = errMsg .. "\nPlease re-authenticate"
+			end
 			self:SetNotice(self.controls.pbNotice, "Error: " .. tostring(errMsg))
 		end
 	end)
