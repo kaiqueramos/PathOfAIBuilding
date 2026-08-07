@@ -39,6 +39,9 @@ local applyRangeTests = {
 	-- Fallback scaling
 	[{ "+(10-20) to unsupported value", 1.0, 1.0, 1.22 }] = "+24 to unsupported value",
 	[{ "+(10-20) to unsupported value", 1.0, 1.5, 1.22 }] = "+36 to unsupported value",
+	-- Formatting which doesn't result in zero value
+	[{ "0.1 metres to Weapon Range per 10% Quality", 1.0, 1.0, 1.0 }] = "0.1 metres to Weapon Range per 10% Quality",
+	[{ "0.1 metres to Weapon Range per 10% Quality", 0.5, 1.0, 1.0 }] = "0.1 metres to Weapon Range per 10% Quality",
 }
 
 describe("TestItemTools", function()
@@ -95,5 +98,25 @@ Can be Anointed
 
 		assert.are.equals("Belt", overrides[1].repSlotName)
 		assert.are.equals("Belt", overrides[2].repSlotName)
+	end)
+
+	it("does not report missing anoints for non-anointable talisman bases", function()
+		if not common.classes.ItemsTab then
+			LoadModule("Classes/ItemsTab")
+		end
+		local fakeItemsTab = setmetatable({ }, common.classes.ItemsTab)
+		local item = {
+			base = {
+				type = "Amulet",
+				cannotBeAnointed = true,
+			},
+			enchantModLines = { },
+			scourgeModLines = { },
+			implicitModLines = { },
+			explicitModLines = { },
+			crucibleModLines = { },
+		}
+
+		assert.are.equals(0, fakeItemsTab:getMissingAnointCount(item))
 	end)
 end)

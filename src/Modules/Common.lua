@@ -1042,6 +1042,16 @@ function ImportBuild(importLink, callback)
 	end
 end
 
+---@param text string
+---@return string line
+-- Removes GGG string tags used for keyword popups. E.g. "[Critical|Critical Hit]" -> "Critical Hit"
+function escapeGGGString(text)
+	local line = text
+		:gsub("<[^>]+>{([^}]+)}", "%1")
+		:gsub("%[([^|%]]+)%]", "%1")
+		:gsub("%[[^|]+|([^|]+)%]", "%1")
+	return line
+end
 -- Returns virtual screen size
 function GetVirtualScreenSize()
 	local width, height = GetScreenSize()
@@ -1058,7 +1068,7 @@ local GGG_STAT_HASH32_SEED = 0xC58F1A7B
 -- used for calculating the trade hash from stat hash fields
 local GGG_TRADE_SEED = 0x02312233
 ---@param stats string[]
----@param extraStat string extra stat for time-lost jewels
+---@param extraStat string? extra stat for time-lost jewels
 ---@return integer
 function HashStats(stats, extraStat)
 	if extraStat then

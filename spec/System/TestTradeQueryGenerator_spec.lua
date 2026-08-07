@@ -14,6 +14,38 @@ describe("TradeQueryGenerator", function()
 		end)
 	end)
 
+	describe("Talisman mods", function()
+		it("only generates enchant weights when enabled", function()
+			local queryGen = new("TradeQueryGenerator", { itemsTab = { } })
+			local enchantMods = queryGen.modData.Enchant
+			queryGen.modData = { Explicit = { }, Implicit = { }, Enchant = enchantMods, Corrupted = { }, Scourge = { } }
+			queryGen.calcContext = { special = { }, options = { } }
+			local generated = { }
+			queryGen.GenerateModWeights = function(_, mods) generated[mods] = true end
+
+			queryGen:ExecuteQuery()
+			assert.is_nil(generated[enchantMods])
+
+			queryGen.calcContext.options.includeTalisman = true
+			queryGen:ExecuteQuery()
+			assert.is_true(generated[enchantMods])
+		end)
+
+		it("includes the utility flask charge enchant", function()
+			local enchant
+			for id, mod in pairs(LoadModule("Data/QueryMods.lua").Enchant) do
+				if id:match("_UtilityFlaskPassiveChargeGain$") then
+					enchant = mod
+					break
+				end
+			end
+
+			assert.is_not_nil(enchant)
+			assert.are.equals("enchant.stat_2567919918", enchant.tradeMod.id)
+			assert.are.equals("Utility Flasks gain # Charges every 3 seconds", enchant.specialCaseData.overrideModLine)
+		end)
+	end)
+
 	describe("WeightedRatioOutputs", function()
 		local maxStatIncrease
 
@@ -99,26 +131,65 @@ describe("TradeQueryGenerator", function()
 
 			assert.are.equal(result, 1.2)
 		end)
+
+		it("supports light radius as a player stat weight", function()
+			local lightRadiusStat
+			local minionLightRadiusStat
+			for _, stat in ipairs(data.powerStatList) do
+				if stat.stat == "LightRadiusMod" then
+					lightRadiusStat = stat
+				elseif stat.stat == "MinionLightRadiusMod" then
+					minionLightRadiusStat = stat
+				end
+			end
+
+			assert.is_not_nil(lightRadiusStat)
+			assert.is_nil(minionLightRadiusStat)
+			local result = mock_queryGen.WeightedRatioOutputs(
+				{ LightRadiusMod = 1 },
+				{ LightRadiusMod = 1.25 },
+				{ { stat = lightRadiusStat.stat, weightMult = 1 } })
+			assert.are.equal(result, 1.25)
+		end)
 	end)
 
 	describe("Filter prioritization", function()
-		-- Pass: Limits mods to MAX_FILTERS (2 in test), preserving top priorities
-		-- Fail: Exceeds limit, indicating over-generation of filters, risking API query size errors or rate limits
-		it("respects MAX_FILTERS", function()
-			local orig_max = _G.MAX_FILTERS
-			_G.MAX_FILTERS = 2
-			mock_queryGen.modWeights = { { weight = 10, tradeModId = "id1" }, { weight = 5, tradeModId = "id2" } }
-			table.sort(mock_queryGen.modWeights, function(a, b)
-				return math.abs(a.weight) > math.abs(b.weight)
-			end)
-			local prioritized = {}
-			for i, entry in ipairs(mock_queryGen.modWeights) do
-				if #prioritized < _G.MAX_FILTERS then
-					table.insert(prioritized, entry)
-				end
+		it("counts socket and link constraints against MAX_FILTERS", function()
+			local queryGen = new("TradeQueryGenerator", { itemsTab = { items = { } } })
+			queryGen.modWeights = { }
+			for index = 1, 40 do
+				table.insert(queryGen.modWeights, {
+					tradeModId = "explicit.stat_" .. index,
+					weight = 1,
+					meanStatDiff = 41 - index,
+				})
 			end
-			assert.are.equal(#prioritized, 2)
-			_G.MAX_FILTERS = orig_max
+			queryGen.calcContext = {
+				testItem = new("Item", "Rarity: RARE\nNew Item\nGold Ring\nImplicits: 0"),
+				baseOutput = { },
+				baseStatValue = 0,
+				itemCategoryQueryStr = "accessory.ring",
+				special = { },
+				options = {
+					statWeights = { },
+					influence1 = 1,
+					influence2 = 1,
+					includeMirrored = false,
+					sockets = 6,
+					links = 6,
+				},
+			}
+			queryGen.tradeTypeIndex = 1
+			local query
+			queryGen.requesterCallback = function(_, queryJson)
+				query = require("dkjson").decode(queryJson).query
+			end
+
+			queryGen:FinishQuery()
+
+			assert.are.equal(31, #query.stats[1].filters)
+			assert.is_not_nil(query.filters.socket_filters.filters.sockets)
+			assert.is_not_nil(query.filters.socket_filters.filters.links)
 		end)
 	end)
 end)
