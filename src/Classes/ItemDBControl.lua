@@ -137,7 +137,15 @@ function ItemDBClass:DoesItemMatchFilters(item)
 		local found = false
 		local mode = self.controls.searchMode.selIndex
 		if mode == 1 or mode == 2 then
-			local err, match = PCall(string.matchOrPattern, item.name:lower(), searchStr)
+			-- check if any explicit mods have a mutated line
+			local searchName = item.name:lower()
+			for _, modLine in ipairs(item.explicitModLines) do
+				if modLine.newModId then
+					searchName = "foulborn " .. searchName
+					break
+				end
+			end
+			local err, match = PCall(string.matchOrPattern, searchName, searchStr)
 			if not err and match then
 				found = true
 			end
@@ -158,7 +166,13 @@ function ItemDBClass:DoesItemMatchFilters(item)
 				end
 			end
 			for _, line in pairs(item.explicitModLines) do
-				local err, match = PCall(string.matchOrPattern, line.line:lower(), searchStr)
+				-- Include the other side of Foulborn transformations in modifier searches.
+				local newMod = line.newModId and (data.itemMods.ItemExclusive[line.newModId] or data.itemMods.Foulborn[line.newModId])
+				local searchLine = line.line:lower()
+				if newMod then
+					searchLine = searchLine .. table.concat(newMod, " "):lower()
+				end
+				local err, match = PCall(string.matchOrPattern, searchLine, searchStr)
 				if not err and match then
 					found = true
 					break
@@ -298,7 +312,7 @@ function ItemDBClass:Draw(viewPort)
 end
 
 function ItemDBClass:GetRowValue(column, index, item)
-	if column == 1 then
+	if item and column == 1 then
 		return colorCodes[item.rarity] .. item.name
 	end
 end
@@ -345,7 +359,12 @@ function ItemDBClass:OnSelClick(index, item, doubleClick)
 		self.itemsTab:AddUndoState()
 		self.itemsTab.build.buildFlag = true
 	elseif doubleClick then
+		-- disallow dragging after double click since the window can jump when
+		-- the display item tooltip is created, which might cause the drag item
+		-- to get stuck to the cursor
+		self.selDragging = false
 		self.itemsTab:CreateDisplayItemFromRaw(item.raw, true)
+		return false
 	end
 end
 
