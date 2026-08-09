@@ -21,6 +21,9 @@ return {
 	skill("durationTertiary", nil),
 	div = 1000,
 },
+["infinite_minion_duration"] = {
+	skillFlag = "permanentMinion",
+},
 ["spell_minimum_base_physical_damage"] = {
 	skill("PhysicalMin", nil),
 },
@@ -535,7 +538,7 @@ return {
 	mod("CooldownRecovery", "INC", nil),
 },
 ["cooldown_recovery_rate_+%_per_100_ward"] = {
-	mod("CooldownRecovery", "INC", nil, 0, 0, { type = "PerStat", stat = "Ward", div = 100 }),
+	mod("CooldownRecovery", "INC", nil, 0, 0, { type = "PerStat", stat = "Ward", div = 100, limit = 400, limitTotal = true }),
 },
 ["base_cooldown_modifier_ms"] = {
 	mod("CooldownRecovery", "BASE", nil),
@@ -2363,6 +2366,9 @@ return {
 	-- Display only
 },
 ["is_totem"] = {
+	-- Display only
+},
+["pact_empower_limitation_specifier_for_stat_description"] = {
 	-- Display only
 },
 }

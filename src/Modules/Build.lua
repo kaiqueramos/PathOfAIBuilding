@@ -10,6 +10,7 @@ local t_insert = table.insert
 local t_sort = table.sort
 local m_min = math.min
 local m_max = math.max
+local m_huge = math.huge
 local m_floor = math.floor
 local m_abs = math.abs
 local s_format = string.format
@@ -607,7 +608,12 @@ function buildMode:Init(dbFileName, buildName, buildXML, convertBuild, importLin
 	self.skillsTab = new("SkillsTab", self)
 	self.calcsTab = new("CalcsTab", self)
 	self.compareTab = new("CompareTab", self)
+<<<<<<< HEAD
 	self.aiChatTab = new("AIChatTab", self)
+=======
+	-- Used for pined calcs panes
+	self.overlayPanes = { }
+>>>>>>> upstream/dev
 
 	-- Load sections from the build file
 	self.savers = {
@@ -671,6 +677,8 @@ function buildMode:Init(dbFileName, buildName, buildXML, convertBuild, importLin
 		self.configTab:ImportCalcSettings()
 	end
 
+	-- reprocess socket groups as they might depend on items which don't necessarily load first.
+	self.skillsTab:UpdateSocketGroups()
 	-- Build calculation output tables
 	wipeGlobalCache()
 	self.outputRevision = 1
@@ -1187,6 +1195,46 @@ function buildMode:OnFrame(inputEvents)
 			end
 		end
 	end
+
+	-- Consume mouse events for overlay panes before normal input processing
+	local cursorX, cursorY = GetCursorPos()
+	local breakdown = self.calcsTab.controls.breakdown
+	local overlayBreakdown = self.calcsTab.displayPinned and self.calcsTab.displayData
+		and self.calcsTab.displayData.calcSection and self.calcsTab.displayData.calcSection.isOverlay
+	for i = #inputEvents, 1, -1 do
+		local event = inputEvents[i]
+		if not event then break end
+		if event.type == "KeyDown" and event.key:match("BUTTON") then
+			for paneIndex = #self.overlayPanes, 1, -1 do
+				local pane = self.overlayPanes[paneIndex]
+				if pane.isOverlay and pane:IsMouseInOverlay(cursorX, cursorY) then
+					pane:HandleOverlayClick(event.key, cursorX, cursorY)
+					inputEvents[i] = nil
+					break
+				end
+			end
+			if inputEvents[i] and overlayBreakdown and breakdown:IsMouseOver() then
+				self.overlayBreakdownControl = breakdown:OnKeyDown(event.key, event.doubleClick)
+				inputEvents[i] = nil
+			end
+		elseif event.type == "KeyUp" and event.key:match("BUTTON") then
+			for _, pane in ipairs(self.overlayPanes) do
+				if pane.isOverlay then
+					pane:HandleOverlayRelease(event.key)
+				end
+			end
+			if self.overlayBreakdownControl then
+				self.overlayBreakdownControl:OnKeyUp(event.key)
+				self.overlayBreakdownControl = nil
+				inputEvents[i] = nil
+			end
+		elseif event.type == "KeyUp" and overlayBreakdown and breakdown:IsMouseOver()
+			and (breakdown.controls.scrollBar:IsScrollDownKey(event.key) or breakdown.controls.scrollBar:IsScrollUpKey(event.key)) then
+			breakdown:OnKeyUp(event.key)
+			inputEvents[i] = nil
+		end
+	end
+
 	self:ProcessControlsInput(inputEvents, main.viewPort)
 
 	self.controls.classDrop:SelByValue(self.spec.curClassId, "classId")
@@ -1202,13 +1250,18 @@ function buildMode:OnFrame(inputEvents)
 		-- Rebuild calculation output tables
 		self.outputRevision = self.outputRevision + 1
 		self.buildFlag = false
+		self.skillsTab:UpdateSocketGroups()
 		self.calcsTab:BuildOutput()
 		self:RefreshStatList()
+		self.configTab.calcFunc, self.configTab.calcBase = self.calcsTab:GetMiscCalculator(self)
 	end
 	if main.showThousandsSeparators ~= self.lastShowThousandsSeparators then
 		self:RefreshStatList()
 	end
 	if main.thousandsSeparator ~= self.lastShowThousandsSeparator then
+		self:RefreshStatList()
+	end
+	if main.useCompactValues ~= self.lastUseCompactValues then
 		self:RefreshStatList()
 	end
 	if main.decimalSeparator ~= self.lastShowDecimalSeparator then
@@ -1220,7 +1273,6 @@ function buildMode:OnFrame(inputEvents)
 
 	-- Update contents of main skill dropdowns
 	self:RefreshSkillSelectControls(self.controls, self.mainSocketGroup, "")
-
 	-- Draw contents of current tab
 	local sideBarWidth = 312
 	local tabViewPort = {
@@ -1249,6 +1301,13 @@ function buildMode:OnFrame(inputEvents)
 		self.compareTab:Draw(tabViewPort, inputEvents)
 	elseif self.viewMode == "AI" then
 		self.aiChatTab:Draw(tabViewPort, inputEvents)
+	end
+
+	-- Draw overlay panes on top of all tab content (last = topmost)
+	for _, pane in ipairs(self.overlayPanes) do
+		if pane.isOverlay then
+			pane:DrawOverlay(main.viewPort, inputEvents)
+		end
 	end
 
 	self.unsaved = self.modFlag or self.notesTab.modFlag or self.partyTab.modFlag or self.configTab.modFlag or self.treeTab.modFlag or self.treeTab.searchFlag or self.spec.modFlag or self.skillsTab.modFlag or self.itemsTab.modFlag or self.calcsTab.modFlag
@@ -1605,10 +1664,23 @@ function buildMode:FormatStat(statData, statVal, overCapStatVal, colorOverride)
 		color = colorCodes.NEGATIVE
 	end
 	
-	local valStr = s_format("%"..statData.fmt, val)
-	local number, suffix = valStr:match("^([%+%-]?%d+%.%d+)(%D*)$")
-	if number then
-		valStr = number:gsub("0+$", ""):gsub("%.$", "") .. suffix
+	local valStr
+	if statData.compactValue and main.useCompactValues and val ~= m_huge and val ~= -m_huge then
+		local absVal = m_abs(val)
+		if absVal >= 1000000000 then
+			valStr = s_format("%.1fB", val / 1000000000)
+		elseif absVal >= 1000000 then
+			valStr = s_format("%.1fM", val / 1000000)
+		elseif absVal >= 10000 then
+			valStr = s_format("%.1fK", val / 1000)
+		end
+	end
+	if not valStr then
+		valStr = s_format("%"..statData.fmt, val)
+		local number, suffix = valStr:match("^([%+%-]?%d+%.%d+)(%D*)$")
+		if number then
+			valStr = number:gsub("0+$", ""):gsub("%.$", "") .. suffix
+		end
 	end
 	valStr = color .. formatNumSep(valStr)
 
@@ -1619,6 +1691,7 @@ function buildMode:FormatStat(statData, statVal, overCapStatVal, colorOverride)
 	self.lastShowThousandsSeparator = main.thousandsSeparator
 	self.lastShowDecimalSeparator = main.decimalSeparator
 	self.lastShowTitlebarName = main.showTitlebarName
+	self.lastUseCompactValues = main.useCompactValues
 	return valStr
 end
 
@@ -1639,6 +1712,9 @@ function buildMode:AddDisplayStatList(statList, actor)
 				end
 				if statVal and ((statData.condFunc and statData.condFunc(statVal,actor.output)) or (not statData.condFunc and statVal ~= 0)) then
 					local overCapStatVal = actor.output[statData.overCapStat] or nil
+					if overCapStatVal and statData.overCapStatCondFunc and not statData.overCapStatCondFunc(statVal, actor.output) then
+						overCapStatVal = nil
+					end
 					if statData.stat == "SkillDPS" then
 						labelColor = colorCodes.CUSTOM
 						table.sort(actor.output.SkillDPS, function(a,b) return (a.dps * a.count) > (b.dps * b.count) end)
@@ -1654,7 +1730,7 @@ function buildMode:AddDisplayStatList(statList, actor)
 							t_insert(statBoxList, {
 								height = 16,
 								lhsString,
-								self:FormatStat({fmt = "1.f"}, skillData.dps * skillData.count, overCapStatVal),
+								self:FormatStat({ fmt = ".1f", compactValue = statData.compactValue }, skillData.dps * skillData.count, overCapStatVal),
 							})
 							if skillData.skillPart then
 								t_insert(statBoxList, {
@@ -1677,10 +1753,20 @@ function buildMode:AddDisplayStatList(statList, actor)
 						if actor.output[statData.stat.."Warning"] or (statData.warnFunc and statData.warnFunc(statVal, actor.output) and statData.warnColor) then
 							colorOverride = colorCodes.NEGATIVE
 						end
+						local formattedStat = self:FormatStat(statData, statVal, overCapStatVal, colorOverride)
+						if statData.suffix and (not statData.suffixCondFunc or statData.suffixCondFunc(statVal, actor.output)) then
+							local suffix = statData.suffix
+							if type(suffix) == "function" then
+								suffix = suffix(statVal, actor.output)
+							end
+							if suffix then
+								formattedStat = formattedStat .. "^x808080 (" .. suffix .. ")"
+							end
+						end
 						t_insert(statBoxList, {
 							height = 16,
 							labelColor..statData.label..":",
-							self:FormatStat(statData, statVal, overCapStatVal, colorOverride),
+							formattedStat,
 						})
 					end
 				end
