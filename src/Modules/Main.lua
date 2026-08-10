@@ -103,6 +103,7 @@ function main:Init()
 	self.colorNegative = defaultColorCodes.NEGATIVE
 	self.colorHighlight = defaultColorCodes.HIGHLIGHT
 	self.showThousandsSeparators = true
+	self.useCompactValues = false
 	self.edgeSearchHighlight = true
 	self.thousandsSeparator = ","
 	self.decimalSeparator = "."
@@ -154,7 +155,7 @@ function main:Init()
 	local function loadItemDBs()
 		for type, typeList in pairsYield(data.uniques) do
 			for _, raw in pairs(typeList) do
-				newItem = new("Item", raw, "UNIQUE", true)
+				local newItem = new("Item", raw, "UNIQUE", true)
 				if newItem.base then
 					self.uniqueDB.list[newItem.name] = newItem
 				elseif launch.devMode then
@@ -167,7 +168,7 @@ function main:Init()
 		ConPrintf("Uniques loaded")
 
 		for _, raw in pairsYield(data.rares) do
-			newItem = new("Item", raw, "RARE", true)
+			local newItem = new("Item", raw, "RARE", true)
 			if newItem.base then
 				if newItem.crafted then
 					if newItem.base.implicit and #newItem.implicitModLines == 0 then
@@ -583,6 +584,9 @@ function main:LoadSettings(ignoreBuild)
 				if node.attrib.thousandsSeparator then
 					self.thousandsSeparator = node.attrib.thousandsSeparator
 				end
+				if node.attrib.useCompactValues then
+					self.useCompactValues = node.attrib.useCompactValues == "true"
+				end
 				if node.attrib.decimalSeparator then
 					self.decimalSeparator = node.attrib.decimalSeparator
 				end
@@ -756,6 +760,7 @@ function main:SaveSettings()
 		colorHighlight = self.colorHighlight,
 		showThousandsSeparators = tostring(self.showThousandsSeparators),
 		thousandsSeparator = self.thousandsSeparator,
+		useCompactValues = tostring(self.useCompactValues),
 		decimalSeparator = self.decimalSeparator,
 		showTitlebarName = tostring(self.showTitlebarName),
 		betaTest = tostring(self.betaTest),
@@ -844,6 +849,7 @@ function main:OpenOptionsPopup(savedState)
 		colorNegative = self.colorNegative,
 		colorHighlight = self.colorHighlight,
 		showThousandsSeparators = self.showThousandsSeparators,
+		useCompactValues = self.useCompactValues,
 		thousandsSeparator = self.thousandsSeparator,
 		decimalSeparator = self.decimalSeparator,
 		showTitlebarName = self.showTitlebarName,
@@ -1066,6 +1072,12 @@ function main:OpenOptionsPopup(savedState)
 	controls.showThousandsSeparators.state = self.showThousandsSeparators
 
 	nextRow()
+	controls.useCompactValues = new("CheckBoxControl", { "TOPLEFT", controls.sectionAnchor, "TOPLEFT" }, { currentX + defaultLabelPlacementX, currentY, 20 }, "^7Compact large numbers (e.g. 12.3K):", function(state)
+		self.useCompactValues = state
+	end)
+	controls.useCompactValues.state = self.useCompactValues
+
+	nextRow()
 	controls.thousandsSeparator = new("EditControl", { "TOPLEFT", controls.sectionAnchor, "TOPLEFT" }, { currentX + defaultLabelPlacementX, currentY, 30, 20 }, self.thousandsSeparator, nil, "%w", 1, function(buf)
 		self.thousandsSeparator = buf
 	end)
@@ -1198,6 +1210,7 @@ function main:OpenOptionsPopup(savedState)
 		self.colorHighlight = savedState.colorHighlight
 		updateColorCode("HIGHLIGHT", self.colorHighlight)
 		self.showThousandsSeparators = savedState.showThousandsSeparators
+		self.useCompactValues = savedState.useCompactValues
 		self.thousandsSeparator = savedState.thousandsSeparator
 		self.decimalSeparator = savedState.decimalSeparator
 		self.showTitlebarName = savedState.showTitlebarName
