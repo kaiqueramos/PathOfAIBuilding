@@ -593,13 +593,13 @@ Sage's Robe
 Variant: Pre 3.19.0
 Variant: Current
 Implicits: 0
-Gems can be Socketed in this Item ignoring Socket Colour
 {variant:1}Gems Socketed in Red Sockets have +1 to Level
 {variant:2}Gems Socketed in Red Sockets have +2 to Level
 {variant:1}Gems Socketed in Green Sockets have +10% to Quality
-{variant:2}Gems Socketed in Green Sockets have +30% to Quality
+{variant:2}Gems Socketed in Green Sockets have +20% to Quality
 {variant:1}Gems Socketed in Blue Sockets gain 25% increased Experience
 {variant:2}Gems Socketed in Blue Sockets gain 100% increased Experience
+Gems Socketed always have the Quality bonus from Socket Colour
 Has no Attribute Requirements
 ]],[[
 Doedre's Skin
@@ -1153,6 +1153,17 @@ Implicits: 0
 50% reduced maximum Mana
 Gain a Power Charge for each Enemy you hit with a Critical Strike
 {variant:2}Inner Conviction
+]],[[
+Waxen Soul
+Saint's Hauberk
+League: Ritual
+(10-20)% increased maximum Life
++(17-29)% to Chaos Resistance
+Curse Skills cost Life instead of Mana
+Curse Aura Skills reserve Life instead of Mana
+Gain a random Blood Shrine buff every 10 seconds
+2% increased Effect of Shrine Buffs on you for each 5% of Life Reserved
+10% chance to Trigger Explosive Toad when you kill an Enemy
 ]],
 -- Body: Evasion/Energy Shield
 [[
@@ -1348,10 +1359,13 @@ Has 6 Abyssal Sockets
 Stasis Prison
 Carnal Armour
 Source: Drops in Unrelenting Domain of Timeless Conflict
+Variant: Pre 3.29.0
+Variant: Current
 Implicits: 1
 +(20-25) to maximum Mana
+{variant:2}(80-100)% increased Implicit Modifier magnitudes
 (140-160)% increased Evasion and Energy Shield
-+(80-100) to maximum Life
+{variant:1}+(80-100) to maximum Life
 Temporal Rift has no Reservation
 (80-100)% of Damage taken Recouped as Life
 Debuffs on you expire (80-100)% faster
