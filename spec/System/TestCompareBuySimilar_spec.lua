@@ -4,7 +4,7 @@ describe("Buy similar mod stat matching", function()
 
 	describe("addModEntries mod matching", function()
 		it("matches impossible escape mods as options", function()
-			local fromNothing = new("Item", [[
+			local fromNothing = new("Item"):Item([[
 Impossible Escape
 Viridian Jewel
 LevelReq: 0
@@ -32,7 +32,7 @@ Corrupted]])
 		end)
 
 		it("matches thread of hope radius as an option", function()
-			local thread = new("Item", [[
+			local thread = new("Item"):Item([[
 Rarity: UNIQUE
 Thread of Hope
 Crimson Jewel
@@ -52,7 +52,7 @@ Passage]])
 		end)
 
 		it("combines mods that are the same stat", function()
-			local lifeDiamond = new("Item", [[
+			local lifeDiamond = new("Item"):Item([[
 Test Subject
 Diamond
 Implicits: 0
@@ -67,7 +67,7 @@ Implicits: 0
 			assert.equal("+50 to Maximum Life", StripEscapes(entries[1].formattedLines[2]))
 			assert.equal(150, entries[1].value)
 
-			local lifelessDiamond = new("Item", [[
+			local lifelessDiamond = new("Item"):Item([[
 Test Subject
 Diamond
 Implicits: 0
@@ -82,7 +82,7 @@ Implicits: 0
 		end)
 
 		it("is not case-sensitive", function ()
-			local funnyItem = new("Item", [[
+			local funnyItem = new("Item"):Item([[
 Test Subject
 Diamond
 Implicits: 1
@@ -93,7 +93,7 @@ Implicits: 1
 		end)
 
 		it("does not combine implicit and explicit mods", function()
-			local lifelessDiamond = new("Item", [[
+			local lifelessDiamond = new("Item"):Item([[
 Test Subject
 Diamond
 Implicits: 1
@@ -140,7 +140,7 @@ Implicits: 1
 		end)
 
 		local function openPopup(item, slotName)
-			item = item or new("Item", "Rarity: Rare\nTest Ring\nRuby Ring\nImplicits: 0\n+50 to maximum Life")
+			item = item or new("Item"):Item("Rarity: Rare\nTest Ring\nRuby Ring\nImplicits: 0\n+50 to maximum Life")
 			bs.openPopup(item, slotName or "Ring", build)
 			local controls = main.popups[1].controls
 			_G.Copy = function(url) copiedUrl = url end
@@ -152,6 +152,13 @@ Implicits: 1
 			controls.search.onClick()
 			local queryJson = urlDecode(assert(copiedUrl:match("[?&]q=(.+)$")))
 			return dkjson.decode(queryJson)
+		end
+
+		local function getUniqueQuery(name, baseName)
+			local item = new("Item"):Item("Rarity: UNIQUE\n" .. name .. "\n" .. baseName .. "\nImplicits: 0")
+			local query = getQuery(openPopup(item, "Jewel"))
+			main:ClosePopup()
+			return query
 		end
 
 		it("rebuilds the URL when league and listed status change", function()
@@ -169,6 +176,25 @@ Implicits: 1
 			local query = getQuery(controls)
 			assert.not_equal(standardUrl, copiedUrl)
 			assert.equal("any", query.query.status.option)
+		end)
+
+		it("preserves apostrophes in unique names", function()
+			local item = new("Item"):Item([[
+Rarity: UNIQUE
+Ralakesh's Impatience
+Riveted Boots
+Implicits: 0]])
+			local controls = openPopup(item, "Boots")
+
+			assert.equal("Ralakesh's Impatience", getQuery(controls).query.name)
+		end)
+
+		it("removes a trailing unique ID without removing name punctuation", function()
+			assert.equal("Uul-Netol's Embrace", getUniqueQuery("Uul-Netol's Embrace 1234", "Vaal Axe").query.name)
+		end)
+
+		it("trims whitespace after a unique name", function()
+			assert.equal("The Hateful Accuser", getUniqueQuery("The Hateful Accuser ", "Ghastly Eye Jewel").query.name)
 		end)
 
 		it("persists league choices by name for each realm", function()
@@ -194,7 +220,7 @@ Implicits: 1
 		end)
 
 		it("encodes option values in the generated query", function()
-			local item = new("Item", [[
+			local item = new("Item"):Item([[
 Rarity: UNIQUE
 Impossible Escape
 Viridian Jewel
@@ -214,7 +240,7 @@ Corrupted]])
 		end)
 
 		it("inverts reduced stat bounds in the generated query", function()
-			local item = new("Item", [[
+			local item = new("Item"):Item([[
 Rarity: Rare
 Test Ring
 Ruby Ring
@@ -230,7 +256,7 @@ Implicits: 0
 		end)
 
 		it("uses a count group for ambiguous trade stats", function()
-			local item = new("Item", [[
+			local item = new("Item"):Item([[
 Rarity: Rare
 Test Ring
 Ruby Ring
