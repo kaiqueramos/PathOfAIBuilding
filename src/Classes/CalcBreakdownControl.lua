@@ -13,19 +13,24 @@ local m_cos = math.cos
 local m_pi = math.pi
 local band = bit.band
 
-local CalcBreakdownClass = newClass("CalcBreakdownControl", "Control", "ControlHost", function(self, calcsTab)
-	self.Control()
-	self.ControlHost()
+---@class CalcBreakdownControl: Control, ControlHost
+local CalcBreakdownClass = newClass("CalcBreakdownControl", "Control", "ControlHost")
+
+function CalcBreakdownClass:CalcBreakdownControl(calcsTab)
+	self:Control()
+	self:ControlHost()
 	self.calcsTab = calcsTab
 	self.shown = false
-	self.tooltip = new("Tooltip")
-	self.nodeViewer = new("PassiveTreeView")
+	self.tooltip = new("Tooltip"):Tooltip()
+	self.nodeViewer = new("PassiveTreeView"):PassiveTreeView()
 	self.rangeGuide = NewImageHandle()
 	self.rangeGuide:Load("Assets/range_guide.png")
 	self.uiOverlay = NewImageHandle()
 	self.uiOverlay:Load("Assets/game_ui_small.png")
-	self.controls.scrollBar = new("ScrollBarControl", {"RIGHT",self,"RIGHT"}, {-2, 0, 18, 0}, 80, "VERTICAL", true)
-end)
+	self.controls.scrollBar = new("ScrollBarControl"):ScrollBarControl({ "RIGHT", self, "RIGHT" }, { -2, 0, 18, 0 }, 80,
+	"VERTICAL", true)
+	return self
+end
 
 function CalcBreakdownClass:IsMouseOver()
 	if not self:IsShown() then
@@ -421,6 +426,8 @@ function CalcBreakdownClass:AddModSection(sectionData, modList)
 			row.sourceName = row.mod.source:match("Pantheon:(.+)")
 		elseif sourceType == "Spectre" then
 			row.sourceName = row.mod.source:match("Spectre:(.+)")
+		elseif sourceType == "Custom" then
+			row.sourceName = row.mod.source:match("Custom:(.+)")
 		end
 
 		if row.mod.flags ~= 0 or row.mod.keywordFlags ~= 0 then
