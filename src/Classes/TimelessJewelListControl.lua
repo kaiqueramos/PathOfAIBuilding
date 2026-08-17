@@ -9,13 +9,17 @@ local m_min = math.min
 local m_max = math.max
 local t_concat = table.concat
 
-local TimelessJewelListControlClass = newClass("TimelessJewelListControl", "ListControl", function(self, anchor, rect, build)
+---@class TimelessJewelListControl: ListControl
+local TimelessJewelListControlClass = newClass("TimelessJewelListControl", "ListControl")
+
+function TimelessJewelListControlClass:TimelessJewelListControl(anchor, rect, build)
 	self.build = build
 	self.sharedList = self.build.timelessData.sharedResults or { }
 	self.list = self.build.timelessData.searchResults or { }
-	self.ListControl(anchor, rect, 16, true, false, self.list)
+	self:ListControl(anchor, rect, 16, true, false, self.list)
 	self.selIndex = nil
-end)
+	return self
+end
 
 function TimelessJewelListControlClass:Draw(viewPort, noTooltip)
 	self.noTooltip = noTooltip
@@ -100,23 +104,7 @@ function TimelessJewelListControlClass:OnSelClick(index, data, doubleClick)
 		local socketInfo = data.socketLabel or (self.sharedList.socket and self.sharedList.socket.keystone) or "Unknown"
 		local label = "[" .. data.seed .. "; " .. data.total.. "; " .. socketInfo .. "]\n"
 		local variant = self.sharedList.conqueror.id == 1 and 1 or (self.sharedList.conqueror.id - 1) .. "\n"
-		local itemData = [[
-Heroic Tragedy ]] .. label .. [[
-Timeless Jewel
-League: Legion
-Limited to: 1 Historic
-Variant: Vorana (Black Scythe Training)
-Variant: Uhtred (Celestial Mathematics)
-Variant: Medved (The Unbreaking Circle)
-Selected Variant: ]] .. variant .. "\n" .. [[
-Radius: Large
-Implicits: 0
-{variant:1}Remembrancing ]] .. data.seed .. [[ songworthy deeds by the line of Vorana
-{variant:2}Remembrancing ]] .. data.seed .. [[ songworthy deeds by the line of Uhtred
-{variant:3}Remembrancing ]] .. data.seed .. [[ songworthy deeds by the line of Medved
-Passives in radius are Conquered by the Kalguur
-Historic
-]]
+		local itemData
 		if self.sharedList.type.id == 1 then
 			itemData = [[
 Glorious Vanity ]] .. label .. [[
@@ -228,7 +216,7 @@ Implicits: 0
 Passives in radius are Conquered by the Templars
 Historic
 ]]
-			elseif self.sharedList.type.id == 5 then
+		elseif self.sharedList.type.id == 5 then
 			itemData = [[
 Elegant Hubris ]] .. label .. [[
 Timeless Jewel
@@ -246,8 +234,81 @@ Implicits: 0
 Passives in radius are Conquered by the Eternal Empire
 Historic
 ]]
+		elseif self.sharedList.type.id == 6 then
+			itemData = [[
+Heroic Tragedy ]] .. label .. [[
+Timeless Jewel
+League: Legion
+Limited to: 1 Historic
+Variant: Vorana (Black Scythe Training)
+Variant: Uhtred (Celestial Mathematics)
+Variant: Medved (The Unbreaking Circle)
+Selected Variant: ]] .. variant .. "\n" .. [[
+Radius: Large
+Implicits: 0
+{variant:1}Remembrancing ]] .. data.seed .. [[ songworthy deeds by the line of Vorana
+{variant:2}Remembrancing ]] .. data.seed .. [[ songworthy deeds by the line of Uhtred
+{variant:3}Remembrancing ]] .. data.seed .. [[ songworthy deeds by the line of Medved
+Passives in radius are Conquered by the Kalguur
+Historic
+]]
+		elseif self.sharedList.type.id == 7 then
+			itemData = [[
+Festering Vengeance ]] .. label .. [[
+Murderous Eye Jewel
+League: Allflame
+Limited to: 1 Historic
+Implicits: 0
+Subjugating ]] .. data.seed .. [[ souls in the thrall of Tecrod
+Passives affected are Conquered by the Abyssal
+Historic
+]]
+		elseif self.sharedList.type.id == 8 then
+			itemData = [[
+Extinguishing Grasp ]] .. label .. [[
+Searching Eye Jewel
+League: Allflame
+Limited to: 1 Historic
+Implicits: 0
+Subjugating ]] .. data.seed .. [[ souls in the thrall of Ulaman
+Passives affected are Conquered by the Abyssal
+Historic
+]]
+		elseif self.sharedList.type.id == 9 then
+			itemData = [[
+Baleful Dominion ]] .. label .. [[
+Hypnotic Eye Jewel
+League: Allflame
+Limited to: 1 Historic
+Implicits: 0
+Subjugating ]] .. data.seed .. [[ souls in the thrall of Kurgal
+Passives affected are Conquered by the Abyssal
+Historic
+]]
+		elseif self.sharedList.type.id == 10 then
+			itemData = [[
+Destructive Aspiration ]] .. label .. [[
+Ghastly Eye Jewel
+League: Allflame
+Limited to: 1 Historic
+Implicits: 0
+Subjugating ]] .. data.seed .. [[ souls in the thrall of Amanamu
+Passives affected are Conquered by the Abyssal
+Historic
+]]
+		elseif self.sharedList.type.id == 11 then
+			itemData = [[
+Reclaimed Malevolence ]] .. label .. [[
+Assembled Eye Jewel
+League: Allflame
+Limited to: 1 Historic
+Implicits: 0
+Binding ]] .. data.seed .. [[ souls to phylacteries to sustain Zorath
+Passives affected are Conquered by the Abyssal
+Historic
+]]
 		end
-		local item = new("Item", itemData)
+		local item = new("Item"):Item(itemData)
 		self.build.itemsTab:AddItem(item, true)
 		self.build.itemsTab:PopulateSlots()
 		self.list[index].label = "^xB2B2B2" .. self.list[index].label

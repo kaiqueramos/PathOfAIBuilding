@@ -1145,6 +1145,16 @@ Implicits: 0
 MaximumManaUniqueBodyStrInt1
 AddPowerChargeOnCrit1__
 {variant:2}KeystoneInnerConvictionUnique__1
+]],[[
+Waxen Soul
+Saint's Hauberk
+League: Ritual
+MaximumLifeUnique__28
+ChaosResistUnique__39
+CurseSkillsCostAndReserveLifeUnique__1
+GainBloodShrineBuffUnique__1
+ShrineBuffEffectPerLifeReservationUnique__1
+TriggerExplodingToadsOnKillUnique__1
 ]],
 -- Body: Evasion/Energy Shield
 [[
@@ -1338,10 +1348,13 @@ AbyssJewelSocketUnique__14
 Stasis Prison
 Carnal Armour
 Source: Drops in Unrelenting Domain of Timeless Conflict
+Variant: Pre 3.29.0
+Variant: Current
 Implicits: 1
 IncreasedManaImplicitArmour1
 LocalIncreasedEvasionAndEnergyShieldUnique__33
-IncreasedLifeUniqueBodyStrInt7
+{variant:1}IncreasedLifeUniqueBodyStrInt7
+{variant:2}ImplicitModifierMagnitudeUnique_2
 ChronomanceReservesNoMana
 DamageTakenGainedAsLifeUnique__2
 DebuffTimePassedUnique__2

@@ -10,15 +10,16 @@ local s_format = string.format
 local m_min = math.min
 local m_ceil = math.ceil
 
-local calcs = { }
+---@class Calcs
+local calcs = require("Modules.CalcBase")
 calcs.breakdownModule = "Modules/CalcBreakdown"
-LoadModule("Modules/CalcSetup", calcs)
-LoadModule("Modules/CalcPerform", calcs)
-LoadModule("Modules/CalcActiveSkill", calcs)
-LoadModule("Modules/CalcDefence", calcs)
-LoadModule("Modules/CalcOffence", calcs)
-LoadModule("Modules/CalcTriggers", calcs)
-LoadModule("Modules/CalcMirages.lua", calcs)
+require("Modules.CalcSetup")
+require("Modules.CalcPerform")
+require("Modules.CalcActiveSkill")
+require("Modules.CalcDefence")
+require("Modules.CalcOffence")
+require("Modules.CalcTriggers")
+require("Modules.CalcMirages")
 
 -- Get the average value of a table -- note this is unused
 function math.average(t)
@@ -653,6 +654,9 @@ function calcs.buildOutput(build, mode)
 		if output.BrutalCharges > 0 then
 			t_insert(combatList, s_format("%d Brutal Charges", output.BrutalCharges))
 		end
+		if output.BrineCharges > 0 then
+			t_insert(combatList, s_format("%d Brine Charges", output.BrineCharges))
+		end
 		if output.SiphoningCharges > 0 then
 			t_insert(combatList, s_format("%d Siphoning Charges", output.SiphoningCharges))
 		end
@@ -676,6 +680,9 @@ function calcs.buildOutput(build, mode)
 		end
 		if build.calcsTab.mainEnv.multipliersUsed["SpiritCharge"] then
 			t_insert(combatList, s_format("%d Spirit Charges", output.SpiritCharges))
+		end
+		if build.calcsTab.mainEnv.multipliersUsed["SpiritInfusion"] then
+			t_insert(combatList, s_format("%d Spirit Infusions", output.SpiritInfusions))
 		end
 		if env.player.mainSkill.baseSkillModList:Flag(nil, "Cruelty") then
 			t_insert(combatList, "Cruelty")
