@@ -3,7 +3,8 @@
 -- Module: Calc Defence
 -- Performs defence calculations.
 --
-local calcs = ...
+---@class Calcs
+local calcs = require("Modules.CalcBase")
 
 local pairs = pairs
 local ipairs = ipairs
@@ -76,9 +77,9 @@ function calcs.armourReduction(armour, raw)
 end
 
 -- Based on code from FR and BS found in act_*.txt
----@param activeSkill/output/breakdown references table passed in from calc offence
+---@param activeSkill any /output/breakdown references table passed in from calc offence
 ---@param sourceType string type of incoming damage - it will be converted (taken as) from this type if applicable
----@param baseDmg for which to calculate the damage
+---@param baseDmg number for which to calculate the damage
 ---@return table of taken damage parts, and number, sum of damages
 function calcs.applyDmgTakenConversion(activeSkill, output, breakdown, sourceType, baseDmg)
 	local damageBreakdown = { }
@@ -687,7 +688,9 @@ function calcs.defence(env, actor)
 	elseif modDB:Flag(nil, "MaxBlockIfNotBlockedRecently") then
 		output.BlockChance = output.BlockChanceMax
 	else
-		local totalBlockChance = (baseBlockChance + modDB:Sum("BASE", nil, "BlockChance")) * calcLib.mod(modDB, nil, "BlockChance")
+		local inc = modDB:Sum("INC", nil, "BlockChance")
+		local more = modDB:More(nil, "BlockChance")
+		local totalBlockChance = round((baseBlockChance + modDB:Sum("BASE", nil, "BlockChance")) * (1 + inc/100) * more)
 		output.BlockChance = m_min(totalBlockChance, output.BlockChanceMax)
 		output.BlockChanceOverCap = m_max(0, totalBlockChance - output.BlockChanceMax)
 	end
@@ -706,7 +709,9 @@ function calcs.defence(env, actor)
 		output.SpellProjectileBlockChance = output.ProjectileBlockChance
 		output.SpellBlockChanceOverCap = output.BlockChanceOverCap
 	else
-		local totalSpellBlockChance = modDB:Sum("BASE", nil, "SpellBlockChance") * calcLib.mod(modDB, nil, "SpellBlockChance")
+		local inc = modDB:Sum("INC", nil, "BlockChance")
+		local more = modDB:More(nil, "BlockChance")
+		local totalSpellBlockChance = round(modDB:Sum("BASE", nil, "SpellBlockChance") * (1 + inc/100) * more)
 		output.SpellBlockChance = m_min(totalSpellBlockChance, output.SpellBlockChanceMax)
 		output.SpellBlockChanceOverCap = m_max(0, totalSpellBlockChance - output.SpellBlockChanceMax)
 		output.SpellProjectileBlockChance = m_max(m_min(output.SpellBlockChance + modDB:Sum("BASE", nil, "ProjectileSpellBlockChance") * calcLib.mod(modDB, nil, "SpellBlockChance"), output.SpellBlockChanceMax), 0)
@@ -1492,8 +1497,8 @@ function calcs.defence(env, actor)
 	output.DamageReductionMax = modDB:Override(nil, "DamageReductionMax") or data.misc.DamageReductionCap
 	modDB:NewMod("ArmourAppliesToPhysicalDamageTaken", "BASE", 100)
 	for _, damageType in ipairs(dmgTypeList) do
-		output["Base"..damageType.."DamageReduction"] = m_min(m_max(0, modDB:Sum("BASE", nil, damageType.."DamageReduction", isElemental[damageType] and "ElementalDamageReduction")), output.DamageReductionMax)
-		output["Base"..damageType.."DamageReductionWhenHit"] = m_min(m_max(0, output["Base"..damageType.."DamageReduction"] + modDB:Sum("BASE", nil, damageType.."DamageReductionWhenHit")), output.DamageReductionMax)
+		output["Base"..damageType.."DamageReduction"] = modDB:Override(nil, damageType.."DamageReduction") or m_min(m_max(0, modDB:Sum("BASE", nil, damageType.."DamageReduction", isElemental[damageType] and "ElementalDamageReduction")), output.DamageReductionMax)
+		output["Base"..damageType.."DamageReductionWhenHit"] = modDB:Override(nil, damageType.."DamageReduction") or m_min(m_max(0, output["Base"..damageType.."DamageReduction"] + modDB:Sum("BASE", nil, damageType.."DamageReductionWhenHit")), output.DamageReductionMax)
 	end
 
 	-- Miscellaneous: move speed, avoidance
@@ -1745,9 +1750,12 @@ function calcs.buildDefenceEstimations(env, actor)
 					local gainAsPercent = enemyDB:Sum("BASE", enemyCfg, (damageType.."DamageGainAs"..damageTypeTo)) / 100
 					local conversionPercent = conversions[damageTypeTo] / 100
 					local skillConversionPercent = conversions[damageTypeTo.."skill"] / 100
-					if skillConversionPercent > 0 and damageType == "Physical" and damageTypeTo ~= "Chaos" then
-						local physBonus = 1 + data.monsterPhysConversionMultiTable[env.enemyLevel] / 100
-						conversionPercent = conversionPercent + skillConversionPercent * physBonus
+					if skillConversionPercent > 0 then
+						if damageType == "Physical" and damageTypeTo ~= "Chaos" then
+							local physBonus = 1 + data.monsterPhysConversionMultiTable[env.enemyLevel] / 100
+							skillConversionPercent = skillConversionPercent * physBonus
+						end
+						conversionPercent = conversionPercent + skillConversionPercent
 					end
 					if gainAsPercent > 0 or conversionPercent > 0 then
 						enemyDamageConversion[damageTypeTo] = enemyDamageConversion[damageTypeTo] or { }
@@ -3067,7 +3075,7 @@ function calcs.buildDefenceEstimations(env, actor)
 	
 	-- pvp
 	if env.configInput.PvpScaling then
-		local PvpTvalue = output.enemySkillTime
+		local PvpTvalue = output.enemySkillTime or 1
 		local PvpMultiplier = (env.configInput.enemyMultiplierPvpDamage or 100) / 100
 		
 		local PvpNonElemental1 = data.misc.PvpNonElemental1
@@ -3822,3 +3830,5 @@ function calcs.buildDefenceEstimations(env, actor)
 	end
 	--endregion
 end
+
+return calcs

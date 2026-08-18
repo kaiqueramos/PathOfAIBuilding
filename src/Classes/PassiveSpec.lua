@@ -16,8 +16,11 @@ local b_rshift = bit.rshift
 local band = bit.band
 local bor = bit.bor
 
-local PassiveSpecClass = newClass("PassiveSpec", "UndoHandler", function(self, build, treeVersion, convert)
-	self.UndoHandler()
+---@class PassiveSpec: UndoHandler
+local PassiveSpecClass = newClass("PassiveSpec", "UndoHandler")
+
+function PassiveSpecClass:PassiveSpec(build, treeVersion, convert)
+	self:UndoHandler()
 
 	self.build = build
 
@@ -25,7 +28,8 @@ local PassiveSpecClass = newClass("PassiveSpec", "UndoHandler", function(self, b
 	self:Init(treeVersion, convert)
 
 	self:SelectClass(0)
-end)
+	return self
+end
 
 function PassiveSpecClass:Init(treeVersion, convert)
 	self.treeVersion = treeVersion
@@ -990,7 +994,7 @@ end
 -- Only allocated nodes can be traversed
 function PassiveSpecClass:GetShortestPathToClassStart(rootId)
 	local root = self.nodes[rootId]
-	if not root or not root.alloc or not root.connectedToStart then
+	if not root or not root.alloc then
 		return nil
 	end
 
@@ -1096,9 +1100,40 @@ end
 
 -- Rebuilds dependencies and paths for all nodes
 function PassiveSpecClass:BuildAllDependsAndPaths()
+	local timelessJewelTypeByConqueror = {
+		vaal = 1,
+		karui = 2,
+		maraketh = 3,
+		templar = 4,
+		eternal = 5,
+		kalguur = 6,
+		abyss_murderous = 7,
+		abyss_searching = 8,
+		abyss_hypnotic = 9,
+		abyss_ghastly = 10,
+		abyss_special = 11,
+	}
 	-- This table will keep track of which nodes have been visited during each path-finding attempt
 	local visited = { }
 	local attributes = { "Dexterity", "Intelligence", "Strength" }
+	-- Read Abyss changes before resetting the nodes. Zorath needs the currently
+	-- allocated path from its socket to the class starting node.
+	local abyssConquests = { }
+	for socketId, itemId in pairs(self.jewels) do
+		local item = self.build.itemsTab.items[itemId]
+		local conqueredBy = item and item.jewelData and item.jewelData.conqueredBy
+		local jewelType = conqueredBy and timelessJewelTypeByConqueror[conqueredBy.conqueror.type]
+		if jewelType and jewelType >= 7 and self.allocNodes[socketId] and not item.jewelData.limitDisabled then
+			local path = jewelType == 11 and self:GetShortestPathToClassStart(socketId)
+			for nodeId, modification in pairs(data.readAbyssJewelLUT(conqueredBy.id, socketId, jewelType, path)) do
+				abyssConquests[nodeId] = {
+					id = conqueredBy.id,
+					conqueror = conqueredBy.conqueror,
+					modification = modification,
+				}
+			end
+		end
+	end
 	-- Check all nodes for other nodes which depend on them (i.e. are only connected to the tree through that node)
 	for id, node in pairs(self.nodes) do
 		node.depends = wipeTable(node.depends)
@@ -1109,6 +1144,7 @@ function PassiveSpecClass:BuildAllDependsAndPaths()
 		if self.tree.nodes[id] then
 			self:ReplaceNode(node,self.tree.nodes[id])
 		end
+		node.conqueredBy = abyssConquests[id]
 
 		if node.type ~= "ClassStart" and node.type ~= "Socket" and not node.ascendancyName then
 			for nodeId, itemId in pairs(self.jewels) do
@@ -1125,7 +1161,10 @@ function PassiveSpecClass:BuildAllDependsAndPaths()
 								t_insert(node.intuitiveLeapLikesAffecting, self.nodes[nodeId])
 							end
 							if item.jewelData.conqueredBy then
-								node.conqueredBy = item.jewelData.conqueredBy
+								local radiusJewelType = timelessJewelTypeByConqueror[item.jewelData.conqueredBy.conqueror.type]
+								if not radiusJewelType or radiusJewelType < 7 then
+									node.conqueredBy = item.jewelData.conqueredBy
+								end
 							end
 						end
 					end
@@ -1159,19 +1198,7 @@ function PassiveSpecClass:BuildAllDependsAndPaths()
 			local legionNodes = self.tree.legion.nodes
 			local legionAdditions = self.tree.legion.additions
 
-			-- FIXME - continue implementing
-			local jewelType = 5
-			if conqueredBy.conqueror.type == "vaal" then
-				jewelType = 1
-			elseif conqueredBy.conqueror.type == "karui" then
-				jewelType = 2
-			elseif conqueredBy.conqueror.type == "maraketh" then
-				jewelType = 3
-			elseif conqueredBy.conqueror.type == "templar" then
-				jewelType = 4
-			elseif conqueredBy.conqueror.type == "kalguur" then
-				jewelType = 6
-			end
+			local jewelType = timelessJewelTypeByConqueror[conqueredBy.conqueror.type] or 5
 			local seed = conqueredBy.id
 			if jewelType == 5 then
 				seed = seed / 20
@@ -1196,7 +1223,24 @@ function PassiveSpecClass:BuildAllDependsAndPaths()
 				return statToFix -- if it doesn't need to be changed
 			end
 
-			if node.type == "Notable" then
+			if jewelType >= 7 then
+				for _, component in ipairs(conqueredBy.modification) do
+					local changedNode, replacesNode = data.resolveAbyssJewelComponent(component, self.tree.legion)
+					if changedNode then
+						if replacesNode then
+							self:ReplaceNode(node, changedNode)
+						end
+						for statIndex, statLine in ipairs(changedNode.sd) do
+							for statKey, statMod in pairs(changedNode.stats) do
+								statLine = replaceHelperFunc(statLine, statKey, statMod, component.rolls[statMod.index])
+							end
+							self:NodeAdditionOrReplacementFromString(node, (replacesNode and "" or " \n") .. statLine, replacesNode and statIndex == 1)
+						end
+					else
+						ConPrintf("Unhandled Abyss component ID: " .. component.id)
+					end
+				end
+			elseif node.type == "Notable" then
 				local jewelDataTbl = { }
 				if seed ~= m_max(m_min(seed, data.timelessJewelSeedMax[jewelType]), data.timelessJewelSeedMin[jewelType]) then
 					ConPrintf("ERROR: Seed " .. seed .. " is outside of valid range [" .. data.timelessJewelSeedMin[jewelType] .. " - " .. data.timelessJewelSeedMax[jewelType] .. "] for jewel type: " .. data.timelessJewelTypes[jewelType])
@@ -1581,7 +1625,7 @@ function PassiveSpecClass:ReplaceNode(old, newNode)
 	old.name = newNode.name
 	old.mods = newNode.mods
 	old.modKey = newNode.modKey
-	old.modList = new("ModList")
+	old.modList = new("ModList"):ModList()
 	old.modList:AddList(newNode.modList)
 	old.sprites = newNode.sprites
 	old.effectSprites = newNode.effectSprites
@@ -2270,12 +2314,12 @@ end
 --- Adds a line to or replaces a node given a line to add/replace with
 --- @param node table The node to replace/add to
 --- @param sd string The line being parsed and added
---- @param replacement boolean true to replace the node with the new mod, false to simply add it
+--- @param replacement? boolean true to replace the node with the new mod, false to simply add it
 function PassiveSpecClass:NodeAdditionOrReplacementFromString(node,sd,replacement)
 	local addition = {}
 	addition.sd = {sd}
 	addition.mods = { }
-	addition.modList = new("ModList")
+	addition.modList = new("ModList"):ModList()
 	addition.modKey = ""
 	local i = 1
 	while addition.sd[i] do
@@ -2346,7 +2390,7 @@ function PassiveSpecClass:NodeAdditionOrReplacementFromString(node,sd,replacemen
 		node.mods = tableConcat(node.mods, addition.mods)
 		node.modKey = node.modKey .. addition.modKey
 	end
-	local modList = new("ModList")
+	local modList = new("ModList"):ModList()
 	modList:AddList(addition.modList)
 	if not replacement then
 		modList:AddList(node.modList)
