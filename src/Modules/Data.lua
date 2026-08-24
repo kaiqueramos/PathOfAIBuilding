@@ -3,7 +3,7 @@
 -- Module: Data
 -- Contains static data used by other modules.
 --
-
+local dkjson = require("dkjson")
 LoadModule("Data/Global")
 
 local m_min = math.min
@@ -103,10 +103,16 @@ end
 -- Remaining Item Data and uniques
 ----------------------------------------
 
+---@diagnostic disable-next-line: lowercase-global
+---@class Data : MiscDataExport
+---@field bosses BossData
 data = { }
 
 -- Misc data tables
-LoadModule("Data/Misc", data)
+local miscData = LoadModule("Data/Misc")
+for k, v in pairs(miscData) do
+	data[k] = v
+end
 
 ---@alias TransformFunc fun(in: number|string): (number|string)?
 ---@class StatTable
@@ -166,6 +172,7 @@ data.powerStatList = {
 	{ stat="IgniteChance", label="Ignite Chance" },
 	{ stat="ShockChance", label="Shock Chance" },
 	{ stat="EffectiveMovementSpeedMod", label="Move speed" },
+	{ stat="LightRadiusMod", label="Light Radius" },
 	{ stat="BlockChance", label="Block Chance" },
 	{ stat="SpellBlockChance", label="Spell Block Chance" },
 	{ stat="SpellSuppressionChance", label="Spell Suppression Chance" },
@@ -212,6 +219,7 @@ local minionNonApplicableStats = {
 	Int = true,
 	Spirit = true,
 	EffectiveLootRarityMod = true,
+	LightRadiusMod = true,
 }
 for i = 1, #data.powerStatList do
 	local statEntry = data.powerStatList[i]
@@ -292,6 +300,7 @@ data.misc = { -- magic numbers
 	PvpElemental2 = 150,
 	PvpNonElemental1 = 0.57,
 	PvpNonElemental2 = 90,
+	MatchingSocketQualityBonus = 10,
 }
 
 data.skillColorMap = { colorCodes.STRENGTH, colorCodes.DEXTERITY, colorCodes.INTELLIGENCE, colorCodes.NORMAL }
@@ -352,6 +361,7 @@ data.keystones = {
 	"Arrow Dancing",
 	"Arsenal of Vengeance",
 	"Avatar of Fire",
+	"Bitter Frost",
 	"Blood Magic",
 	"Bloodsoaked Blade",
 	"Call to Arms",
@@ -389,6 +399,7 @@ data.keystones = {
 	"Power of Purpose",
 	"Precise Technique",
 	"Resolute Technique",
+	"Roiling Tempest",
 	"Runebinder",
 	"Solipsism",
 	"Supreme Decadence",
@@ -399,6 +410,7 @@ data.keystones = {
 	"Unwavering Stance",
 	"Vaal Pact",
 	"Versatile Combatant",
+	"Voracious Flame",
 	"Wicked Ward",
 	"Wind Dancer",
 	"Zealot's Oath",
@@ -630,9 +642,6 @@ data.enchantmentSource = {
 	{ name = "NORMAL", label = "Normal Labyrinth" },
 }
 
--- Misc data tables
-LoadModule("Data/Misc", data)
-
 -- Stat descriptions
 data.describeStats = LoadModule("Modules/StatDescriber")
 
@@ -654,7 +663,14 @@ data.itemMods = {
 	JewelCluster = LoadModule("Data/ModJewelCluster"),
 	JewelCharm = LoadModule("Data/ModJewelCharm"),
 	Foulborn = LoadModule("Data/ModFoulborn"),
+	Mercenary = LoadModule("Data/ModMercenary"),
+	Vestigial = {}
 }
+for modId, mod in pairs(data.itemMods.ItemExclusive) do
+	if modId:find("^Divergent") then
+		data.itemMods.Vestigial[modId] = mod
+	end
+end
 data.masterMods = LoadModule("Data/ModMaster")
 data.enchantments = {
 	["Helmet"] = LoadModule("Data/EnchantmentHelmet"),
@@ -668,7 +684,7 @@ data.enchantments = {
 
 -- combined table of many mod categories
 data.itemMods.Item = {}
-for _, key in ipairs({ "Explicit", "ItemExclusive", "Corrupted", "Delve", "Synthesis", "Scourge", "Eldritch" }) do
+for _, key in ipairs({ "Explicit", "ItemExclusive", "Corrupted", "Delve", "Synthesis", "Scourge", "Eldritch", "Mercenary" }) do
 	local itemData = data.itemMods[key]
 	for k, v in pairs(itemData) do
 		data.itemMods.Item[k] = v
@@ -837,6 +853,23 @@ data.itemTagSpecialExclusionPattern = {
 	},
 }
 
+-- Table of which slots can have vestigial uniques
+data.vestigialUniqueBaseTypes = {
+	Helmet = true,
+	["Body Armour"] = true,
+	Gloves = true,
+	Boots = true,
+	Shield = true,
+}
+-- map from mod ID to what item it *should* come from
+---@type table<string, string>
+data.vestigialModMappings = require("Data.Vestigial")
+for k, v in pairs(data.vestigialModMappings) do
+	data.vestigialModMappings[k] = v[1]
+	-- if launch.devMode then
+	-- 	assert(v[1], "Data/Vestigial is malformed")
+	-- end
+end
 -- Cluster jewel data
 data.clusterJewels = LoadModule("Data/ClusterJewels")
 
@@ -885,6 +918,11 @@ data.timelessJewelTypes = {
 	[4] = "Militant Faith",
 	[5] = "Elegant Hubris",
 	[6] = "Heroic Tragedy",
+	[7] = "Abyss Tecrod",
+	[8] = "Abyss Ulaman",
+	[9] = "Abyss Kurgal",
+	[10] = "Abyss Amanamu",
+	[11] = "Abyss Zorath",
 }
 data.timelessJewelSeedMin = {
 	[1] = 100,
@@ -893,6 +931,11 @@ data.timelessJewelSeedMin = {
 	[4] = 2000,
 	[5] = 2000 / 20,
 	[6] = 100,
+	[7] = 100,
+	[8] = 100,
+	[9] = 100,
+	[10] = 100,
+	[11] = 100,
 }
 data.timelessJewelSeedMax = {
 	[1] = 8000,
@@ -901,12 +944,21 @@ data.timelessJewelSeedMax = {
 	[4] = 10000,
 	[5] = 160000 / 20,
 	[6] = 8000,
+	[7] = 8000,
+	[8] = 8000,
+	[9] = 8000,
+	[10] = 8000,
+	[11] = 8000,
 }
 data.timelessJewelTradeIDs = LoadModule("Data/TimelessJewelData/LegionTradeIds")
-data.timelessJewelAdditions = 96 -- #legionAdditions
+data.timelessJewelAdditions = 337 -- #legionAdditions
 data.nodeIDList = LoadModule("Data/TimelessJewelData/NodeIndexMapping")
+data.abyssNotableNames = LoadModule("Data/TimelessJewelData/AbyssNotableNames")
 data.timelessJewelLUTs = { }
-data.readLUT, data.repairLUTs = LoadModule("Modules/DataLegionLookUpTableHelper")
+local helperMod = LoadModule("Modules/DataLegionLookUpTableHelper")
+data.readLUT = helperMod.readLUT
+data.repairLUTs = helperMod.repairLUTs
+data.readAbyssJewelLUT, data.resolveAbyssJewelComponent, data.getAbyssJewelComponentRoll = LoadModule("Modules/DataAbyssJewelLookUpTableHelper")
 
 -- this runs if the "size" key is missing from nodeIDList and attempts to rebuild all jewel LUTs and the nodeIDList
 -- note this should only run in dev mode
@@ -915,10 +967,9 @@ if not data.nodeIDList.size and launch.devMode then
 end
 
 -- Load bosses
-do 
-	data.bosses = { }
-	LoadModule("Data/Bosses", data.bosses)
-	
+do
+	---@class BossData
+	data.bosses = LoadModule("Data/Bosses")
 	local count, uberCount = 0, 0
 	local armourTotal, evasionTotal = 0, 0
 	local uberArmourTotal, uberEvasionTotal = 0, 0
@@ -941,8 +992,9 @@ do
 		UberEvasionMean = 100 + uberEvasionTotal / uberCount
 	}
 
-	data.bossSkills, data.bossSkillsList = LoadModule("Data/BossSkills")
-
+	local bossSkillData     = LoadModule("Data/BossSkills")
+	data.bossSkills         = bossSkillData.bossSkills
+	data.bossSkillsList     = bossSkillData.bossSkillsList
 	data.enemyIsBossTooltip = [[Bosses' damage is monster damage scaled to an average damage of their attacks
 This is divided by 4.40 to represent 4 damage types + some (40% as much) ^xD02090chaos
 ^7Fill in the exact damage numbers if more precision is needed
@@ -977,7 +1029,7 @@ end
 
 -- Load skills
 data.skills = { }
-data.skillStatMap = LoadModule("Data/SkillStatMap", makeSkillMod, makeFlagMod, makeSkillDataMod)
+data.skillStatMap = LoadModule("Data/SkillStatMap")(makeSkillMod, makeFlagMod, makeSkillDataMod)
 data.skillStatMapMeta = {
 	__index = function(t, key)
 		local map = data.skillStatMap[key]
@@ -992,7 +1044,7 @@ data.skillStatMapMeta = {
 	end
 }
 for _, type in pairs(skillTypes) do
-	LoadModule("Data/Skills/"..type, data.skills, makeSkillMod, makeFlagMod, makeSkillDataMod)
+	LoadModule("Data/Skills/" .. type)(data.skills, makeSkillMod, makeFlagMod, makeSkillDataMod)
 end
 for skillId, grantedEffect in pairs(data.skills) do
 	grantedEffect.name = sanitiseText(grantedEffect.name)
@@ -1100,10 +1152,8 @@ for id, gem in pairs(toAddGems) do
 end
 
 -- Load minions
-data.minions = { }
-LoadModule("Data/Minions", data.minions, makeSkillMod, makeFlagMod)
-data.spectres = { }
-LoadModule("Data/Spectres", data.spectres, makeSkillMod, makeFlagMod)
+data.minions = LoadModule("Data/Minions")(makeSkillMod, makeFlagMod)
+data.spectres = LoadModule("Data/Spectres")(makeSkillMod, makeFlagMod)
 for name, spectre in pairs(data.spectres) do
 	spectre.limit = "ActiveSpectreLimit"
 	data.minions[name] = spectre
@@ -1125,14 +1175,80 @@ data.printMissingMinionSkills = function()
 	end
 end
 
--- Item bases
+---@class ItemBase
+---@field type string # e.g. "Helmet", "Wand", "Body Armour", "Flask", "Jewel"
+---@field subType? string # e.g. "Armour", "Evasion/Energy Shield", "Life", "Utility"
+---@field socketLimit? integer # max sockets (weapons/armour only)
+---@field hidden? boolean # excluded from the base-type selection lists
+---@field cannotBeAnointed? boolean
+---@field tags table<string, true> # e.g. { armour = true, helmet = true, str_armour = true }
+---@field influenceTags? table<string, string> # influence -> mod tag, e.g. { shaper = "helmet_shaper" }
+---@field implicit? string # implicit mod line(s), newline-separated
+---@field implicitModTypes ModTypeList[] # per-implicit list of mod-type tags
+---@field implicitIds? string[] # per-implicit GGG mod id
+---@field enchant? string # enchant mod line(s)
+---@field enchantModTypes? ModTypeList[]
+---@field enchantIds? string[]
+---@field flavourText? string
+---@field req ItemBaseReq
+---@field armour? ItemBaseArmour # present on armour bases
+---@field weapon? ItemBaseWeapon # present on weapon bases
+---@field flask? ItemBaseFlask # present on flask bases
+---@field tincture? ItemBaseTincture # present on tincture bases
+
+---@alias ModTypeList string[] # list of mod-type tags, e.g. { "caster_damage", "damage", "caster" }
+
+---@class ItemBaseReq
+---@field level? integer
+---@field str? integer
+---@field dex? integer
+---@field int? integer
+
+---@class ItemBaseArmour
+---@field ArmourBaseMin? number
+---@field ArmourBaseMax? number
+---@field EvasionBaseMin? number
+---@field EvasionBaseMax? number
+---@field EnergyShieldBaseMin? number
+---@field EnergyShieldBaseMax? number
+---@field WardBaseMin? number
+---@field WardBaseMax? number
+---@field BlockChance? number # shields
+---@field MovementPenalty? number
+
+---@class ItemBaseWeapon
+---@field PhysicalMin? number
+---@field PhysicalMax? number
+---@field CritChanceBase? number
+---@field AttackRateBase? number
+---@field Range? number
+
+---@class ItemBaseFlask
+---@field life? number
+---@field mana? number
+---@field duration? number
+---@field chargesUsed? integer
+---@field chargesMax? integer
+---@field buff? string[] # utility-flask granted buff line(s)
+
+---@class ItemBaseTincture
+---@field manaBurn? number
+---@field cooldown? number
+
+---@type table<string, ItemBase>
 data.itemBases = { }
 for _, type in pairs(itemTypes) do
-	LoadModule("Data/Bases/"..type, data.itemBases)
+	LoadModule("Data/Bases/" .. type)(data.itemBases)
 end
 
+---@class ItemBaseEntry
+---@field label string
+---@field name string
+---@field base ItemBase
+
+---@type table<string, ItemBaseEntry[]>
 -- Build lists of item bases, separated by type
-data.itemBaseLists = { }
+data.itemBaseLists = {}
 for name, base in pairs(data.itemBases) do
 	if not base.hidden then
 		local type = base.type
@@ -1211,6 +1327,131 @@ data.minionTagCrucibleUniques = {
 	["United in Dream"] = true,
 }
 
+local subsumeTheSourceMods = {}
+for modId, mod in pairs(data.itemMods.JewelAbyss) do
+	if mod.type ~="Corrupted" then
+		subsumeTheSourceMods[modId] = mod
+	end
+end
+
+local veiledMasterSpawnTags = {}
+local veiledMods = {}
+local veiledSuffixes = {}
+local caneOfKulemakMods = {}
+local queensHungerMods = {}
+for modId, mod in pairs(data.veiledMods) do
+	if mod.affix == "Chosen" then
+		veiledMods[modId] = mod
+		caneOfKulemakMods[modId] = mod
+	elseif mod.affix == "Catarina's" then
+		caneOfKulemakMods[modId] = mod
+		queensHungerMods[modId] = mod
+	elseif mod.affix == "of the Order" then
+		veiledMods[modId] = mod
+		veiledSuffixes[modId] = mod
+		caneOfKulemakMods[modId] = mod
+		queensHungerMods[modId] = mod
+	end
+	for _, tag in pairs(mod.weightKey) do
+		if tag:find("^[%a_]+_veiled_prefix") or tag:find("^[%a_]+_veiled_suffix") then
+			table.insert(veiledMasterSpawnTags, tag)
+		end
+	end
+end
+
+local thatWhichWasTakenMods = {}
+for modId, mod in pairs(data.itemMods.JewelCharm) do
+	if not modId:match("1$") then
+		thatWhichWasTakenMods[modId] = mod
+	end
+end
+
+local dreadCaptainBase = { base = copyTable(data.itemBases["Ghostflame Blade"]) }
+dreadCaptainBase.base.tags.deepwater_sword = true
+
+local caneOfKulemakBase = { base = copyTable(data.itemBases["Serpentine Staff"]) }
+caneOfKulemakBase.base.tags.catarina_veiled_prefix = true
+
+local replicaParadoxicaBase = { base = copyTable(data.itemBases["Vaal Rapier"]) }
+for _, tag in ipairs(veiledMasterSpawnTags) do
+	if tag:find("prefix") then
+		replicaParadoxicaBase.base.tags[tag] = true
+	end
+end
+
+local queensHungerBase = { base = copyTable(data.itemBases["Vaal Regalia"]) }
+queensHungerBase.base.tags.catarina_veiled_prefix = true
+
+---@class RareLikeItemBase Pick<ItemBaseEntry, "base">
+---@field base ItemBase
+---@class RareLikeUniqueDescription
+---@field affixes table<string, table>
+---@field validBases RareLikeItemBase[]? Bases used to check modifier spawn tags instead of the item's base
+---@field prefixLimit integer
+---@field suffixLimit integer
+---@field ignoreModType boolean?
+---@field allowDuplicateGroups boolean? Whether the same modifier can appear multiple times on the item.
+---@field supportsCustomModifiers table<string, boolean>? A table which describes which mod source IDs are applicable in the custom modifier menu.
+---@type table<string, RareLikeUniqueDescription>
+-- Uniques which use the existing rare item crafting controls.
+data.rareLikeUniques = {
+	["subsume the source"] = {
+		validBases = data.itemBaseLists["Jewel: Abyss"],
+		affixes = subsumeTheSourceMods,
+		prefixLimit = 4,
+		suffixLimit = 0,
+		ignoreModType = true,
+		allowDuplicateGroups = true,
+	},
+	["the crimson storm"] = {
+		affixes = veiledSuffixes,
+		prefixLimit = 0,
+		suffixLimit = 1,
+	},
+	["dread captain's cutlass"] = {
+		validBases = { dreadCaptainBase },
+		affixes = data.itemMods.Explicit,
+		prefixLimit = 3,
+		suffixLimit = 3,
+		supportsCustomModifiers = {
+			ESSENCE = true,
+			VEILED = true,
+			CUSTOM = true,
+		},
+	},
+	["paradoxica"] = {
+		affixes = veiledMods,
+		prefixLimit = 1,
+		suffixLimit = 1,
+	},
+	["cane of kulemak"] = {
+		validBases = { caneOfKulemakBase },
+		affixes = caneOfKulemakMods,
+		prefixLimit = 2,
+		suffixLimit = 2,
+	},
+	["replica paradoxica"] = {
+		-- note that technically this item should only have the signature veiled
+		-- mods on the 6th modifier, instead of all prefix modifiers
+		validBases = { replicaParadoxicaBase },
+		affixes = data.veiledMods,
+		prefixLimit = 3,
+		suffixLimit = 3,
+	},
+	["the queen's hunger"] = {
+		validBases = { queensHungerBase },
+		affixes = queensHungerMods,
+		prefixLimit = 1,
+		suffixLimit = 1,
+	},
+	["that which was taken"] = {
+		validBases = data.itemBaseLists["Jewel: Charm"],
+		affixes = thatWhichWasTakenMods,
+		prefixLimit = 4,
+		suffixLimit = 0,
+		ignoreModType = true,
+	}
+}
 -- Uniques (loaded after version-specific data because reasons)
 data.uniques = { }
 for _, type in pairs(itemTypes) do
@@ -1235,4 +1476,7 @@ data.itemMods.WatchersEye = unsortedMods
 LoadModule("Data/Uniques/Special/Generated")
 LoadModule("Data/Uniques/Special/New")
 
+local mapFile = io.open("Data/ModFoulbornMap.jsonc", "r")
+data.foulbornMap = dkjson.decode(mapFile:read("*a"))
+mapFile:close()
 data.flavourText = LoadModule("Data/FlavourText")
