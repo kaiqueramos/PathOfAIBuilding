@@ -4,34 +4,64 @@
 -- Stateless trade mod lookup/matching and item display helper functions
 --
 local m_floor = math.floor
-local statDescData = require("Data.StatDescriptions.stat_descriptions")
 
--- precalculate patterns used for matching stat lines
+-- The stat description data is big and is only needed once a trade lookup actually runs,
+-- so it and its precalculated patterns are built lazily
 local numberPattern = "%%d%+%%.%?%%d*"
-for _, statDescEntry in ipairs(statDescData) do
-	for _, desc in ipairs(statDescEntry[1] or {}) do
-		-- pob doesn't parse this as a part of other mods
-		desc.text = desc.text:gsub("\nPassage", "")
-		desc.pat = desc.text
-			-- ignore uppercase letters to help custom items match
-			:lower()
-			-- remove minus and plus signs
-			:gsub("%-{", "{")
-			:gsub("%+{", "{")
-			-- escape existing characters
-			:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1")
-			-- match # to # as one block since the trade site uses the midpoint. these don't seem to
-			-- ever have plus or minus signs, and can't be negative as even flat damage turns into
-			-- flat damage against you instead of being negative
-			:gsub("{.-} to {.-}", string.format("(%s to %s)", numberPattern, numberPattern))
+local statDescData
+local function getStatDescData()
+	-- this is not perfect. some currently known issues include:
+	-- death's oath chaos damage line: formatted as a # to # value on trade site which shows 3 to 450. nonsensical
+	-- life flask: immunity frozen/chill. probably caused by pob splitting the mods
+	if statDescData then return statDescData end
+	statDescData = LoadModule("Data/StatDescriptions/stat_descriptions")
+	for _, statDescEntry in ipairs(statDescData) do
+		for _, desc in ipairs(statDescEntry[1] or {}) do
+			-- stat descriptors don't necessarily have the stats ordered from
+			-- left to right. for example a text might have {2} {1}. in this
+			-- case if it also has a canonical stat defined, we need to keep
+			-- track of these group ids to know where the stat actually is. See
+			-- for example:
+			-- "{1}% chance to Trigger Socketed Spells when you Spend at least {0} Life on an\nUpfront Cost to Use or Trigger a Skill, with a 0.1 second Cooldown"
+			local groupIndexes = {}
+			local leftToRightIdx = 1
+			for valueGroup in desc.text:gmatch("{.-}") do
+				local groupIdx = valueGroup:match("{(%d+):?.*}")
+				if groupIdx then
+					table.insert(groupIndexes,
+						-- canonical stat is 1 indexed while group ids are zero indexed
+						tonumber(groupIdx) + 1)
+				else
+					table.insert(groupIndexes, leftToRightIdx)
+				end
+				leftToRightIdx = leftToRightIdx + 1
+			end
+			desc.groupIndexes = groupIndexes
+			-- pob doesn't parse this as a part of other mods
+			desc.text = desc.text:gsub("\nPassage", "")
+			desc.pat = desc.text
+				-- ignore uppercase letters to help custom items match
+				:lower()
+				-- remove minus and plus signs
+				:gsub("%-{", "{")
+				:gsub("%+{", "{")
+				-- escape existing characters
+				:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1")
+				-- match # to # as one block since the trade site uses the midpoint. these don't seem to
+				-- ever have plus or minus signs, and can't be negative as even flat damage turns into
+				-- flat damage against you instead of being negative
+				:gsub("{.-} to {.-}", string.format("(%s to %s)", numberPattern, numberPattern))
 
-			-- match number variables like {}, {0}, {0:-d}, {0:+d}, or {:d}
-			:gsub("{.-}",
-				-- and add optional plus and number signs. this is not necessarily correct as some
-				-- stats do require the plus sign to parse, but this simplifies handling reflected
-				-- mods
-				"%%%+%?(%%%-%?" .. numberPattern .. ")")
+				-- match number variables like {}, {0}, {0:-d}, {0:+d}, or {:d}
+				:gsub("{.-}",
+					-- and add optional plus and number signs. this is not necessarily correct as some
+					-- stats do require the plus sign to parse, but this simplifies handling reflected
+					-- mods
+					"%%%+%?(%%%-%?" .. numberPattern .. ")")
+			desc.pat = "^" .. desc.pat .. "$"
+		end
 	end
+	return statDescData
 end
 
 local M = {}
@@ -68,13 +98,9 @@ function M.modLineValue(line, onlyFromTo)
 	return tonumber(line:match("%-?[%d]+%.?[%d]*"))
 end
 
-local _tradeStats
-
 ---@return table? tradeStats
 function M.getTradeStats()
-	if _tradeStats then return _tradeStats end
-	_tradeStats = LoadModule("Data/TradeSiteStats")
-	return _tradeStats
+	return require("Data.TradeSiteStats")
 end
 
 local _optionTradeStatMap
@@ -83,11 +109,23 @@ local _optionTradeStatMap
 ---@return table optionTradeStatMap table containing helper data for matching trade option filters
 local function getOptionTradeStatMap(tradeStats)
 	if _optionTradeStatMap then return _optionTradeStatMap end
-	local optionTradeStatMap = {}
+	local optionTradeStatMap = {
+		exact = {},
+		patterns = {},
+	}
 	for _, cat in ipairs(tradeStats) do
 		if cat.id == "enchant" or cat.id == "explicit" or cat.id == "implicit" then
 			for _, entry in ipairs(cat.entries) do
-				if entry.option and entry.text:match("#") then
+				local tradeId, optionId = entry.id:match("^(.-)|(.+)$")
+				if tradeId and optionId then
+					-- The 3.29 trade API expands option stats into one entry per option,
+					-- with the option value appended to the stat ID.
+					local matchKey = entry.text:gsub(" Passage", ""):lower()
+					optionTradeStatMap.exact[cat.id .. "\0" .. matchKey] = {
+						tradeId = tradeId,
+						value = tonumber(optionId) or optionId,
+					}
+				elseif entry.option and entry.text:match("#") then
 					-- pob parses the passage part as a separate mod line, which
 					-- causes trouble
 					local matchKey = entry.text:gsub("#", "(.*)"):gsub(" Passage", ""):lower()
@@ -95,7 +133,7 @@ local function getOptionTradeStatMap(tradeStats)
 					for _, option in ipairs(entry.option.options) do
 						option.text = option.text and option.text:lower()
 					end
-					optionTradeStatMap[matchKey] = { type = cat.id, options = entry.option.options, tradeId = entry.id }
+					optionTradeStatMap.patterns[matchKey] = { type = cat.id, options = entry.option.options, tradeId = entry.id }
 				end
 			end
 		end
@@ -152,7 +190,9 @@ function M.findTradeIdOption(modLine, modType)
 		"commanded leadership over (%d+) warriors under (.+)",
 		"commissioned (%d+) coins to commemorate (.+)",
 		"denoted service of (%d+) dekhara in the akhara of (.+)",
-		"remembrancing (%d+) songworthy deeds by the line of (.+)" }
+		"remembrancing (%d+) songworthy deeds by the line of (.+)",
+		"subjugating (%d+) souls in the thrall of (.+)",
+		"binding (%d+) souls to phylacteries to sustain (.+)" }
 	for _, pat in ipairs(timelessPatterns) do
 		local value, conqueror = modLine:match(pat)
 		if conqueror then
@@ -165,7 +205,11 @@ function M.findTradeIdOption(modLine, modType)
 
 	-- reformat double-line cluster enchants
 	modLine = modLine:gsub(".added small passive skills grant: ", " ")
-	for pat, entry in pairs(optionTradeStatMap) do
+	local exactEntry = optionTradeStatMap.exact[modType .. "\0" .. modLine]
+	if exactEntry then
+		return exactEntry.tradeId, exactEntry.value
+	end
+	for pat, entry in pairs(optionTradeStatMap.patterns) do
 		local match = modLine:match(pat)
 		if entry.type == modType and match then
 			for _, option in ipairs(entry.options) do
@@ -177,6 +221,21 @@ function M.findTradeIdOption(modLine, modType)
 	end
 end
 
+-- some forms leave the trade site stat out of their text entirely, because that
+-- form is only used when the stat has a known value, which is recorded in the
+-- form's limits. this is for example common with % chance, where 100% chance
+-- omits the chance text
+---@return number? value
+local function impliedValue(statForm, canonical_stat)
+	local limit = statForm.limit and statForm.limit[canonical_stat or 1]
+	return limit and tonumber(limit[1])
+end
+
+local function insertUniqueHash(resultIds, tradeHash)
+	if not isValueInArray(resultIds, tradeHash) then
+		table.insert(resultIds, tradeHash)
+	end
+end
 -- Helper: find the trade stat ID for a mod line
 ---@param modLine  string
 ---@return table[] results Can include more than one result if the results are ambiguous
@@ -200,17 +259,16 @@ function M.findTradeHash(modLine)
 			break
 		end
 	end
-	for _, statDescEntry in ipairs(statDescData) do
+	for _, statDescEntry in ipairs(getStatDescData()) do
 		local statDescriptions = statDescEntry[1]
 		if not statDescriptions then
 			goto continue
 		end
 		-- by default, the trade site uses the first form listed in the stat descriptions, but there
 		-- can be a flag that says otherwise
-		-- local canonical_line = 1
 		-- the stat descriptions default to using the first stat for the trade site, but this
 		-- flag can define it to be another one
-		local canonical_stat = 1
+		local canonical_stat
 		local canonical_negated = false
 		for statFormIdx, statForm in ipairs(statDescriptions) do
 			local negate = false
@@ -237,27 +295,46 @@ function M.findTradeHash(modLine)
 			-- stat has no variables
 			if modLine == statForm.text:lower() then
 				local tradeHash = HashStats(statDescEntry.stats, extraStat)
-				table.insert(resultIds, tradeHash)
+				insertUniqueHash(resultIds, tradeHash)
 				shouldNegate = false
 				-- it's hard to know the correct value, but many stats have a form with no variables when the chance to do something is 100%. this should assign a value for those
-				value = tonumber(statForm.limit and statForm.limit[1] and statForm.limit[1][1])
+				value = impliedValue(statForm, canonical_stat)
 				goto continue
 			end
 			-- ensure no false positives by requiring a full line match. this is not possible in gmatch as it doesn't support ^
-			if modLine:match("^" .. statForm.pat .. "$") then
+			if modLine:match(statForm.pat) then
 				local idx = 1
-				for match in modLine:gmatch(statForm.pat) do
+				local matchedCanonical = false
+				local matches = { modLine:match(statForm.pat) }
+				for _, match in ipairs(matches) do
 					-- note that if the desired value isn't the first match and this is a # to #,
 					-- this will break as it contains two values. however, there is only a single
 					-- example where # to # are not the first two values currently
 					local number = tonumber(match) or M.modLineValue(match)
-					if number and idx == canonical_stat then
+					-- we assume that the desired trade value is either the
+					-- first value from the left, or defined by a canonical_stat
+					-- flag, which refers to the ids which are in the stat
+					-- descriptor, e.g. {2}
+					if number and (not canonical_stat) or (statForm.groupIndexes[idx] == canonical_stat) then
 						shouldNegate = negate ~= canonical_negated
 						local tradeHash = HashStats(statDescEntry.stats, extraStat)
-						table.insert(resultIds, tradeHash)
+						insertUniqueHash(resultIds, tradeHash)
 						value = number
+						matchedCanonical = true
+						break
 					end
 					idx = idx + 1
+				end
+				-- the canonical stat is missing from the form text: take it
+				-- from the limits. this can be e.g. 100% chance omitting the
+				-- chance.
+				if canonical_stat and not matchedCanonical then
+					local implied = impliedValue(statForm, canonical_stat)
+					if implied then
+						shouldNegate = negate ~= canonical_negated
+						insertUniqueHash(resultIds, HashStats(statDescEntry.stats, extraStat))
+						value = implied
+					end
 				end
 			end
 		end
@@ -286,7 +363,8 @@ function M.getTradeCategory(slotName, item)
 		elseif itemType == "Fishing Rod" then return "weapon.rod", "FishingRod"
 		elseif itemType == "One Handed Sword" then return "weapon.onesword", "1HSword"
 		elseif itemType == "One Handed Axe" then return "weapon.oneaxe", "1HAxe"
-		elseif itemType == "One Handed Mace" or itemType == "Sceptre" then return "weapon.onemace", "1HMace"
+		elseif itemType == "One Handed Mace" then return "weapon.onemace", "1HMace"
+		elseif itemType == "Sceptre" then return "weapon.sceptre", "Sceptre"
 		elseif itemType == "Wand" then return "weapon.wand", "Wand"
 		elseif itemType == "Dagger" then return "weapon.dagger", "Dagger"
 		elseif itemType == "Claw" then return "weapon.claw", "Claw"
@@ -302,7 +380,7 @@ function M.getTradeCategory(slotName, item)
 	elseif slotName == "Ring 1" or slotName == "Ring 2" or slotName == "Ring 3" then return "accessory.ring", "Ring"
 	elseif slotName == "Belt" then return "accessory.belt", "Belt"
 	elseif slotName:find("Abyssal") then return "jewel.abyss", "AbyssJewel"
-	elseif slotName:find("Jewel") then return "jewel", nil
+	elseif slotName:find("Jewel") then return "jewel", "Jewel"
 	elseif slotName:find("Flask") then return "flask", "Flask"
 	else return nil, nil
 	end
@@ -533,7 +611,7 @@ end
 -- with a preset changeFunc intended for mod values
 function M.newPlainNumericEdit(anchor, rect, init, prompt, limit, integer, changeFunc)
 	local format = integer and "%D" or "^%d."
-	local ctrl = new("EditControl", anchor, rect, init, prompt, format, limit, changeFunc)
+	local ctrl = new("EditControl"):EditControl(anchor, rect, init, prompt, format, limit, changeFunc)
 	-- Remove the +/- spinner buttons that "%D" filter triggers
 	ctrl.isNumeric = false
 	if ctrl.controls then
