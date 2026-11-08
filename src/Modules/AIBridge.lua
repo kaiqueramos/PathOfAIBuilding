@@ -250,6 +250,471 @@ local function resolveGemAlias(build, name)
 	return candidate or name
 end
 
+local function findGemDataByName(build, name)
+	if type(name) ~= "string" or not build or not build.data or type(build.data.gems) ~= "table" then
+		return nil, nil
+	end
+	local canonical = resolveGemAlias(build, name)
+	local target = canonical:lower():gsub("^%s+", ""):gsub("%s+$", "")
+	for gemId, gemData in pairs(build.data.gems) do
+		if gemData.name and not gemData.unsupported and gemData.name:lower() == target then
+			return gemData, gemId
+		end
+	end
+	return nil, nil
+end
+
+--- Return the highest legal gem level for a given character level, or nil if the gem's
+--- level 1 requirement exceeds the character level.
+function AIBridge:GetMaxLegalGemLevel(gemData, characterLevel)
+	local ge = gemData and gemData.grantedEffect
+	local levels = ge and ge.levels
+	if type(levels) ~= "table" then
+		return 1, 1
+	end
+	local charLv = math.max(1, math.min(math.floor(tonumber(characterLevel) or 1), 100))
+	local minReqLv = levels[1] and tonumber(levels[1].levelRequirement) or 1
+	if minReqLv > charLv then
+		return nil, minReqLv
+	end
+	local bestLevel = 1
+	local maxNormalLevel = tonumber(gemData.naturalMaxLevel) or 20
+	for lvl = 1, maxNormalLevel do
+		local lvlData = levels[lvl]
+		if lvlData then
+			local reqLv = tonumber(lvlData.levelRequirement) or 1
+			if reqLv <= charLv then
+				bestLevel = lvl
+			else
+				break
+			end
+		end
+	end
+	return bestLevel, minReqLv
+end
+
+local function finiteOrZero(value)
+	if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge then
+		return 0
+	end
+	return value
+end
+
+--- Damage figure used to compare skill setups: hit and DoT first, then minion damage.
+local function readSkillDps(output)
+	if type(output) ~= "table" then
+		return 0
+	end
+	local dps = finiteOrZero(output.CombinedDPS)
+	if dps <= 0 then
+		dps = finiteOrZero(output.TotalDPS)
+	end
+	if dps <= 0 and type(output.Minion) == "table" then
+		dps = finiteOrZero(output.Minion.CombinedDPS or output.Minion.TotalDPS)
+	end
+	return dps
+end
+
+--- Count the gems in enabled socket groups. Every gem needs one socket.
+local function countSocketsUsed(skillSet)
+	local used = 0
+	for _, group in ipairs(skillSet and skillSet.socketGroupList or { }) do
+		if group.enabled and type(group.gemList) == "table" then
+			for _, gem in ipairs(group.gemList) do
+				if gem.enabled ~= false then
+					used = used + 1
+				end
+			end
+		end
+	end
+	return used
+end
+
+--- PoB gives an item without a Sockets line the base's maximum sockets, all linked. Those are
+-- placeholders, so only items that spell out their sockets count as real gear.
+local function itemDeclaresSockets(item)
+	return type(item.raw) == "string" and ("\n" .. item.raw):find("\nSockets:", 1, true) ~= nil
+end
+
+--- Count sockets on equipped gear. Jewel, abyssal and swap weapon sockets are excluded.
+-- @return number total sockets, number largest linked group
+local function countEquippedSockets(build)
+	local itemsTab = build and build.itemsTab
+	if not itemsTab or not itemsTab.slots or not itemsTab.items then
+		return 0, 0
+	end
+	local total, largestLink = 0, 0
+	for slotName, slot in pairs(itemsTab.slots) do
+		local item = slot.selItemId and slot.selItemId > 0 and itemsTab.items[slot.selItemId]
+		if item and item.sockets and itemDeclaresSockets(item) and not slot.nodeId
+			and not tostring(slotName):find("Swap", 1, true) then
+			local linked = { }
+			for _, socket in ipairs(item.sockets) do
+				if socket.color ~= "A" then
+					total = total + 1
+					linked[socket.group or 0] = (linked[socket.group or 0] or 0) + 1
+				end
+			end
+			for _, size in pairs(linked) do
+				largestLink = math.max(largestLink, size)
+			end
+		end
+	end
+	return total, largestLink
+end
+
+--- Names of the skills whose mana or life cost exceeds the unreserved pool, as flagged by
+-- PoB's own calculation. Rage and energy shield costs depend on gear and charges, so they
+-- are not treated as planning errors.
+local function collectUnaffordableSkills(output)
+	local names = { }
+	if type(output) == "table" then
+		for _, key in ipairs({ "ManaCostWarningList", "LifeCostWarningList" }) do
+			if type(output[key]) == "table" then
+				for _, name in ipairs(output[key]) do
+					names[name] = true
+				end
+			end
+		end
+	end
+	return names
+end
+
+--- Return the socket and link limits a player can realistically use. The campaign figures
+-- for the level are a floor, and equipped gear raises them when it offers more.
+function AIBridge:GetSocketBudget(build, characterLevel)
+	local charLv = math.max(1, math.min(math.floor(tonumber(characterLevel) or 1), 100))
+	local maxMainLinks
+	if charLv <= 12 then
+		maxMainLinks = 3
+	elseif charLv <= 38 then
+		maxMainLinks = 4
+	elseif charLv <= 67 then
+		maxMainLinks = 5
+	else
+		maxMainLinks = 6
+	end
+	local maxTotalSockets = charLv <= 12 and 9 or (charLv <= 28 and 14 or (charLv <= 50 and 18 or 24))
+	local source = "level"
+	local gearSockets, gearLinks = countEquippedSockets(build)
+	if gearSockets > maxTotalSockets or gearLinks > maxMainLinks then
+		maxTotalSockets = math.max(maxTotalSockets, gearSockets)
+		maxMainLinks = math.max(maxMainLinks, gearLinks)
+		source = "gear"
+	end
+	return {
+		maxMainLinks = maxMainLinks,
+		maxTotalSockets = maxTotalSockets,
+		source = source,
+		gearSockets = gearSockets,
+		-- The total is a hard limit only while no gear is equipped. With gear the player
+		-- owns real sockets, so the total stays advisory and the link size stays binding.
+		enforceTotal = gearSockets == 0,
+	}
+end
+
+-- A support is skipped when it would push one cast above this share of the unreserved mana.
+local MAX_COST_SHARE_OF_MANA = 0.30
+-- Supports re-tested after the first pick, which keeps the number of recalculations bounded.
+local SUPPORT_REFINEMENT_POOL = 8
+-- Skills that never get damage supports automatically.
+local UTILITY_SKILL_TYPES = { "Aura", "Herald", "Warcry", "Movement", "Guard", "AppliesCurse" }
+-- Supports that change how a skill is placed or triggered rather than how it performs.
+local EXCLUDED_SUPPORT_FLAGS = { trap = true, mine = true, totem = true, ballista = true }
+
+local function isUtilitySkill(grantedEffect)
+	local skillTypes = grantedEffect and grantedEffect.skillTypes
+	if type(skillTypes) ~= "table" or not SkillType then
+		return false
+	end
+	for _, typeName in ipairs(UTILITY_SKILL_TYPES) do
+		local typeId = SkillType[typeName]
+		if typeId and skillTypes[typeId] then
+			return true
+		end
+	end
+	return false
+end
+
+--- True for supports a player can realistically buy or find at any level and that change
+-- the performance of the skill, not how it is triggered, placed or unlocked.
+local function isSelectableSupport(gemData)
+	local grantedEffect = gemData and gemData.grantedEffect
+	if not grantedEffect or not gemData.name or not grantedEffect.support
+		or grantedEffect.legacy or gemData.unsupported then
+		return false
+	end
+	if grantedEffect.isTrigger or grantedEffect.plusVersionOf or grantedEffect.cannotBeSupported then
+		return false
+	end
+	local tags = gemData.tags
+	if type(tags) == "table" and (tags.exceptional or tags.awakened or tags.vaal) then
+		return false
+	end
+	for flag in pairs(grantedEffect.addFlags or { }) do
+		if EXCLUDED_SUPPORT_FLAGS[flag] then
+			return false
+		end
+	end
+	return true
+end
+
+--- Whether one cast stays payable and sustainable. A cost that was already above the share
+-- before the candidate is never allowed to grow.
+local function skillIsAffordable(output, baseline)
+	if output.ManaHasCost then
+		local cost = finiteOrZero(output.ManaCost)
+		local pool = math.max(finiteOrZero(output.ManaUnreserved), 0)
+		if cost > pool or cost > math.max(pool * MAX_COST_SHARE_OF_MANA, baseline.manaCost) then
+			return false
+		end
+	end
+	if output.LifeHasCost then
+		local cost = finiteOrZero(output.LifeCost)
+		local pool = math.max(finiteOrZero(output.LifeUnreserved), 0)
+		if cost >= pool and cost > baseline.lifeCost then
+			return false
+		end
+	end
+	return true
+end
+
+--- Run fn with `group` appended to the active skill set and selected as the main skill.
+-- The group list, the main skill and the calculated output are restored even when fn throws.
+function AIBridge:WithTemporaryMainGroup(build, group, fn)
+	local skillsTab = build and build.skillsTab
+	local skillSet = skillsTab and skillsTab.skillSets and skillsTab.skillSets[skillsTab.activeSkillSetId]
+	if not skillSet or type(skillSet.socketGroupList) ~= "table" then
+		error("No active skill set", 0)
+	end
+	local list = skillSet.socketGroupList
+	local originalCount = #list
+	local originalMain = build.mainSocketGroup
+	t_insert(list, group)
+	build.mainSocketGroup = #list
+	local ok, result = pcall(fn)
+	while #list > originalCount do
+		t_remove(list)
+	end
+	build.mainSocketGroup = originalMain
+	local rebuilt, rebuildError = self:RebuildBuild(build)
+	if not ok then
+		error(result, 0)
+	end
+	if not rebuilt then
+		error("Could not restore the calculated build: " .. tostring(rebuildError), 0)
+	end
+	return result
+end
+
+-- Plain weapon types in the order a new character is most likely to use them.
+local WEAPON_TYPE_PREFERENCE = {
+	"Bow", "Wand", "One Handed Sword", "One Handed Axe", "One Handed Mace", "Claw", "Dagger",
+	"Rune Dagger", "Sceptre", "Staff", "Warstaff", "Two Handed Sword", "Two Handed Axe", "Two Handed Mace",
+}
+-- Returned by a selection pass that found no damage to compare, so it can be retried with a weapon.
+local NEEDS_WEAPON = { }
+
+--- Name of a plain weapon base the character could use at this level, for attack skills that
+-- deal no damage until a matching weapon is equipped.
+local function pickPlanningWeaponBase(build, grantedEffect, characterLevel)
+	local allowed = grantedEffect and grantedEffect.weaponTypes
+	if type(allowed) ~= "table" or not build.data or not build.data.itemBases then
+		return nil
+	end
+	local wantedType
+	for _, typeName in ipairs(WEAPON_TYPE_PREFERENCE) do
+		if allowed[typeName] then
+			wantedType = typeName
+			break
+		end
+	end
+	if not wantedType then
+		return nil
+	end
+	local bestName, bestLevel
+	for name, base in pairs(build.data.itemBases) do
+		if base.type == wantedType and base.weapon and not base.hidden then
+			local requiredLevel = base.req and tonumber(base.req.level) or 0
+			if requiredLevel <= characterLevel and (not bestLevel or requiredLevel > bestLevel
+				or (requiredLevel == bestLevel and name < bestName)) then
+				bestName, bestLevel = name, requiredLevel
+			end
+		end
+	end
+	return bestName
+end
+
+--- Run fn with a plain weapon of the given base in the main weapon slot. The slot, the item
+-- list and the calculated output are restored even when fn throws.
+function AIBridge:WithTemporaryWeapon(build, baseName, fn)
+	local itemsTab = build and build.itemsTab
+	local slot = itemsTab and itemsTab.slots and itemsTab.slots["Weapon 1"]
+	if not slot then
+		error("No weapon slot", 0)
+	end
+	local item = new("Item"):Item("Rarity: NORMAL\n" .. baseName)
+	if not item.base then
+		error("Unknown weapon base " .. tostring(baseName), 0)
+	end
+	local previous = slot.selItemId or 0
+	itemsTab:AddItem(item, true)
+	slot:SetSelItemId(item.id)
+	local ok, result = pcall(fn)
+	slot:SetSelItemId(previous)
+	itemsTab:DeleteItem(item, true)
+	itemsTab:PopulateSlots()
+	local rebuilt, rebuildError = self:RebuildBuild(build)
+	if not ok then
+		error(result, 0)
+	end
+	if not rebuilt then
+		error("Could not restore the calculated build: " .. tostring(rebuildError), 0)
+	end
+	return result
+end
+
+--- Pick the supports that add the most damage to an active skill at this character level.
+-- Only supports that are legal at the level, compatible with the skill, realistic to own and
+-- affordable with the available mana are considered. Attack skills that need a weapon are
+-- measured with a temporary one. The build is restored afterwards.
+-- @param excludedNames Lower-cased gem names that must not be picked
+-- @return table Array of {name, level, quality, dpsGain}, string|nil error
+function AIBridge:SelectOptimalSupportGems(build, activeGemData, characterLevel, maxSupports, excludedNames)
+	maxSupports = math.floor(tonumber(maxSupports) or 3)
+	local activeEffect = activeGemData and activeGemData.grantedEffect
+	if maxSupports <= 0 or not build or not activeEffect or activeEffect.support or isUtilitySkill(activeEffect) then
+		return { }
+	end
+	if not build.skillsTab or not build.calcsTab or not build.calcsTab.calcs or not build.itemsTab
+		or not build.data or not build.data.gems then
+		return { }
+	end
+	local activeLevel = self:GetMaxLegalGemLevel(activeGemData, characterLevel)
+	if not activeLevel then
+		return { }
+	end
+
+	local excluded = excludedNames or { }
+	local calcs = build.calcsTab.calcs
+	local simGroup = { label = "AI Support Sim", enabled = true, gemList = { } }
+
+	local function newGem(name, level)
+		return {
+			nameSpec = name,
+			level = level,
+			quality = 0,
+			enabled = true,
+			count = 1,
+			enableGlobal1 = true,
+			enableGlobal2 = false,
+		}
+	end
+
+	local function selectSupports(allowWeaponProbe)
+		local chosen = { }
+		local function evaluate(extra)
+			local list = { newGem(activeGemData.name, activeLevel) }
+			for _, support in ipairs(chosen) do
+				t_insert(list, newGem(support.name, support.level))
+			end
+			if extra then
+				t_insert(list, newGem(extra.name, extra.level))
+			end
+			simGroup.gemList = list
+			build.skillsTab:ProcessSocketGroup(simGroup)
+			wipeGlobalCache()
+			local env = calcs.buildOutput(build, "MAIN")
+			return env.player.output, env.player.mainSkill
+		end
+
+		local baseOutput, mainSkill = evaluate(nil)
+		local currentDps = readSkillDps(baseOutput)
+		if currentDps <= 0 or not mainSkill then
+			if allowWeaponProbe and activeEffect.weaponTypes then
+				return NEEDS_WEAPON
+			end
+			return chosen
+		end
+		local baseline = {
+			manaCost = baseOutput.ManaHasCost and finiteOrZero(baseOutput.ManaCost) or 0,
+			lifeCost = baseOutput.LifeHasCost and finiteOrZero(baseOutput.LifeCost) or 0,
+		}
+
+		local pool = { }
+		for _, gemData in pairs(build.data.gems) do
+			if isSelectableSupport(gemData) and not excluded[gemData.name:lower()] then
+				local level = self:GetMaxLegalGemLevel(gemData, characterLevel)
+				if level and calcLib.canGrantedEffectSupportActiveSkill(gemData.grantedEffect, mainSkill) then
+					t_insert(pool, { name = gemData.name, level = level })
+				end
+			end
+		end
+		table.sort(pool, function(a, b) return a.name < b.name end)
+
+		for _ = 1, maxSupports do
+			local scored = { }
+			for _, candidate in ipairs(pool) do
+				local evalOk, output = pcall(evaluate, candidate)
+				if evalOk then
+					local dps = readSkillDps(output)
+					if dps > currentDps and skillIsAffordable(output, baseline) then
+						t_insert(scored, {
+							name = candidate.name,
+							level = candidate.level,
+							dps = dps,
+							gain = dps - currentDps,
+						})
+					end
+				end
+			end
+			if #scored == 0 then
+				break
+			end
+			table.sort(scored, function(a, b)
+				if a.gain ~= b.gain then
+					return a.gain > b.gain
+				end
+				return a.name < b.name
+			end)
+			t_insert(chosen, scored[1])
+			currentDps = scored[1].dps
+			pool = { }
+			for index = 2, math.min(#scored, SUPPORT_REFINEMENT_POOL + 1) do
+				t_insert(pool, scored[index])
+			end
+		end
+		return chosen
+	end
+
+	local function runPass(allowWeaponProbe)
+		return self:WithTemporaryMainGroup(build, simGroup, function()
+			return selectSupports(allowWeaponProbe)
+		end)
+	end
+
+	local ok, picked = pcall(runPass, true)
+	if ok and picked == NEEDS_WEAPON then
+		local weaponBase = pickPlanningWeaponBase(build, activeEffect, characterLevel)
+		if weaponBase then
+			ok, picked = pcall(self.WithTemporaryWeapon, self, build, weaponBase, function()
+				return runPass(false)
+			end)
+		else
+			picked = { }
+		end
+	end
+	if not ok then
+		return { }, tostring(picked)
+	end
+
+	local selected = { }
+	for _, support in ipairs(picked or { }) do
+		t_insert(selected, { name = support.name, level = support.level, quality = 0, dpsGain = support.gain })
+	end
+	return selected
+end
+
 local function pointsAtLevel(steps, level)
 	for _, step in ipairs(steps) do
 		if level >= step.level then
@@ -1070,7 +1535,9 @@ function AIBridge:SerializeBuild(build, context)
 	local output = build.calcsTab and build.calcsTab.mainOutput
 	if output then
 		local statKeys = {
-			"Life", "LifeUnreserved", "EnergyShield", "Mana", "Ward", "Armour", "Evasion",
+			"Life", "LifeUnreserved", "LifeUnreservedPercent", "EnergyShield",
+			"Mana", "ManaUnreserved", "ManaUnreservedPercent", "ManaCost", "ManaHasCost",
+			"Ward", "Armour", "Evasion",
 			"FireResist", "ColdResist", "LightningResist", "ChaosResist",
 			"TotalDPS", "CombinedDPS", "AverageHit", "AverageDamage",
 			"Speed", "CritChance", "CritMultiplier", "HitChance",
@@ -1136,8 +1603,9 @@ function AIBridge:SerializeBuild(build, context)
 		end
 	end
 
-	-- Skills: socket groups with gems
+	-- Skills: socket groups with gems and socket budget
 	local skillsTab = build.skillsTab
+	local totalSocketsUsed = 0
 	if skillsTab then
 		local activeSet = skillsTab.skillSets[skillsTab.activeSkillSetId]
 		if activeSet and activeSet.socketGroupList then
@@ -1152,6 +1620,9 @@ function AIBridge:SerializeBuild(build, context)
 					}
 					for _, gem in ipairs(group.gemList) do
 						local gemName = (gem.gemData and gem.gemData.name) or gem.nameSpec or "Unknown"
+						if gem.enabled ~= false then
+							totalSocketsUsed = totalSocketsUsed + 1
+						end
 						t_insert(skillEntry.gems, {
 							name = gemName,
 							level = gem.level or 20,
@@ -1166,6 +1637,15 @@ function AIBridge:SerializeBuild(build, context)
 			end
 		end
 	end
+	local effectiveLevel = context.targetLevel or (build.characterLevel or 100)
+	local socketBudget = self:GetSocketBudget(build, effectiveLevel)
+	state.socketBudget = {
+		maxMainLinks = socketBudget.maxMainLinks,
+		maxTotalSockets = socketBudget.maxTotalSockets,
+		socketsUsed = totalSocketsUsed,
+		socketsRemaining = math.max(0, socketBudget.maxTotalSockets - totalSocketsUsed),
+		source = socketBudget.source,
+	}
 
 	-- Tree: allocated nodes + available notables/keystones for allocation
 	if spec and spec.allocNodes then
@@ -1325,12 +1805,16 @@ function AIBridge:SerializeBuild(build, context)
 		state.reference = {}
 	end
 
-	-- Gem names (all gems in the game data)
+	-- Gem names (only gems unlocked at the character's current/target level)
 	if includeGemReference and build.data and build.data.gems then
 		local gemNames = {}
+		local levelCap = context.targetLevel or (build.characterLevel or 100)
 		for gemId, gemData in pairs(build.data.gems) do
 			if gemData.name and not gemData.unsupported then
-				t_insert(gemNames, gemData.name)
+				local maxLegalLevel = self:GetMaxLegalGemLevel(gemData, levelCap)
+				if maxLegalLevel then
+					t_insert(gemNames, gemData.name)
+				end
 			end
 		end
 		table.sort(gemNames)
@@ -1676,58 +2160,63 @@ function AIBridge:ComputeGemShortlist(build, limit, forceRefresh, fingerprint)
 		end
 	end
 	
-	-- Test each support gem. Every transient mutation is removed even if PoB throws
+	-- Test each support gem that is level-legal for this character. Every transient mutation is removed even if PoB throws
 	-- while resolving the socket group or recalculating the candidate.
 	local results = {}
 	local originalGemCount = #mainGroup.gemList
+	local charLevel = build.characterLevel or 100
 	for gemId, gemData in pairs(build.data.gems) do
 		if gemData.grantedEffect and gemData.grantedEffect.support
 			and not existingGems[gemId] and not gemData.grantedEffect.legacy then
-			local testGem = {
-				nameSpec = gemData.name,
-				gemId = gemId,
-				level = 20,
-				quality = 0,
-				enabled = true,
-				count = 1,
-				enableGlobal1 = true,
-				enableGlobal2 = false,
-			}
-			local simulationOk, newDPSOrError = pcall(function()
-				t_insert(mainGroup.gemList, testGem)
-				skillsTab:ProcessSocketGroup(mainGroup)
-				calcsTab:BuildOutput()
-				return calcsTab.mainOutput.CombinedDPS or calcsTab.mainOutput.TotalDPS or 0
-			end)
+			local legalLevel = self:GetMaxLegalGemLevel(gemData, charLevel)
+			if legalLevel then
+				local testGem = {
+					nameSpec = gemData.name,
+					gemId = gemId,
+					level = legalLevel,
+					quality = 0,
+					enabled = true,
+					count = 1,
+					enableGlobal1 = true,
+					enableGlobal2 = false,
+				}
+				local simulationOk, newDPSOrError = pcall(function()
+					t_insert(mainGroup.gemList, testGem)
+					skillsTab:ProcessSocketGroup(mainGroup)
+					calcsTab:BuildOutput()
+					return calcsTab.mainOutput.CombinedDPS or calcsTab.mainOutput.TotalDPS or 0
+				end)
 
-			local cleanupOk, cleanupError = pcall(function()
-				while #mainGroup.gemList > originalGemCount do
-					t_remove(mainGroup.gemList)
-				end
-				if #mainGroup.gemList ~= originalGemCount then
-					error("socket group lost an original gem")
-				end
-				skillsTab:ProcessSocketGroup(mainGroup)
-			end)
+				local cleanupOk, cleanupError = pcall(function()
+					while #mainGroup.gemList > originalGemCount do
+						t_remove(mainGroup.gemList)
+					end
+					if #mainGroup.gemList ~= originalGemCount then
+						error("socket group lost an original gem")
+					end
+					skillsTab:ProcessSocketGroup(mainGroup)
+				end)
 
-			if not simulationOk or not cleanupOk then
-				local recalcOk, recalcError = pcall(calcsTab.BuildOutput, calcsTab)
-				local failure = not simulationOk and newDPSOrError or cleanupError
-				if not recalcOk then
-					failure = tostring(failure) .. "; recalculation restore failed: " .. tostring(recalcError)
+				if not simulationOk or not cleanupOk then
+					local recalcOk, recalcError = pcall(calcsTab.BuildOutput, calcsTab)
+					local failure = not simulationOk and newDPSOrError or cleanupError
+					if not recalcOk then
+						failure = tostring(failure) .. "; recalculation restore failed: " .. tostring(recalcError)
+					end
+					error("Gem shortlist simulation failed for " .. tostring(gemData.name)
+						.. ": " .. tostring(failure), 0)
 				end
-				error("Gem shortlist simulation failed for " .. tostring(gemData.name)
-					.. ": " .. tostring(failure), 0)
-			end
 
-			local gain = newDPSOrError - baseDPS
-			if gain > 0 then
-				t_insert(results, {
-					name = gemData.name,
-					dpsGain = gain,
-					dpsGainPct = (gain / baseDPS) * 100,
-					type = "support",
-				})
+				local gain = newDPSOrError - baseDPS
+				if gain > 0 then
+					t_insert(results, {
+						name = gemData.name,
+						level = legalLevel,
+						dpsGain = gain,
+						dpsGainPct = (gain / baseDPS) * 100,
+						type = "support",
+					})
+				end
 			end
 		end
 	end
@@ -2631,7 +3120,14 @@ function AIBridge:Ask(build, userMessage, callback, history, supersedesUnapplied
 	end
 	planningSession = planningSession or AIPlanning:NewSession()
 	local initialContextOverrides
-	if planningSession.state == "tree" or planningSession.state == "tree_pending" then
+	if planningSession.state == "brief_confirmed" then
+		local targetLv = planningSession.confirmedBrief and planningSession.confirmedBrief.targetLevel or nil
+		initialContextOverrides = {
+			includeGemReference = true,
+			includeGemShortlist = true,
+			targetLevel = targetLv,
+		}
+	elseif planningSession.state == "tree" or planningSession.state == "tree_pending" then
 		if not planningSession.passivePlanApplied then
 			initialContextOverrides = {
 				includeTreeCandidates = true,
@@ -2721,8 +3217,19 @@ mastery, tattoo, bandit, pantheon, jewel, or configuration actions in the founda
 Use the confirmed brief's class, ascendancy, main skill, and target level. If the confirmed
 brief's ascendancy is "None", omit set_ascendancy or pass {"type":"set_ascendancy","name":"None"}.
 Emit set_level to the
-target level before other foundation actions when it changes the level. After adding the main
-skill group, emit set_main_skill so PoB calculates the intended skill.
+target level before other foundation actions when it changes the level. When adding the main
+skill group with add_skill, send the active skill gem alone. The app then links the best compatible,
+level-legal supports the character can afford, up to state.socketBudget.maxMainLinks (3L for Lv 1-12,
+4L for Lv 13-38, 5L for Lv 39-67, 6L for Lv 68+). Name
+supports yourself only when the player asked for specific ones, and then use only gems from
+state.reference.gemNames (already filtered to gems unlocked at the character's level). After adding
+the main skill group, emit set_main_skill so PoB calculates the intended skill.
+
+Respect character constraints at all times:
+1. Gem Level vs Character Level: NEVER propose a gem whose minimum required level exceeds the character's level (e.g. Spell Echo / Multistrike require Lv 38; Swift Affliction requires Lv 31; CwDT requires Lv 38). Set each gem's level appropriate to the character's level.
+2. Socket & Link Budget (state.socketBudget): NEVER exceed state.socketBudget.maxMainLinks per group or state.socketBudget.maxTotalSockets across all groups.
+3. Mana & Reservation Budget (stats.Mana, stats.ManaUnreserved, stats.ManaUnreservedPercent, stats.ManaCost): before recommending auras, heralds or other reservation skills, check the unreserved mana. Keep ManaUnreserved at least three times ManaCost so the main skill stays castable, and recommend no reservation at all when the character cannot spare mana for it. Preflight rejects batches that leave negative unreserved mana or a skill the character cannot pay for. Prefer skills that need no reservation when mana is tight.
+4. Tree Candidates at Current Moment: tree.availableNodes and tree.recommendedPlan are already simulated and ranked by per-point impact for the character's exact level, class, and configured skill. Use them in order.
 
 When the guided planning session state is tree or tree_pending and passivePlanApplied is not true,
 propose ONLY the passive tree plan
@@ -3669,6 +4176,61 @@ function AIBridge:PreflightActions(build, actions, snapshotXml)
 			} },
 		}
 	end
+
+	-- Verify that any skill changes do not over-reserve mana or life (negative unreserved pool).
+	local hasSkillAction = false
+	for _, action in ipairs(actions) do
+		if type(action) == "table" and (action.type == "add_skill" or action.type == "set_main_skill") then
+			hasSkillAction = true
+			break
+		end
+	end
+	if hasSkillAction and shadowBuild.calcsTab and shadowBuild.calcsTab.mainOutput then
+		local out = shadowBuild.calcsTab.mainOutput
+		local manaUnreserved = tonumber(out.ManaUnreserved)
+		local lifeUnreserved = tonumber(out.LifeUnreserved)
+		local function resourceFailure(message)
+			return {
+				ok = false,
+				phase = "preflight",
+				results = { { ok = false, msg = message } },
+			}
+		end
+		if manaUnreserved and manaUnreserved < 0 then
+			return resourceFailure(string.format(
+				"Insufficient unreserved mana after adding skills (ManaUnreserved: %d). Remove an aura or add reservation efficiency.",
+				math.floor(manaUnreserved)
+			))
+		end
+		if lifeUnreserved and lifeUnreserved <= 0 then
+			return resourceFailure(string.format(
+				"Insufficient unreserved life after adding skills (LifeUnreserved: %d).",
+				math.floor(lifeUnreserved)
+			))
+		end
+		-- A skill the player cannot pay for is not a recommendation. Skills that were already
+		-- unaffordable before this batch are not blamed on it.
+		local activeOutput = build and build.calcsTab and build.calcsTab.mainOutput
+		local before = collectUnaffordableSkills(activeOutput)
+		local unaffordable = { }
+		if activeOutput then
+			for name in pairs(collectUnaffordableSkills(out)) do
+				if not before[name] then
+					t_insert(unaffordable, name)
+				end
+			end
+		end
+		if #unaffordable > 0 then
+			table.sort(unaffordable)
+			return resourceFailure(string.format(
+				"Cannot afford %s: the cost per use is above the unreserved pool (mana %d, life %d). Use a cheaper skill, fewer reservations or cost reduction.",
+				table.concat(unaffordable, ", "),
+				math.floor(math.max(manaUnreserved or 0, 0)),
+				math.floor(math.max(lifeUnreserved or 0, 0))
+			))
+		end
+	end
+
 	local previewMetrics, metricsError = self:CaptureBuildMetrics(shadowBuild)
 	if not previewMetrics then
 		return {
@@ -4075,7 +4637,7 @@ function AIBridge:ActionSetConfig(build, action)
 	return true, "Set config " .. key .. " = " .. tostring(value)
 end
 
---- Set the character level (1-100)
+--- Set the character level (1-100) and clamp existing gem levels to what is legal at that level
 function AIBridge:ActionSetLevel(build, action)
 	local level = tonumber(action.value)
 	if not level then
@@ -4086,6 +4648,26 @@ function AIBridge:ActionSetLevel(build, action)
 	build.characterLevelAutoMode = false
 	if build.controls and build.controls.characterLevel then
 		build.controls.characterLevel:SetText(level)
+	end
+	local skillsTab = build.skillsTab
+	local skillSet = skillsTab and skillsTab.skillSets and skillsTab.skillSets[skillsTab.activeSkillSetId]
+	if skillSet and skillSet.socketGroupList then
+		for _, group in ipairs(skillSet.socketGroupList) do
+			local changedGroup = false
+			for _, gem in ipairs(group.gemList or {}) do
+				local gemData = gem.gemData or findGemDataByName(build, gem.nameSpec)
+				if gemData then
+					local maxLegalLevel = self:GetMaxLegalGemLevel(gemData, level)
+					if maxLegalLevel and (tonumber(gem.level) or 20) > maxLegalLevel then
+						gem.level = maxLegalLevel
+						changedGroup = true
+					end
+				end
+			end
+			if changedGroup then
+				skillsTab:ProcessSocketGroup(group)
+			end
+		end
 	end
 	if build.configTab then
 		build.configTab:BuildModList()
@@ -4204,6 +4786,8 @@ end
 --- Add a skill (socket group) with gems.
 -- action = { label="Main", gems={ {name="Righteous Fire", level=20, quality=0}, ... } }
 -- or shorthand: action = { label="Main", gems={"Righteous Fire", "Efficacy"} }
+-- Gem levels are capped to what the character level allows. An active skill sent without
+-- supports gets the best affordable supports that fit the link budget.
 function AIBridge:ActionAddSkill(build, action)
 	local skillsTab = build.skillsTab
 	if not skillsTab then
@@ -4218,21 +4802,54 @@ function AIBridge:ActionAddSkill(build, action)
 		return false, "No gems provided"
 	end
 
+	local charLevel = math.max(1, math.min(math.floor(tonumber(build.characterLevel) or 100), 100))
+	local socketBudget = self:GetSocketBudget(build, charLevel)
+	local currentSocketsUsed = countSocketsUsed(skillSet)
+	local groupName = action.label or "unnamed"
+
 	local newGroup = { label = action.label or "", enabled = true, gemList = {} }
+	local firstActiveGemData
+	local supportCount = 0
+	local seenSupports = {}
 	for _, gem in ipairs(gems) do
-		local name, level, quality
+		local name, requestedLevel, quality
 		if type(gem) == "string" then
-			name, level, quality = gem, 20, 0
+			name, requestedLevel, quality = gem, nil, 0
 		else
 			name = gem.name
-			level = gem.level or 20
+			requestedLevel = gem.level
 			quality = gem.quality or 0
 		end
 		if name then
 			name = resolveGemAlias(build, name)
+			local gemData = findGemDataByName(build, name)
+			local maxLegalLevel, minReqLv = self:GetMaxLegalGemLevel(gemData, charLevel)
+			if gemData and not maxLegalLevel then
+				return false, string.format(
+					"Gem '%s' requires character level %d (current build level is %d)",
+					gemData.name or name,
+					minReqLv or 1,
+					charLevel
+				)
+			end
+			local finalLevel = maxLegalLevel or 20
+			if requestedLevel and tonumber(requestedLevel) then
+				finalLevel = math.max(1, math.min(math.floor(tonumber(requestedLevel)), finalLevel))
+			end
+			if gemData and gemData.grantedEffect then
+				if gemData.grantedEffect.support then
+					if seenSupports[gemData.name] then
+						return false, string.format("Support '%s' appears twice in the same link", gemData.name)
+					end
+					seenSupports[gemData.name] = true
+					supportCount = supportCount + 1
+				elseif not firstActiveGemData then
+					firstActiveGemData = gemData
+				end
+			end
 			t_insert(newGroup.gemList, {
 				nameSpec = name,
-				level = level,
+				level = finalLevel,
 				quality = quality,
 				enabled = true,
 				count = 1,
@@ -4246,7 +4863,59 @@ function AIBridge:ActionAddSkill(build, action)
 		return false, "No valid gems to add"
 	end
 
+	local notes = {}
+	if firstActiveGemData and supportCount == 0 and #newGroup.gemList == 1 then
+		local room = socketBudget.maxMainLinks - 1
+		if socketBudget.enforceTotal then
+			room = math.min(room, socketBudget.maxTotalSockets - currentSocketsUsed - 1)
+		end
+		if room > 0 then
+			local autoSupports, autoError = self:SelectOptimalSupportGems(build, firstActiveGemData, charLevel, room)
+			for _, support in ipairs(autoSupports) do
+				t_insert(newGroup.gemList, {
+					nameSpec = support.name,
+					level = support.level,
+					quality = support.quality or 0,
+					enabled = true,
+					count = 1,
+					enableGlobal1 = true,
+					enableGlobal2 = false,
+				})
+			end
+			if autoError then
+				t_insert(notes, "supports not chosen: " .. autoError)
+			end
+		end
+	end
+
+	if #newGroup.gemList > socketBudget.maxMainLinks then
+		return false, string.format(
+			"Skill group '%s' has %d linked gems, exceeding the %d-link limit for level %d",
+			groupName,
+			#newGroup.gemList,
+			socketBudget.maxMainLinks,
+			charLevel
+		)
+	end
+	local socketsAfter = currentSocketsUsed + #newGroup.gemList
+	if socketsAfter > socketBudget.maxTotalSockets then
+		if socketBudget.enforceTotal then
+			return false, string.format(
+				"Adding '%s' (%d gem(s)) exceeds the %d sockets a level %d character has (%d would be used)",
+				groupName,
+				#newGroup.gemList,
+				socketBudget.maxTotalSockets,
+				charLevel,
+				socketsAfter
+			)
+		end
+		t_insert(notes, string.format(
+			"uses %d sockets but gear offers %d", socketsAfter, socketBudget.maxTotalSockets
+		))
+	end
+
 	skillsTab:ProcessSocketGroup(newGroup)
+	local described = {}
 	for index, gem in ipairs(newGroup.gemList) do
 		if not gem.gemData and not gem.grantedEffect then
 			return false, string.format(
@@ -4255,12 +4924,19 @@ function AIBridge:ActionAddSkill(build, action)
 				gem.errMsg or gem.nameSpec or "unknown"
 			)
 		end
+		t_insert(described, string.format("%s L%d", gem.nameSpec or "?", tonumber(gem.level) or 0))
 	end
 	t_insert(skillSet.socketGroupList, newGroup)
 	skillsTab.modFlag = true
 	build.buildFlag = true
 
-	return true, "Added skill group '" .. (action.label or "unnamed") .. "' with " .. #newGroup.gemList .. " gem(s)"
+	local message = string.format(
+		"Added skill group '%s' with %d gem(s): %s", groupName, #newGroup.gemList, table.concat(described, ", ")
+	)
+	if #notes > 0 then
+		message = message .. " (" .. table.concat(notes, "; ") .. ")"
+	end
+	return true, message
 end
 
 --- Remove a skill (socket group) by label or by a gem name it contains
