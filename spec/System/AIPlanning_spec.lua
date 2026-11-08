@@ -1,3 +1,4 @@
+-- cspell:ignore Elementalist
 describe("AI build brief", function()
 	before_each(function()
 		newBuild()

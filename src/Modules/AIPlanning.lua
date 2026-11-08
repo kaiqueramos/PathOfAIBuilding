@@ -1,5 +1,6 @@
 -- Path of Building AI Integration
 -- AIPlanning: validates and stores a confirmed guided-build direction
+-- cspell:ignore Arbalists bitval Elementalist jsontype
 
 local t_insert = table.insert
 local m_floor = math.floor

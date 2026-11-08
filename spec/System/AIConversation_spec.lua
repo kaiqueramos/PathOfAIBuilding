@@ -1,4 +1,4 @@
--- cspell:ignore mapearia sobreviver
+-- cspell:ignore Quero mapas mapearia melhor sobreviver
 describe("AI conversation session", function()
 	it("parses and strips one answer turn", function()
 		local conversation = LoadModule("Modules/AIConversation")

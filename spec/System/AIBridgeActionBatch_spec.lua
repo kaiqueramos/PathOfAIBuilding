@@ -1,4 +1,4 @@
--- cspell:ignore Upvalue
+-- cspell:ignore Elementalist Upvalue
 local function readFile(path)
 	local file = assert(io.open(path, "r"))
 	local content = file:read("*a")

@@ -1,4 +1,4 @@
--- cspell:ignore Upvalue
+-- cspell:ignore Elementalist Upvalue
 local dkjson = require "dkjson"
 
 local function readFile(path)

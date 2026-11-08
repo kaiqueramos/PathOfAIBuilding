@@ -383,8 +383,8 @@
 	<File name="Modules/AddImplicitPopup.lua" part="program" sha1="f68d391d10b95c0feef70b7e8e82326a745dcb3b" />
 	<File name="Modules/AIBridge.lua" part="program" sha1="710ce3780fb975c0e314232de6177d354d36711a" />
 	<File name="Modules/AIConfig.lua" part="program" sha1="85496350c8b373d3de79303b3f1e921b9bcf0730" />
-	<File name="Modules/AIConversation.lua" part="program" sha1="91844133608479158fc89ec877c9f3d6f965e4cc" />
-	<File name="Modules/AIPlanning.lua" part="program" sha1="e36f0078dc763966234a005915cbb99ddf95a41b" />
+	<File name="Modules/AIConversation.lua" part="program" sha1="0668cd2dc69960517c3508be78c2ffa1e2f11774" />
+	<File name="Modules/AIPlanning.lua" part="program" sha1="763bcb1ba87c589f9a4d3acbd1ca8508919cb369" />
 	<File name="Modules/Build.lua" part="program" sha1="1f02af5983c97d8c5e8eb60a5a5364f9432c08c5" />
 	<File name="Modules/BuildDisplayStats.lua" part="program" sha1="ffc4da3b13c3d50f3580b452622429f0bd7e70ab" />
 	<File name="Modules/BuildList.lua" part="program" sha1="daa0c88f606ade9687f037b6e99c9cec2904200e" />

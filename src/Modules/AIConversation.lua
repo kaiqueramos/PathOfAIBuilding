@@ -1,5 +1,6 @@
 -- Path of Building AI Integration
 -- AIConversation: validates semantic dialogue turns and owns local conversation state
+-- cspell:ignore jsontype
 
 local t_insert = table.insert
 local dkjson = require "dkjson"
