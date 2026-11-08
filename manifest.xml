@@ -362,7 +362,7 @@
 	<File name="Data/Uniques/gloves.lua" part="program" sha1="e755bd9ffe593e1a8fdb2a35d87cd0db81c5eef1" />
 	<File name="Data/Uniques/graft.lua" part="program" sha1="94b7b2b58911c025f6b3a300fe42de3402b0287f" />
 	<File name="Data/Uniques/helmet.lua" part="program" sha1="350f2c43359de7d09c2ad56d66a363c023b0db04" />
-	<File name="Data/Uniques/jewel.lua" part="program" sha1="3f534932f12d3e8cc7f32f81fef513a549d901b0" />
+	<File name="Data/Uniques/jewel.lua" part="program" sha1="a4dee11d86a5de1c28f3b031f2dc228ffbcea657" />
 	<File name="Data/Uniques/mace.lua" part="program" sha1="e41bc572877099b72533cde3268187483b08a469" />
 	<File name="Data/Uniques/quiver.lua" part="program" sha1="c8adb47d3f55a864637dd93f8a21cf559dc34304" />
 	<File name="Data/Uniques/ring.lua" part="program" sha1="e9df71ff4a5600144373edafef8f7f145d507090" />
