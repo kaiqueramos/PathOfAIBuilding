@@ -936,19 +936,18 @@ function AIPlanning:FormatBrief(brief)
 		return "^1Invalid build direction"
 	end
 	local lines = {
-		"^7--- Build direction ---",
-		"^2Class: " .. brief.class .. " / " .. brief.ascendancy,
-		"^2Main skill: " .. brief.mainSkill,
-		"^2Target level: " .. brief.targetLevel,
-		"^2Priority: " .. brief.priority,
+		"^x5CF0BB=== Build Direction Summary ===",
+		"^7Class: ^2" .. brief.class .. " ^8/ ^2" .. brief.ascendancy,
+		"^7Main skill: ^2" .. brief.mainSkill,
+		"^7Target level: ^2" .. brief.targetLevel .. " ^8| ^7Priority: ^2" .. brief.priority,
 	}
 	if #brief.constraints > 0 then
-		t_insert(lines, "^8Constraints: " .. table.concat(brief.constraints, ", "))
+		t_insert(lines, "^7Constraints: ^8" .. table.concat(brief.constraints, ", "))
 	end
 	if #brief.assumptions > 0 then
-		t_insert(lines, "^8Assumptions: " .. table.concat(brief.assumptions, ", "))
+		t_insert(lines, "^7Assumptions: ^8" .. table.concat(brief.assumptions, ", "))
 	end
-	t_insert(lines, "^8Confirm or revise this direction. PoB build is unchanged.")
+	t_insert(lines, "^8Click 'Confirm Direction' (top-right) to proceed or 'Revise Direction' to adjust. PoB build is unchanged.")
 	return table.concat(lines, "\n")
 end
 

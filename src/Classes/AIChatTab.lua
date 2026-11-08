@@ -172,23 +172,27 @@ function AIChatTabClass:AIChatTab(build)
 	self.conversationSession = nil
 	self.planningSession = nil
 
-	-- === TOP: header + build summary ===
-	self.controls.header = new("LabelControl"):LabelControl({"TOPLEFT",self,"TOPLEFT"}, {8, 8, 0, 16}, "^7AI Build Advisor")
+	-- === TOP: header + stage badge + build summary ===
+	self.controls.header = new("LabelControl"):LabelControl({"TOPLEFT",self,"TOPLEFT"}, {10, 8, 0, 18}, "^x5CF0BBAI Build Advisor")
+	self.controls.stageBadge = new("LabelControl"):LabelControl({"LEFT",self.controls.header,"RIGHT"}, {12, 0, 0, 16}, "")
+	self.controls.stageBadge.label = function()
+		return self:GetStageBadgeText()
+	end
 	self.controls.summary = new("LabelControl"):LabelControl({"TOPLEFT",self.controls.header,"BOTTOMLEFT"}, {0, 4, 0, 16}, "")
 	self.controls.summary.label = function()
 		return "^8" .. AIBridge:GetBuildSummary(self.build)
 	end
 
 	-- === BOTTOM: status, input, quick buttons (anchored from bottom) ===
-	self.controls.status = new("LabelControl"):LabelControl({"BOTTOMLEFT",self,"BOTTOMLEFT"}, {8, -4, 0, 16}, "")
+	self.controls.status = new("LabelControl"):LabelControl({"BOTTOMLEFT",self,"BOTTOMLEFT"}, {10, -4, 0, 16}, "^2Ready")
 
-	self.controls.input = new("EditControl"):EditControl({"BOTTOMLEFT",self.controls.status,"TOPLEFT"}, {0, -4, 0, 22}, "", nil, "^%C\t\n", nil, function(buf)
-		self.controls.send.enabled = #buf > 0
+	self.controls.input = new("EditControl"):EditControl({"BOTTOMLEFT",self.controls.status,"TOPLEFT"}, {0, -4, 0, 24}, "", nil, "^%C\t\n", nil, function(buf)
+		self.controls.send.enabled = #buf > 0 and not self.pending
 	end)
 	self.controls.input.width = function()
-		return self.width - 100
+		return self.width - 178
 	end
-	self.controls.input:SetPlaceholder("Ask about your build...")
+	self.controls.input:SetPlaceholder("Ask about your build or type 'Create a build...'")
 	-- Transliterate accented chars to ASCII on input (Wine Latin-1 keyboard)
 	local origInsert = self.controls.input.Insert
 	self.controls.input.Insert = function(ctrl, text)
@@ -201,7 +205,7 @@ function AIChatTabClass:AIChatTab(build)
 		end
 	end
 
-	self.controls.send = new("ButtonControl"):ButtonControl({"LEFT",self.controls.input,"RIGHT"}, {6, 0, 76, 22}, "Send", function()
+	self.controls.send = new("ButtonControl"):ButtonControl({"LEFT",self.controls.input,"RIGHT"}, {6, 0, 82, 24}, "^2Send", function()
 		local msg = self.controls.input.buf
 		if msg and #msg > 0 then
 			self:SendMessage(msg)
@@ -209,50 +213,86 @@ function AIChatTabClass:AIChatTab(build)
 	end)
 	self.controls.send.enabled = false
 
-	self.controls.quickImprove = new("ButtonControl"):ButtonControl({"BOTTOMLEFT",self.controls.input,"TOPLEFT"}, {0, -6, 150, 20}, "How do I improve?", function()
-		self:SendMessage("How do I improve this build? Give me the top 3 highest-impact changes.")
-	end)
-	self.controls.quickUpgrade = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickImprove,"RIGHT"}, {6, 0, 150, 20}, "Next upgrade?", function()
-		self:SendMessage("What is my best next upgrade considering cost vs impact?")
-	end)
-	self.controls.quickTank = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickUpgrade,"RIGHT"}, {6, 0, 150, 20}, "Can I tank?", function()
-		self:SendMessage("Analyze my defenses. What can I tank and what will kill me?")
+	self.controls.clearChat = new("ButtonControl"):ButtonControl({"LEFT",self.controls.send,"RIGHT"}, {6, 0, 68, 24}, "^8Reset", function()
+		self:ResetChat()
 	end)
 
-	-- Apply button (top-right, always visible above chat, hidden until actions available)
-	self.controls.applyActions = new("ButtonControl"):ButtonControl({"TOPRIGHT",self,"TOPRIGHT"}, {-8, 8, 220, 22}, "^2Apply Suggested Changes", function()
+	self.controls.quickImprove = new("ButtonControl"):ButtonControl({"BOTTOMLEFT",self.controls.input,"TOPLEFT"}, {0, -6, 150, 22}, "How do I improve?", function()
+		self:SendMessage("How do I improve this build? Give me the top 3 highest-impact changes.")
+	end)
+	self.controls.quickUpgrade = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickImprove,"RIGHT"}, {6, 0, 145, 22}, "Next upgrade?", function()
+		self:SendMessage("What is my best next upgrade considering cost vs impact?")
+	end)
+	self.controls.quickTank = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickUpgrade,"RIGHT"}, {6, 0, 135, 22}, "Can I tank?", function()
+		self:SendMessage("Analyze my defenses. What can I tank and what will kill me?")
+	end)
+	self.controls.quickNewBuild = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickTank,"RIGHT"}, {6, 0, 155, 22}, "^x5CF0BB+ New Guided Build", function()
+		self.controls.input:SetText("Create a league starter build at level 30: ")
+		self.controls.send.enabled = true
+		self:SelectControl(self.controls.input)
+	end)
+	self.controls.quickTreePlan = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickNewBuild,"RIGHT"}, {6, 0, 170, 22}, "^2Plan Passive Tree ->", function()
+		self:SendMessage("Propose my passive tree plan for this foundation.")
+	end)
+	self.controls.quickTreePlan.shown = function()
+		return self.planningSession ~= nil and self.planningSession.state == "tree" and not self.pending
+	end
+
+	-- Option chips (shown when AI asks a clarification question with options)
+	self.optionButtons = {}
+	for idx = 1, 4 do
+		local anchor = idx == 1
+			and {"BOTTOMLEFT",self.controls.quickImprove,"TOPLEFT"}
+			or {"LEFT",self.optionButtons[idx - 1],"RIGHT"}
+		local offsetX = idx == 1 and 0 or 6
+		local offsetY = idx == 1 and -6 or 0
+		local btn = new("ButtonControl"):ButtonControl(anchor, {offsetX, offsetY, 180, 22}, "", function()
+			local choice = self.optionValues and self.optionValues[idx]
+			if choice and not self.pending then
+				self:SendMessage(choice)
+			end
+		end)
+		btn.shown = false
+		self.optionButtons[idx] = btn
+		self.controls["option" .. idx] = btn
+	end
+	self.optionValues = {}
+
+	-- Action buttons (top-right, always visible above chat, hidden until actions available)
+	self.controls.applyActions = new("ButtonControl"):ButtonControl({"TOPRIGHT",self,"TOPRIGHT"}, {-10, 8, 220, 24}, "^2Apply Suggested Changes", function()
 		ConPrintf("[AIChat] Apply button clicked!")
 		self:ApplyPendingActions()
 	end)
 	self.controls.applyActions.shown = false
 
-	self.controls.confirmBrief = new("ButtonControl"):ButtonControl({"TOPRIGHT",self,"TOPRIGHT"}, {-8, 8, 150, 22}, "^2Confirm direction", function()
+	self.controls.confirmBrief = new("ButtonControl"):ButtonControl({"TOPRIGHT",self,"TOPRIGHT"}, {-10, 8, 160, 24}, "^2Confirm Direction", function()
 		self:ConfirmBrief()
 	end)
 	self.controls.confirmBrief.shown = false
-	self.controls.reviseBrief = new("ButtonControl"):ButtonControl({"RIGHT",self.controls.confirmBrief,"LEFT"}, {-6, 0, 140, 22}, "Revise direction", function()
+	self.controls.reviseBrief = new("ButtonControl"):ButtonControl({"RIGHT",self.controls.confirmBrief,"LEFT"}, {-6, 0, 145, 24}, "^8Revise Direction", function()
 		self:ReviseBrief()
 	end)
 	self.controls.reviseBrief.shown = false
 
-	self.controls.applyFoundation = new("ButtonControl"):ButtonControl({"TOPRIGHT",self,"TOPRIGHT"}, {-8, 8, 150, 22}, "^2Apply Foundation", function()
+	self.controls.applyFoundation = new("ButtonControl"):ButtonControl({"TOPRIGHT",self,"TOPRIGHT"}, {-10, 8, 170, 24}, "^2Apply Foundation", function()
 		self:ApplyFoundation()
 	end)
 	self.controls.applyFoundation.shown = false
 
-	self.controls.applyPassivePlan = new("ButtonControl"):ButtonControl({"TOPRIGHT",self,"TOPRIGHT"}, {-8, 8, 160, 22}, "^2Apply Passive Plan", function()
+	self.controls.applyPassivePlan = new("ButtonControl"):ButtonControl({"TOPRIGHT",self,"TOPRIGHT"}, {-10, 8, 180, 24}, "^2Apply Passive Plan", function()
 		self:ApplyPassivePlan()
 	end)
 	self.controls.applyPassivePlan.shown = false
 
 	-- === MIDDLE: chat history fills remaining space (READ-ONLY) ===
-	self.controls.history = new("EditControl"):EditControl({"TOPLEFT",self.controls.summary,"BOTTOMLEFT"}, {0, 8, 0, 0}, "", nil, "^%C\t\n", nil, nil, 16, true)
+	self.controls.history = new("EditControl"):EditControl({"TOPLEFT",self.controls.summary,"BOTTOMLEFT"}, {0, 8, 0, 0}, "", nil, "^%C\t\n", nil, nil, 17, true)
 	self.controls.history.width = function()
-		return self.width - 16
+		return self.width - 20
 	end
 	self.controls.history.height = function()
-		local top = 52
-		local bottom = 80
+		local top = 54
+		local hasOptions = self.optionButtons[1] and self.optionButtons[1].shown
+		local bottom = hasOptions and 112 or 84
 		return math.max(self.height - top - bottom, 100)
 	end
 	-- Make history read-only: block all text input
@@ -260,8 +300,79 @@ function AIChatTabClass:AIChatTab(build)
 	self.controls.history.Insert = function() end
 	self.controls.history.ReplaceSel = function() end
 
+	self:RefreshHistory()
 	self:SelectControl(self.controls.input)
 	return self
+end
+
+--- Return a visual stage badge for the top bar based on current planning session state.
+function AIChatTabClass:GetStageBadgeText()
+	local state = self.planningSession and self.planningSession.state or "idle"
+	if state == "brief_pending" then
+		return "^xFFFF77[Stage 1/3: Review Direction]"
+	elseif state == "brief_revising" then
+		return "^xFF9922[Stage 1/3: Revising Direction]"
+	elseif state == "brief_confirmed" then
+		return "^x5CF0BB[Stage 2/3: Preparing Foundation]"
+	elseif state == "foundation_pending" then
+		return "^x33FF77[Stage 2/3: Apply Foundation ->]"
+	elseif state == "tree" then
+		return "^x5CF0BB[Stage 3/3: Passive Tree Ready]"
+	elseif state == "tree_pending" then
+		return "^x33FF77[Stage 3/3: Apply Passive Plan ->]"
+	end
+	return "^8[Advisor Mode]"
+end
+
+--- Populate clickable option buttons when the AI asks a clarification question.
+function AIChatTabClass:SetClarificationOptions(options)
+	self.optionValues = {}
+	for idx = 1, 4 do
+		local btn = self.optionButtons and self.optionButtons[idx]
+		local opt = options and options[idx]
+		if btn then
+			if opt and #tostring(opt) > 0 then
+				local rawOpt = tostring(opt)
+				local cleanOpt = rawOpt:match("^%s*(.-)%s*%(") or rawOpt
+				if #cleanOpt == 0 then
+					cleanOpt = rawOpt
+				end
+				self.optionValues[idx] = cleanOpt
+				local shortLabel = translit(cleanOpt)
+				if #shortLabel > 24 then
+					shortLabel = shortLabel:sub(1, 22) .. ".."
+				end
+				btn.label = "^x5CF0BB" .. idx .. ". ^7" .. shortLabel
+				btn.width = math.max(110, math.min(220, #shortLabel * 7 + 28))
+				btn.shown = true
+			else
+				btn.shown = false
+			end
+		end
+	end
+end
+
+--- Reset the conversation and guided planning state.
+function AIChatTabClass:ResetChat()
+	if self.pending then
+		return
+	end
+	self:FinishStream()
+	self.messages = {}
+	self.pendingActions = nil
+	self.pendingActionsFingerprint = nil
+	self.conversationSession = nil
+	self.planningSession = nil
+	self.controls.applyActions.shown = false
+	self.controls.confirmBrief.shown = false
+	self.controls.reviseBrief.shown = false
+	self.controls.applyFoundation.shown = false
+	self.controls.applyPassivePlan.shown = false
+	self:SetClarificationOptions(nil)
+	self.controls.input:SetPlaceholder("Ask about your build or type 'Create a build...'")
+	self.controls.status.label = "^2Ready"
+	self:RefreshHistory()
+	self:SelectControl(self.controls.input)
 end
 
 --- Send a message to the AI and display the response
@@ -269,6 +380,7 @@ function AIChatTabClass:SendMessage(text)
 	if self.pending then
 		return
 	end
+	self:SetClarificationOptions(nil)
 
 	local awaitingClarification = self.conversationSession
 		and self.conversationSession.state == "awaiting_user"
@@ -439,7 +551,8 @@ function AIChatTabClass:SendRequest(text)
 					t_insert(lines, "^7" .. question.prompt)
 				end
 				if question.options and #question.options > 0 then
-					t_insert(lines, "^8Options: " .. table.concat(question.options, " / "))
+					t_insert(lines, "^8Options (click a button below or type your answer): " .. table.concat(question.options, " / "))
+					self:SetClarificationOptions(question.options)
 				end
 				displayText = table.concat(lines, "\n\n")
 				self.controls.input:SetPlaceholder("Answer: " .. translit(question.prompt))
@@ -589,19 +702,33 @@ end
 
 --- Refresh the history display
 function AIChatTabClass:RefreshHistory()
+	if #self.messages == 0 then
+		self.controls.history:SetText(
+			"^x5CF0BBAI Build Advisor — Ready\n"
+			.. "^8Ask about your active build (DPS, EHP, gems, items, passive tree) or start a guided build from scratch.\n"
+			.. "^8Quick actions below: 'How do I improve?', 'Next upgrade?', 'Can I tank?', or '+ New Guided Build'."
+		)
+		self.controls.history.caret = 1
+		return
+	end
 	local lines = {}
 	for _, msg in ipairs(self.messages) do
 		local prefix
+		local contPrefix = "  "
 		if msg.role == "user" then
-			prefix = "^7> "
+			prefix = "^x5CF0BBYou: ^7"
+			contPrefix = "     ^7"
 		elseif msg.role == "ai" then
-			prefix = "^2AI: "
+			prefix = "^2AI: ^7"
+			contPrefix = "    ^7"
 		else
-			prefix = "^1[!] "
+			local isError = msg.text:find("^Error:") or msg.text:find("^%^1") or msg.text:find("ignored:")
+			prefix = isError and "^1[!] " or "^x5CF0BB[*] ^7"
+			contPrefix = "    "
 		end
 		for line in (msg.text .. "\n"):gmatch("([^\n]*)\n") do
 			t_insert(lines, prefix .. line)
-			prefix = msg.role == "ai" and "  ^7" or "  "
+			prefix = contPrefix
 		end
 		t_insert(lines, "")
 	end
@@ -826,6 +953,22 @@ function AIChatTabClass:Draw(viewPort, inputEvents)
 
 	self:ProcessControlsInput(inputEvents, viewPort)
 	main:DrawBackground(viewPort)
+
+	-- Draw subtle header bar and chat panel frame
+	SetDrawLayer(nil, -5)
+	SetDrawColor(0.08, 0.09, 0.12, 0.92)
+	DrawImage(nil, self.x + 4, self.y + 4, self.width - 8, 44)
+	SetDrawColor(0.22, 0.28, 0.34, 0.85)
+	DrawImage(nil, self.x + 4, self.y + 48, self.width - 8, 1)
+
+	local histX, histY = self.controls.history:GetPos()
+	local histW, histH = self.controls.history:GetSize()
+	SetDrawColor(0.18, 0.22, 0.27, 0.7)
+	DrawImage(nil, histX - 2, histY - 2, histW + 4, histH + 4)
+	SetDrawColor(0.05, 0.06, 0.08, 0.95)
+	DrawImage(nil, histX, histY, histW, histH)
+	SetDrawLayer(nil, 0)
+
 	self:DrawControls(viewPort)
 end
 

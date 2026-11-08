@@ -277,18 +277,6 @@ function main:Init()
 	-- Initialize toast notification system
 	ToastNotification:Init(self.anchorMain)
 
-	if launch.devMode and GetTime() >= 0 and GetTime() < 15000 then
-		ToastNotification:Add([[
-^xFF7700Warning: ^7Developer Mode active!
-The program is currently running in developer
-mode, which is not intended for normal use.
-If you are not expecting this, then you may have
-set up the program from the source .zip instead
-of using one of the installers. If that is the case,
-please reinstall using one of the installers from
-the "Releases" section of the GitHub page.]])
-	end
-
 	self.onFrameFuncs = {
 		["FirstFrame"] = function()
 			self.onFrameFuncs["FirstFrame"] = nil
