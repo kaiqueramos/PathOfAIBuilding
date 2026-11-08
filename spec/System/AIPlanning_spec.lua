@@ -1,4 +1,8 @@
 describe("AI build brief", function()
+	before_each(function()
+		newBuild()
+	end)
+
 	local function validBriefBlock()
 		return '<brief>{"stage":"brief","mainSkill":"Fireball","class":"Witch",'
 			.. '"ascendancy":"Elementalist","targetLevel":30,"priority":"balanced",'

@@ -6,6 +6,9 @@
 -- cspell:ignore distancia equipamento equipamentos esta frasco gema gemas habilidade invocacao invocacoes invocador joia luvas
 -- cspell:ignore cria faca maestria melhor melhorar melhoro melhoria melhorias minion minions monta montar nivel nodo nodos passiva proximo
 -- cspell:ignore realocar recalc reconstruir refaz refazer resetar resistencias summon summoner suporte suportes supressao unico unicos zerar
+-- cspell:ignore armadilha armadilhas armadura ataque ataques caos choque congel corpo critico criticos
+-- cspell:ignore energia escudo evasao feitico feiticos fisico fogo frio ignicao longo magia magias
+-- cspell:ignore mina minas projeteis raio sangramento veneno vida
 -- cspell:ignore elementalist jsontype
 
 local t_insert = table.insert

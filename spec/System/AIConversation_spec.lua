@@ -1,3 +1,4 @@
+-- cspell:ignore mapearia sobreviver
 describe("AI conversation session", function()
 	it("parses and strips one answer turn", function()
 		local conversation = LoadModule("Modules/AIConversation")
