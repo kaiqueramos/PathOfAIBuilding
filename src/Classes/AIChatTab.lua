@@ -233,7 +233,7 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 	end)
 	self.controls.reviseBrief.shown = false
 
-	self.controls.applyFoundation = new("ButtonControl", {"RIGHT",self.controls.confirmBrief,"LEFT"}, {-6, 0, 150, 22}, "^2Apply Foundation", function()
+	self.controls.applyFoundation = new("ButtonControl", {"TOPRIGHT",self,"TOPRIGHT"}, {-8, 8, 150, 22}, "^2Apply Foundation", function()
 		self:ApplyFoundation()
 	end)
 	self.controls.applyFoundation.shown = false
