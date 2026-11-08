@@ -30,7 +30,7 @@ Implicits: 0
 Wall of Brambles
 Plate Vest
 Source: No longer obtainable
-LevelReq: 30
+Requires Level 30
 Implicits: 0
 Adds 2 to 4 Physical Damage to Attacks
 +2000 to Armour
@@ -58,6 +58,7 @@ Variant: Pre 3.16.0
 Variant: Current
 League: Bestiary
 Source: Drops from unique{Craiceann, First of the Deep}
+Requires Level 64
 Implicits: 0
 Grants Level 20 Aspect of the Crab Skill
 {variant:1}(300-350)% increased Armour
@@ -182,7 +183,7 @@ Having a placed Banner does not prevent you gaining Valour
 Pragmatism
 Colosseum Plate
 League: Affliction
-Requires Level 49, 134 Str
+Source: unique{The King in the Mists} in the normal{Crux of Nothingness}
 +12 to Level of Socketed Skill Gems
 (80-120)% increased Armour
 +(60-100) to maximum Mana
@@ -203,7 +204,6 @@ Chaos Damage taken does not bypass Energy Shield
 ]],[[
 Utula's Hunger
 Majestic Plate
-Requires Level 53, 145 Str
 (60-100)% increased Armour
 Recover (1-3)% of Life on Kill
 (30-40)% increased Stun and Block Recovery
@@ -225,7 +225,7 @@ Cannot be Ignited
 {variant:1,2}(10-15)% increased Physical Damage with Ranged Weapons
 {variant:3}(75-150)% increased Physical Damage with Ranged Weapons
 {variant:1,2}-(5-7) Physical Damage taken from Attack Hits
-{variant:3}-(30-60) Physical Damage taken from Attack Hits
+{variant:3}-(60-30) Physical Damage taken from Attack Hits
 ]],[[
 Briskwrap
 {variant:1,2,3}Strapped Leather
@@ -249,7 +249,7 @@ Implicits: 0
 Wildwrap
 Strapped Leather
 Source: No longer obtainable
-LevelReq: 57
+Requires Level 57
 Implicits: 0
 15% increased Dexterity
 10% increased Attack Speed
@@ -310,6 +310,7 @@ Implicits: 0
 Fox's Fortune
 Wild Leather
 Source: No longer obtainable
+Requires Level 54
 Implicits: 0
 +(20-30) to Dexterity
 Adds 5 to 12 Physical Damage to Attacks
@@ -450,6 +451,7 @@ Variant: Pre 3.21.0
 Variant: Pre 3.23.0
 Variant: Current
 Implicits: 0
+{variant:4}20% Chance to Block Attack Damage
 {variant:1}(5-10)% increased Dexterity
 {variant:2,3}(10-15)% increased Dexterity
 {variant:1}(30-50)% increased Evasion Rating
@@ -458,7 +460,6 @@ Implicits: 0
 {variant:1}+(50-80) to maximum Life
 {variant:2,3}+(70-100) to maximum Life
 -30% to Cold Resistance
-{variant:4}+20% Chance to Block Attack Damage
 {variant:1,2,3,4}Evasion Rating is increased by Overcapped Cold Resistance
 {variant:3}Flesh and Stone has no Reservation
 {variant:3}Hollow Palm Technique
@@ -476,9 +477,9 @@ Implicits: 0
 {variant:1,4}Grants Level 20 Summon Bestial Rhoa Skill
 {variant:2,5}Grants Level 20 Summon Bestial Snake Skill
 {variant:3,6}Grants Level 20 Summon Bestial Ursa Skill
++(300-400) to Accuracy Rating
 (130-150)% increased Evasion Rating
 +(90-100) to maximum Life
-+(300-400) to Accuracy Rating
 Projectile Attack Skills have (40-60)% increased Critical Strike Chance
 {variant:3}Adds (11-16) to (21-25) Physical Damage to Attacks while you have a Bestial Minion
 {variant:6}Adds (18-24) to (30-36) Physical Damage to Attacks while you have a Bestial Minion
@@ -497,7 +498,6 @@ Projectile Attack Skills have (40-60)% increased Critical Strike Chance
 [[
 The Apostate
 Cabalist Regalia
-Requires Level 35
 Source: Drops from unique{Synthete Nightmare} in normal{The Cortex} (Uber)
 +(30-50) to Strength
 +(20-30)% to all Elemental Resistances
@@ -593,13 +593,13 @@ Sage's Robe
 Variant: Pre 3.19.0
 Variant: Current
 Implicits: 0
-Gems can be Socketed in this Item ignoring Socket Colour
 {variant:1}Gems Socketed in Red Sockets have +1 to Level
 {variant:2}Gems Socketed in Red Sockets have +2 to Level
 {variant:1}Gems Socketed in Green Sockets have +10% to Quality
-{variant:2}Gems Socketed in Green Sockets have +30% to Quality
+{variant:2}Gems Socketed in Green Sockets have +20% to Quality
 {variant:1}Gems Socketed in Blue Sockets gain 25% increased Experience
 {variant:2}Gems Socketed in Blue Sockets gain 100% increased Experience
+Gems Socketed always have the Quality bonus from Socket Colour
 Has no Attribute Requirements
 ]],[[
 Doedre's Skin
@@ -609,10 +609,13 @@ Variant: Pre 3.16.0
 Variant: Current
 Implicits: 0
 Socketed Gems are Supported by Level 20 Blasphemy
-Grants Level 20 Summon Doedre's Effigy Skill
-Socketed Hex Curse Skills are Triggered by Doedre's Effigy when Summoned
-Hexes from Socketed Skills can apply 5 additional Curses
-20% less Effect of Curses from Socketed Hex Skills
+{variant:1,2}Grants Level 20 Summon Doedre's Effigy Skill
+{variant:1,2}Socketed Hex Curse Skills are Triggered by Doedre's Effigy when Summoned
+{variant:1,2}Hexes from Socketed Skills can apply 5 additional Curses
+{variant:1,2}20% less Effect of Curses from Socketed Hex Skills
+{variant:3}Grants Level 20 Summon Doedre's Effigy Skill
+{variant:3}Socketed Hex Curse Skills are Triggered by Doedre's Effigy when Summoned
+{variant:3}Hexes from Socketed Skills can apply 5 additional Curses
 +(30-40) to Intelligence
 (130-150)% increased Energy Shield
 {variant:1}(25-33)% reduced Effect of your Curses
@@ -622,6 +625,7 @@ Fenumus' Shroud
 Widowsilk Robe
 League: Bestiary
 Source: Drops from unique{Fenumus, First of the Night}
+Requires Level 67
 Implicits: 0
 +(30-40) to Intelligence
 (120-140)% increased Energy Shield
@@ -858,8 +862,8 @@ Source: Steal from a unique{Curio Display} during a Grand Heist
 Implicits: 0
 (100-150)% increased Armour and Evasion
 +(80-100) to maximum Life
++2 seconds to Cat's Agility Duration
 Aspect of the Cat has no Reservation
-+2 seconds to Cat's Stealth Duration
 Gain up to your maximum number of Frenzy and Endurance Charges when you gain Cat's Agility
 You have Onslaught while you have Cat's Agility
 ]],[[
@@ -910,7 +914,6 @@ Cannot be Poisoned
 ]],[[
 Rigwald's Hunt
 General's Brigandine
-Requires Level 66, 103 Str, 103 Dex
 (160-200)% increased Armour and Evasion
 Minions have (20-30)% increased Movement Speed
 Minions have 1% chance to deal Double Damage per Fortification on you
@@ -994,7 +997,8 @@ Implicits: 0
 (50-75)% increased Armour and Energy Shield
 {variant:1,2}+(70-80) to maximum Energy Shield
 {variant:3}+(30-40) to maximum Energy Shield
-+(50-70) to maximum Life
+{variant:1,2}+(50-70) to maximum Life
+{variant:3}+(60-70) to maximum Life
 +(14-18)% to all Elemental Resistances
 {variant:1}+1 maximum Energy Shield per 5 Strength
 {variant:2,3}+2 maximum Energy Shield per 5 Strength
@@ -1019,7 +1023,7 @@ Cannot be Chilled
 Crystal Vault
 Latticed Ringmail
 Source: No longer obtainable
-LevelReq: 49
+Requires Level 49
 Implicits: 0
 +(30-40) to Strength
 +(30-40) to Intelligence
@@ -1153,6 +1157,18 @@ Implicits: 0
 50% reduced maximum Mana
 Gain a Power Charge for each Enemy you hit with a Critical Strike
 {variant:2}Inner Conviction
+]],[[
+Waxen Soul
+Saint's Hauberk
+League: Ritual
+Source: Reward from Nameless Ritual, and rarely a regular Ritual
+(10-20)% increased maximum Life
++(17-29)% to Chaos Resistance
+Curse Skills cost Life instead of Mana
+Curse Aura Skills reserve Life instead of Mana
+Gain a random Blood Shrine buff every 10 seconds
+2% increased Effect of Shrine Buffs on you for each 5% of Life Reserved
+10% chance to Trigger Explosive Toad when you kill an Enemy
 ]],
 -- Body: Evasion/Energy Shield
 [[
@@ -1348,10 +1364,13 @@ Has 6 Abyssal Sockets
 Stasis Prison
 Carnal Armour
 Source: Drops in Unrelenting Domain of Timeless Conflict
+Variant: Pre 3.29.0
+Variant: Current
 Implicits: 1
 +(20-25) to maximum Mana
+{variant:2}(80-100)% increased Implicit Modifier magnitudes
 (140-160)% increased Evasion and Energy Shield
-+(80-100) to maximum Life
+{variant:1}+(80-100) to maximum Life
 Temporal Rift has no Reservation
 (80-100)% of Damage taken Recouped as Life
 Debuffs on you expire (80-100)% faster
@@ -1384,7 +1403,6 @@ Socketed Gems have 45% increased Reservation Efficiency
 Servant of Decay
 Torturer Garb
 Source: Drops from unique{Incarnation of Fear} in normal{Moment of Trauma}
-Requires Level 78, 151 Dex, 151 Int
 Trigger Level 20 Summon Void Spawn every 4 seconds
 (150-200)% increased Energy Shield
 +(23-37)% to Chaos Resistance
@@ -1394,7 +1412,7 @@ Gain (4-6)% of Non-Chaos Damage as Extra Chaos Damage per Summoned Void Spawn
 Seven Teachings
 Waxed Garb
 Source: Drops from unique{Incarnation of Dread} in normal{Moment of Reverence}
-Requires Level 77, 48 Dex, 48 Int
+Requires Level 77
 Trigger a Socketed Spell on Unarmed Melee Critical Strike, with a 0.25 second Cooldown
 (1-7)% more Attack Speed with Unarmed Melee Attacks
 (100-777)% increased Evasion and Energy Shield
@@ -1441,13 +1459,16 @@ Variant: Current (Energy Shield)
 Variant: Current (Armour/ES + Life)
 Variant: Current (Armour/ES + ES)
 Variant: Current (Armour/Evasion/ES)
+Requires Level 75
 Implicits: 1
 +1 to Level of all Vaal Skill Gems
 {variant:1,10}(380-420)% increased Armour
-{variant:2,11}(200-220)% increased Evasion Rating and Armour
 {variant:3,12}(380-420)% increased Evasion Rating
-{variant:7,8,16,17}(200-220)% increased Armour and Energy Shield
-{variant:4,5,13,14}(200-220)% increased Evasion and Energy Shield
+{variant:7,16}(200-220)% increased Armour and Energy Shield
+{variant:8,17}(200-220)% increased Armour and Energy Shield
+{variant:2,11}(200-220)% increased Armour and Evasion
+{variant:4,13}(200-220)% increased Evasion and Energy Shield
+{variant:5,14}(200-220)% increased Evasion and Energy Shield
 {variant:9,18}(270-340)% increased Armour, Evasion and Energy Shield
 {variant:5,6,8}+(90-100) to maximum Energy Shield
 {variant:14,15,17}+(70-80) to maximum Energy Shield
@@ -1473,5 +1494,16 @@ Recover (3-5)% of Energy Shield on Kill
 8% increased Maximum Energy Shield for each Corrupted Item Equipped
 -(6-4)% to all Resistances for each Corrupted Item Equipped
 Corrupted
-]],
+]],[[
+The Queen's Hunger
+Vaal Regalia
+League: Betrayal
+Source: Drops from unique{Catarina, Master of Undeath}
+Crafted: true
+Implicits: 0
+Trigger Level 20 Bone Offering, Flesh Offering, Spirit Offering every 5 seconds in sequence
+Offering Skills Triggered this way also affect you
+(100-130)% increased Energy Shield
+(6-10)% increased maximum Life
+]]
 }

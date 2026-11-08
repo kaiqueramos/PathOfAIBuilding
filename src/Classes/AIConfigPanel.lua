@@ -49,37 +49,37 @@ function AIConfigPanel:OpenPopup()
 	local fieldW = 280
 
 	-- API Key label + field (protected - shows asterisks)
-	controls.apiKeyLabel = new("LabelControl", { "TOPLEFT", nil, "TOPLEFT" }, { labelX, 20, 0, 16 }, "^7API Key:")
-	controls.apiKey = new("EditControl", { "TOPLEFT", controls.apiKeyLabel, "BOTTOMLEFT" }, { 0, 4, fieldW, 20 }, config.api_key or "", nil, nil, nil, nil)
+	controls.apiKeyLabel = new("LabelControl"):LabelControl({ "TOPLEFT", nil, "TOPLEFT" }, { labelX, 20, 0, 16 }, "^7API Key:")
+	controls.apiKey = new("EditControl"):EditControl({ "TOPLEFT", controls.apiKeyLabel, "BOTTOMLEFT" }, { 0, 4, fieldW, 20 }, config.api_key or "", nil, nil, nil, nil)
 	controls.apiKey:SetProtected(true)
 	controls.apiKey:SetPlaceholder("sk-... or your API key")
 
 	-- Endpoint label + field
-	controls.endpointLabel = new("LabelControl", { "TOPLEFT", controls.apiKey, "BOTTOMLEFT" }, { 0, 12, 0, 16 }, "^7Endpoint (OpenAI-compatible):")
-	controls.endpoint = new("EditControl", { "TOPLEFT", controls.endpointLabel, "BOTTOMLEFT" }, { 0, 4, fieldW, 20 }, config.api_endpoint or "", nil, nil, nil, nil)
+	controls.endpointLabel = new("LabelControl"):LabelControl({ "TOPLEFT", controls.apiKey, "BOTTOMLEFT" }, { 0, 12, 0, 16 }, "^7Endpoint (OpenAI-compatible):")
+	controls.endpoint = new("EditControl"):EditControl({ "TOPLEFT", controls.endpointLabel, "BOTTOMLEFT" }, { 0, 4, fieldW, 20 }, config.api_endpoint or "", nil, nil, nil, nil)
 	controls.endpoint:SetPlaceholder("https://api.openai.com/v1")
 
 	-- Model label + field
-	controls.modelLabel = new("LabelControl", { "TOPLEFT", controls.endpoint, "BOTTOMLEFT" }, { 0, 12, 0, 16 }, "^7Model:")
-	controls.model = new("EditControl", { "TOPLEFT", controls.modelLabel, "BOTTOMLEFT" }, { 0, 4, fieldW, 20 }, config.model or "", nil, nil, nil, nil)
+	controls.modelLabel = new("LabelControl"):LabelControl({ "TOPLEFT", controls.endpoint, "BOTTOMLEFT" }, { 0, 12, 0, 16 }, "^7Model:")
+	controls.model = new("EditControl"):EditControl({ "TOPLEFT", controls.modelLabel, "BOTTOMLEFT" }, { 0, 4, fieldW, 20 }, config.model or "", nil, nil, nil, nil)
 	controls.model:SetPlaceholder("gpt-4o, qwen3.7-max, etc.")
 
 	-- Optional provider-specific OpenAI-compatible request fields.
-	controls.requestOptionsLabel = new("LabelControl", { "TOPLEFT", controls.model, "BOTTOMLEFT" }, { 0, 12, 0, 16 }, "^7Extra request options (JSON):")
-	controls.requestOptions = new("EditControl", { "TOPLEFT", controls.requestOptionsLabel, "BOTTOMLEFT" }, { 0, 4, fieldW, 20 }, formatRequestOptions(config.request_options), nil, nil, nil, nil)
+	controls.requestOptionsLabel = new("LabelControl"):LabelControl({ "TOPLEFT", controls.model, "BOTTOMLEFT" }, { 0, 12, 0, 16 }, "^7Extra request options (JSON):")
+	controls.requestOptions = new("EditControl"):EditControl({ "TOPLEFT", controls.requestOptionsLabel, "BOTTOMLEFT" }, { 0, 4, fieldW, 20 }, formatRequestOptions(config.request_options), nil, nil, nil, nil)
 	controls.requestOptions:SetPlaceholder('{"thinking":{"type":"disabled"}}')
 
 	-- Status label
-	controls.status = new("LabelControl", { "TOPLEFT", controls.requestOptions, "BOTTOMLEFT" }, { 0, 12, fieldW, 16 }, "")
+	controls.status = new("LabelControl"):LabelControl({ "TOPLEFT", controls.requestOptions, "BOTTOMLEFT" }, { 0, 12, fieldW, 16 }, "")
 
 	-- Buttons row
-	controls.test = new("ButtonControl", { "TOPLEFT", controls.status, "BOTTOMLEFT" }, { 0, 8, 90, 24 }, "Test", function()
+	controls.test = new("ButtonControl"):ButtonControl({ "TOPLEFT", controls.status, "BOTTOMLEFT" }, { 0, 8, 90, 24 }, "Test", function()
 		self:TestConnection(controls)
 	end)
-	controls.save = new("ButtonControl", { "LEFT", controls.test, "RIGHT" }, { 8, 0, 90, 24 }, "Save", function()
+	controls.save = new("ButtonControl"):ButtonControl({ "LEFT", controls.test, "RIGHT" }, { 8, 0, 90, 24 }, "Save", function()
 		self:SaveConfig(controls)
 	end)
-	controls.cancel = new("ButtonControl", { "LEFT", controls.save, "RIGHT" }, { 8, 0, 90, 24 }, "Cancel", function()
+	controls.cancel = new("ButtonControl"):ButtonControl({ "LEFT", controls.save, "RIGHT" }, { 8, 0, 90, 24 }, "Cancel", function()
 		main:ClosePopup()
 	end)
 

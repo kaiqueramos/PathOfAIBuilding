@@ -30,10 +30,10 @@ Implicits: 1
 ]],[[
 Bloodsoaked Medallion
 Amber Amulet
-LevelReq: 49
+Requires Level 49
 Implicits: 1
 {tags:attribute}+(20-30) to Strength
-{tags:critical}(40-50)% increased Global Critical Strike Chance
+{tags:critical}(30-50)% increased Global Critical Strike Chance
 {tags:resource}+(50-70) to maximum Life
 {tags:resistance}+(17-29)% to Chaos Resistance
 Every 10 seconds:
@@ -69,7 +69,6 @@ Implicits: 1
 The Ascetic
 Gold Amulet
 Source: No longer obtainable
-Requires Level 8
 Implicits: 1
 (12-20)% increased Rarity of Items found
 (80-100)% increased Rarity of Items found with a Normal Item Equipped
@@ -90,7 +89,6 @@ Implicits: 1
 ]],[[
 Astramentis
 Onyx Amulet
-Requires Level 20
 Implicits: 1
 {tags:attribute}+(10-16) to all Attributes
 {tags:attribute}+(80-100) to all Attributes
@@ -159,7 +157,6 @@ Implicits: 1
 {variant:10,11,12,13,14,15,16}{tags:critical}Hits against Nearby Enemies have 50% increased Critical Strike Chance
 {variant:6,7,8,9}Nearby Enemies grant 25% increased Flask Charges
 {variant:1,2,3,4,5}Nearby Enemies have 10% reduced Stun and Block Recovery
-{variant:1,2,3,4,5}Nearby Enemies have 10% reduced Stun and Block Recovery
 {variant:1}Anger has no Reservation
 {variant:10}Clarity has no Reservation
 {variant:12}Malevolence has no Reservation
@@ -199,7 +196,7 @@ Variant: Pre 3.25.0
 Variant: Current
 League: Sanctum
 Source: Drops from unique{Lycia, Herald of the Scourge} in normal{The Beyond}
-LevelReq: 52
+Requires Level 52
 Implicits: 1
 {tags:attribute}+(16-24) to Strength and Intelligence
 {tags:resource}+(40-70) to maximum Mana
@@ -210,9 +207,9 @@ Gain additional Elemental Damage Reduction equal to half your Chaos Resistance
 ]],[[
 Badge of the Brotherhood
 Turquoise Amulet
-Requires Level: 20
 League: Blight
-Implicits: 0
+Requires Level 60
+Implicits: 1
 {tags:attribute}+(16-24) to Dexterity and Intelligence
 Your Maximum Frenzy Charges is equal to your Maximum Power Charges
 (7-10)% increased Cooldown Recovery Rate of Travel Skills per Frenzy Charge
@@ -225,7 +222,7 @@ Replica Badge of the Brotherhood
 Turquoise Amulet
 League: Heist
 Source: Steal from a unique{Curio Display} during a Grand Heist
-Requires Level: 60
+Requires Level 60
 Implicits: 1
 {tags:attribute}+(16-24) to Dexterity and Intelligence
 Your Maximum Endurance Charges is equal to your Maximum Frenzy Charges
@@ -250,27 +247,30 @@ Implicits: 1
 {variant:3}(35-50)% increased Quantity of Items Dropped by Slain Normal Enemies
 ]],[[
 Blightwell
-Clutching Talisman
+{variant:1,2}Clutching Talisman
+{variant:3}Shield Crab Talisman
 Variant: Pre 3.16.0
+Variant: Pre 3.29.0
 Variant: Current
 League: Talisman Hardcore
 Talisman Tier: 2
 Requires Level 28
 Implicits: 1
-{tags:defences}(15-25)% increased Global Defences
-{tags:defences}+(20-30) to maximum Energy Shield
+{variant:1,2}{tags:defences}(15-25)% increased Global Defences
+{variant:1,2}{tags:defences}+(20-30) to maximum Energy Shield
+{variant:3}{tags:defences}+(50-100) to maximum Energy Shield
 {tags:resistance}+(15-30)% to Fire Resistance
 {tags:resistance}+(15-30)% to Lightning Resistance
+{variant:3}(15-30)% increased Flask Effect Duration
 {variant:1}{tags:defences}30% slower start of Energy Shield Recharge during any Flask Effect
-{variant:2}{tags:defences}50% slower start of Energy Shield Recharge during any Flask Effect
+{variant:2,3}{tags:defences}50% slower start of Energy Shield Recharge during any Flask Effect
 {variant:1}{tags:defences}400% increased Energy Shield Recharge Rate during any Flask Effect
-{variant:2}{tags:defences}(150-200)% increased Energy Shield Recharge Rate during any Flask Effect
-Corrupted
+{variant:2,3}{tags:defences}(150-200)% increased Energy Shield Recharge Rate during any Flask Effect
+{variant:1,2}Corrupted
 ]],[[
 Blood of Corruption
 Amber Amulet
 Source: Use currency{Vaal Orb} on unique{Tear of Purity}
-Requires Level 5
 Implicits: 1
 {tags:attribute}+(20-30) to Strength
 Grants Level 10 Gluttony of Elements Skill
@@ -285,7 +285,6 @@ Bloodgrip
 Variant: Pre 3.0.0
 Variant: Pre 3.12.0
 Variant: Current
-Requires Level 74
 Implicits: 2
 {variant:1}{tags:resource}Regenerate (2-4) Life per second
 {variant:2,3}{tags:resource}Regenerate (1.2-1.6)% of Life per second
@@ -300,7 +299,6 @@ Carnage Heart
 Onyx Amulet
 Variant: Pre 2.6.0
 Variant: Current
-Requires Level 20
 Implicits: 1
 {tags:attribute}+(10-16) to all Attributes
 {tags:attribute}+(20-40) to all Attributes
@@ -326,7 +324,6 @@ Attribute Requirements can be satisfied by (15-25)% of Omniscience
 Daresso's Salute
 Citrine Amulet
 League: Anarchy
-Requires Level 16
 Implicits: 1
 {tags:attribute}+(16-24) to Strength and Dexterity
 {tags:defences}50% reduced maximum Energy Shield
@@ -340,7 +337,7 @@ Defiance of Destiny
 Paua Amulet
 Variant: Pre 3.25.0
 Variant: Current
-LevelReq: 49
+Requires Level 49
 Implicits: 1
 {tags:resource}(20-30)% increased Mana Regeneration Rate
 {tags:resource}+(60-80) to maximum Life
@@ -364,6 +361,8 @@ Implicits: 1
 ]],[[
 The Untouched Soul
 Gold Amulet
+Variant: Pre 3.29.0
+Variant: Current
 League: Affliction
 Requires Level 48
 Implicits: 1
@@ -371,11 +370,12 @@ Implicits: 1
 {tags:resource}+40 to maximum Life for each Empty Red Socket on any Equipped Item
 {tags:attack}+225 to Accuracy Rating for each Empty Green Socket on any Equipped Item
 {tags:resource}+40 to maximum Mana for each Empty Blue Socket on any Equipped Item
-{tags:resistance}+18% to all Elemental Resistances for each Empty White Socket on any Equipped Item
+{variant:1}{tags:resistance}+18% to all Elemental Resistances for each Empty White Socket on any Equipped Item
+{variant:2}{tags:resistance}+12% to all Elemental Resistances for each Empty White Socket on any Equipped Item
 ]],[[
 Doedre's Tongue
 Lapis Amulet
-LevelReq: 24
+Requires Level 24
 Implicits: 1
 {tags:attribute}+(20-30) to Intelligence
 {tags:resistance}+(20-25)% to all Elemental Resistances
@@ -386,7 +386,6 @@ Extractor Mentis
 Agate Amulet
 Variant: Pre 3.5.0
 Variant: Current
-Requires Level 16
 Implicits: 1
 {tags:attribute}+(16-24) to Strength and Intelligence
 {tags:attribute}+(30-50) to Strength
@@ -401,7 +400,6 @@ Implicits: 1
 Eye of Chayula
 Onyx Amulet
 Upgrade: Upgrades to unique{Presence of Chayula} using currency{Blessing of Chayula}
-Requires Level 20
 Implicits: 1
 {tags:attribute}+(10-16) to all Attributes
 {tags:resource}20% reduced maximum Life
@@ -432,8 +430,11 @@ Implicits: 1
 ]],[[
 Eyes of the Greatwolf
 Greatwolf Talisman
-Requires Level 52
-Has Alt Variant: true
+Version: Pre 3.25.0
+Version: Pre 3.29.0
+Version: Current
+Selected Variant Group: 1=65
+Selected Variant Group: 2=41
 Variant: Attributes
 Variant: Global Defences
 Variant: Chaos Damage
@@ -467,41 +468,117 @@ Variant: Lightning taken as Fire
 Variant: Gain Physical as random Element
 Variant: Extra Pierces
 Variant: Damage over Time Multiplier
-Implicits: 32
-{variant:1}{tags:attribute}(24-32)% increased Attributes
-{variant:11}(50-70)% increased Damage
-{variant:4}{tags:attack}(40-60)% increased Attack Damage
-{variant:8}{tags:caster}(40-60)% increased Spell Damage
-{variant:9}{tags:physical_damage}(40-60)% increased Global Physical Damage
-{variant:6}{tags:elemental_damage}(40-60)% increased Fire Damage
-{variant:5}{tags:elemental_damage}(40-60)% increased Cold Damage
-{variant:7}{tags:elemental_damage}(40-60)% increased Lightning Damage
-{variant:3}{tags:chaos_damage}(38-62)% increased Chaos Damage
-{variant:14}{tags:critical}(80-100)% increased Global Critical Strike Chance
-{variant:19}{tags:critical}+(48-72)% to Global Critical Strike Multiplier
-{variant:18}{tags:resource}(16-24)% increased maximum Life
-{variant:10}{tags:resource}(40-60)% increased maximum Mana
-{variant:17}(12-20)% increased Quantity of Items found
-{variant:32}Projectiles Pierce 4 additional Targets
-{variant:15}(10-16)% increased Area of Effect
-{variant:24}{tags:resource}Regenerate 4% of Life per second
-{variant:16}{tags:attack,caster,speed}(12-20)% increased Attack and Cast Speed
-{variant:20}+2 to maximum number of Raised Zombies
-{variant:12}(8-12)% additional Physical Damage Reduction
-{variant:23}20% chance to gain an Endurance Charge on Kill
-{variant:21}20% chance to gain a Frenzy Charge on Kill
-{variant:22}20% chance to gain a Power Charge on Kill
-{variant:13}(8-12)% chance to Freeze, Shock and Ignite
-{variant:2}{tags:defences}(30-50)% increased Global Defences
-{variant:31}{tags:physical_damage,elemental_damage}Gain (12-24)% of Physical Damage as Extra Damage of a random Element
-{variant:27}100% of Fire Damage from Hits taken as Cold Damage
-{variant:28}100% of Fire Damage from Hits taken as Lightning Damage
-{variant:25}100% of Cold Damage from Hits taken as Fire Damage
-{variant:26}100% of Cold Damage from Hits taken as Lightning Damage
-{variant:30}100% of Lightning Damage from Hits taken as Fire Damage
-{variant:29}100% of Lightning Damage from Hits taken as Cold Damage
-{variant:33}+(24-36)% to Damage over Time Multiplier
-Implicit Modifier magnitudes are doubled
+Variant: Action Speed
+Variant: Extra Pierces
+Variant: Additional Projectile
+Variant: Global Defences
+Variant: Area of Effect
+Variant: Cold and Lightning taken as Fire
+Variant: Cold Penetration
+Variant: Crit Multiplier
+Variant: Fire Penetration
+Variant: Freeze Enemies when Hit
+Variant: Cooldown Recovery
+Variant: Damage over Time Multiplier
+Variant: Herald Gem Levels
+Variant: Skill Gem Levels
+Variant: Skill Gem Quality
+Variant: Ignore Physical Damage Reduction
+Variant: Maximum Power Charges
+Variant: Lightning Penetration
+Variant: Mark Effect
+Variant: Maximum Cold Resistance
+Variant: Maximum Endurance Charges
+Variant: Maximum Fire Resistance
+Variant: Maximum Frenzy Charges
+Variant: Life as Extra Armour
+Variant: Life
+Variant: Maximum Lightning Resistance
+Variant: Mana
+Variant: Maximum Spectres
+Variant: Minimum Charges
+Variant: Minion Damage over Time Multiplier
+Variant: Movement Speed
+Variant: Attributes
+Variant: Projectile Speed
+Variant: Unaffected by Ignite
+Variant: Utility Flask Charges
+Variant: Additional Exerted Attack
+Variant: Withered Effect
+Requires Level 52
+Implicits: 70
+{version:1,2}{variant:1}{group:1,2}{tags:attribute}(12-16)% increased Attributes
+{version:3}{variant:65}{group:1,2}{tags:attribute}{enchant}15% increased Attributes
+{version:1,2}{variant:11}{group:1,2}(25-35)% increased Damage
+{version:1,2}{variant:4}{group:1,2}{tags:attack}(20-30)% increased Attack Damage
+{version:1,2}{variant:8}{group:1,2}{tags:caster}(20-30)% increased Spell Damage
+{version:1,2}{variant:9}{group:1,2}{tags:physical_damage}(20-30)% increased Global Physical Damage
+{version:1,2}{variant:33}{group:1,2}+(12-18)% to Damage over Time Multiplier
+{version:3}{variant:45}{group:1,2}{enchant}+20% to Damage over Time Multiplier
+{version:3}{variant:63}{group:1,2}{enchant}Minions have +30% to Damage over Time Multiplier
+{version:1,2}{variant:6}{group:1,2}{tags:elemental_damage}(20-30)% increased Fire Damage
+{version:1,2}{variant:5}{group:1,2}{tags:elemental_damage}(20-30)% increased Cold Damage
+{version:1,2}{variant:7}{group:1,2}{tags:elemental_damage}(20-30)% increased Lightning Damage
+{version:1,2}{variant:3}{group:1,2}{tags:chaos_damage}(19-31)% increased Chaos Damage
+{version:1,2}{variant:14}{group:1,2}{tags:critical}(40-50)% increased Global Critical Strike Chance
+{version:1,2}{variant:19}{group:1,2}{tags:critical}+(24-36)% to Global Critical Strike Multiplier
+{version:3}{variant:41}{group:1,2}{tags:critical}{enchant}+40% to Global Critical Strike Multiplier
+{version:1,2}{variant:18}{group:1,2}{tags:resource}(8-12)% increased maximum Life
+{version:3}{variant:58}{group:1,2}{tags:resource}{enchant}15% increased maximum Life
+{version:1,2}{variant:10}{group:1,2}{tags:resource}(20-30)% increased maximum Mana
+{version:3}{variant:60}{group:1,2}{tags:resource}{enchant}30% increased maximum Mana
+{version:1}{variant:17}{group:1,2}(6-10)% increased Quantity of Items found
+{version:3}{variant:55}{group:1,2}{tags:resistance}{enchant}+4% to maximum Fire Resistance
+{version:3}{variant:53}{group:1,2}{tags:resistance}{enchant}+4% to maximum Cold Resistance
+{version:3}{variant:59}{group:1,2}{tags:resistance}{enchant}+4% to maximum Lightning Resistance
+{version:1,2}{variant:32}{group:1,2}Projectiles Pierce 2 additional Targets
+{version:3}{variant:35}{group:1,2}{enchant}Projectiles Pierce 3 additional Targets
+{version:3}{variant:36}{group:1,2}{enchant}Skills fire an additional Projectile
+{version:3}{variant:66}{group:1,2}{tags:speed}{enchant}30% increased Projectile Speed
+{version:3}{variant:64}{group:1,2}{tags:speed}{enchant}12% increased Movement Speed
+{version:3}{variant:54}{group:1,2}{enchant}+1 to Maximum Endurance Charges
+{version:3}{variant:56}{group:1,2}{enchant}+1 to Maximum Frenzy Charges
+{version:3}{variant:50}{group:1,2}{enchant}+1 to Maximum Power Charges
+{version:1,2}{variant:15}{group:1,2}(5-8)% increased Area of Effect
+{version:3}{variant:38}{group:1,2}{enchant}16% increased Area of Effect
+{version:1,2}{variant:24}{group:1,2}{tags:resource}Regenerate 2% of Life per second
+{version:1,2}{variant:16}{group:1,2}{tags:attack,caster,speed}(6-10)% increased Attack and Cast Speed
+{version:1,2}{variant:20}{group:1,2}+1 to maximum number of Raised Zombies
+{version:3}{variant:61}{group:1,2}{enchant}+1 to maximum number of Spectres
+{version:1,2}{variant:12}{group:1,2}(4-6)% additional Physical Damage Reduction
+{version:3}{variant:52}{group:1,2}{tags:caster}{enchant}30% increased Effect of your Marks
+{version:1,2}{variant:23}{group:1,2}10% chance to gain an Endurance Charge on Kill
+{version:1,2}{variant:21}{group:1,2}10% chance to gain a Frenzy Charge on Kill
+{version:1,2}{variant:22}{group:1,2}10% chance to gain a Power Charge on Kill
+{version:1,2}{variant:13}{group:1,2}(4-6)% chance to Freeze, Shock and Ignite
+{version:1,2}{variant:2}{group:1,2}{tags:defences}(15-25)% increased Global Defences
+{version:3}{variant:37}{group:1,2}{tags:defences}{enchant}30% increased Global Defences
+{version:1,2}{variant:31}{group:1,2}{tags:physical_damage,elemental_damage}Gain (6-12)% of Physical Damage as Extra Damage of a random Element
+{version:3}{variant:42}{group:1,2}{tags:elemental_damage}{enchant}Damage Penetrates 15% Fire Resistance
+{version:3}{variant:40}{group:1,2}{tags:elemental_damage}{enchant}Damage Penetrates 15% Cold Resistance
+{version:3}{variant:51}{group:1,2}{tags:elemental_damage}{enchant}Damage Penetrates 15% Lightning Resistance
+{version:1,2}{variant:27}{group:1,2}50% of Fire Damage from Hits taken as Cold Damage
+{version:1,2}{variant:28}{group:1,2}50% of Fire Damage from Hits taken as Lightning Damage
+{version:1,2}{variant:25}{group:1,2}50% of Cold Damage from Hits taken as Fire Damage
+{version:1,2}{variant:26}{group:1,2}50% of Cold Damage from Hits taken as Lightning Damage
+{version:3}{variant:39}{group:1,2}{enchant}100% of Cold and Lightning Damage from Hits taken as Fire Damage
+{version:1,2}{variant:30}{group:1,2}50% of Lightning Damage from Hits taken as Fire Damage
+{version:1,2}{variant:29}{group:1,2}50% of Lightning Damage from Hits taken as Cold Damage
+{version:3}{variant:34}{group:1,2}{tags:speed}{enchant}8% increased Action Speed
+{version:3}{variant:47}{group:1,2}{enchant}+1 to Level of all Skill Gems
+{version:3}{variant:48}{group:1,2}{enchant}+15% to Quality of all Skill Gems
+{version:3}{variant:44}{group:1,2}{enchant}20% increased Cooldown Recovery Rate
+{version:3}{variant:43}{group:1,2}{enchant}20% chance to Freeze Enemies for 1 second when they Hit you
+{version:3}{variant:46}{group:1,2}{enchant}+2 to Level of all Herald Skill Gems
+{version:3}{variant:49}{group:1,2}{enchant}Hits ignore Enemy Physical Damage Reduction
+{version:3}{variant:57}{group:1,2}{tags:defences}{enchant}Gain 15% of Maximum Life as Extra Armour
+{version:3}{variant:62}{group:1,2}{enchant}+1 to Minimum Endurance, Frenzy and Power Charges
+{version:3}{variant:67}{group:1,2}{enchant}Unaffected by Ignite
+{version:3}{variant:68}{group:1,2}{enchant}Utility Flasks gain 2 Charges every 3 seconds
+{version:3}{variant:69}{group:1,2}{enchant}Warcries Exert 1 additional Attack
+{version:3}{variant:70}{group:1,2}{enchant}35% increased Effect of Withered
+{version:3}(50-100)% increased Enchantment Modifier magnitudes
+{version:1,2}Implicit Modifier magnitudes are doubled
 ]],[[
 The Felbog Fang
 Citrine Amulet
@@ -536,7 +613,6 @@ Gloomfang
 Blue Pearl Amulet
 Variant: Pre 3.11.0
 Variant: Current
-Requires Level 77
 Implicits: 1
 {tags:resource}(48-56)% increased Mana Regeneration Rate
 {tags:resource}0.5% of Chaos Damage Leeched as Life
@@ -579,10 +655,10 @@ Blind Chilled Enemies on Hit
 ]],[[
 Hinekora's Sight
 Onyx Amulet
-Requires Level 20
 Variant: Pre 3.16.0
 Variant: Pre 3.37.0
 Variant: Current
+Requires Level 44
 Implicits: 1
 {tags:attribute}+(10-16) to all Attributes
 {variant:2}Prevent +3% of Suppressed Spell Damage
@@ -598,6 +674,8 @@ Replica Hinekora's Sight
 Onyx Amulet
 League: Heist
 Source: Steal from a unique{Curio Display} during a Grand Heist
+Requires Level 44
+Implicits: 1
 {tags:attribute}+(10-16) to all Attributes
 {tags:attack}+(600-1000) to Accuracy Rating
 {tags:defences}+(600-1000) to Armour
@@ -607,11 +685,10 @@ You cannot be Maimed
 Hyrri's Truth
 Jade Amulet
 League: Synthesis
-Requires Level 64
 Variant: Pre 3.16.0
 Variant: Pre 3.19.0
 Variant: Current
-LevelReq: 64
+Requires Level 64
 Implicits: 1
 {tags:attribute}+(20-30) to Dexterity
 {variant:1,2}Grants Level 22 Precision Skill
@@ -633,7 +710,7 @@ Source: Steal from a unique{Curio Display} during a Grand Heist
 Variant: Pre 3.16.0
 Variant: Pre 3.19.0
 Variant: Current
-LevelReq: 64
+Requires Level 64
 Implicits: 1
 {tags:attribute}+(20-30) to Dexterity
 Grants Level 22 Hatred Skill
@@ -643,15 +720,14 @@ Grants Level 22 Hatred Skill
 {variant:1,2}{tags:elemental_damage,attack}Adds (11-15) to (23-28) Cold Damage to Attacks
 {variant:1,2}{tags:critical}+(23-28)% to Global Critical Strike Multiplier
 {variant:3}{tags:critical}+(18-35)% to Global Critical Strike Multiplier
-{variant:1,2}{tags:resource}(0.8-1)% of Cold Damage Leeched as Life
 {variant:3}Bow Attacks have Culling Strike
 {variant:1,2,3}{tags:resource}Hatred has 100% increased Mana Reservation Efficiency
+{variant:1,2}(0.8-1)% of Cold Damage Leeched as Life
 ]],[[
 The Ignomon
 Gold Amulet
 Variant: Pre 3.19.0
 Variant: Current
-Requires Level 8
 Implicits: 1
 (12-20)% increased Rarity of Items found
 {variant:1}{tags:attribute}+10 to Dexterity
@@ -679,12 +755,12 @@ Implicits: 1
 ]],[[
 Ikiaho's Promise
 Coral Amulet
-LevelReq: 30
+Requires Level 30
 Implicits: 1
 {tags:resource}Regenerate (2-4) Life per second
 {tags:resource}Regenerate (3-5) Mana per second
 {tags:resource}(30-40)% increased Life Recovery from Flasks
-{tags:resource}(15-30)% increased Mana Recovery from Flasks
+{tags:resource}(20-30)% increased Mana Recovery from Flasks
 {tags:resource}Life Flasks used while on Low Life apply Recovery Instantly
 {tags:resource}Mana Flasks used while on Low Mana apply Recovery Instantly
 ]],[[
@@ -697,14 +773,7 @@ Variant: Fire
 Variant: Cold
 Variant: Lightning
 Variant: Chaos
-Variant: Elemental Weakness
-Variant: Enfeeble
-Variant: Punishment
-Variant: Temporal Chains
 Requires Level 64
-Has Alt Variant: true
-Selected Variant: 5
-Selected Alt Variant: 6
 Implicits: 1
 {tags:attribute}+(10-16) to all Attributes
 {variant:5}(30-40)% increased Damage over Time
@@ -728,17 +797,12 @@ Implicits: 1
 {variant:2}{tags:caster}Flammability has no Reservation if Cast as an Aura
 {variant:3}{tags:caster}Frostbite has no Reservation if Cast as an Aura
 {variant:1}{tags:caster}Vulnerability has no Reservation if Cast as an Aura
-{variant:6}{tags:caster}Elemental Weakness has no Reservation if Cast as an Aura
-{variant:7}{tags:caster}Enfeeble has no Reservation if Cast as an Aura
-{variant:8}{tags:caster}Punishment has no Reservation if Cast as an Aura
-{variant:9}{tags:caster}Temporal Chains has no Reservation if Cast as an Aura
 Gain Maddening Presence for 10 seconds when you Kill a Rare or Unique Enemy
 ]],[[
 Karui Ward
 Jade Amulet
 Variant: Pre 2.6.0
 Variant: Current
-Requires Level 5
 Implicits: 1
 {tags:attribute}+(20-30) to Dexterity
 {tags:attribute}+(20-30) to Strength
@@ -751,7 +815,6 @@ Replica Karui Ward
 Jade Amulet
 League: Heist
 Source: Steal from a unique{Curio Display} during a Grand Heist
-Requires Level 5
 Implicits: 1
 {tags:attribute}+(20-30) to Dexterity
 {tags:attribute}+(20-30) to Intelligence
@@ -775,6 +838,35 @@ Implicits: 1
 {tags:speed}30% increased Projectile Speed
 {tags:speed}10% increased Movement Speed
 {variant:2}30% increased Projectile Damage
+]],[[
+Khatal's Geyser
+Lapis Amulet
+League: Mirage
+Source: No longer obtainable
+Requires Level 56
+Implicits: 1
+{tags:attribute}+(20-30) to Intelligence
+Can't use Life Flasks
+{tags:resource}+(55-70) to maximum Mana
+Increases and Reductions to Effect of Flasks applied to you
+also applies to Effect of Arcane Surge on you at (200-250)% of their value
+You have Arcane Surge during Effect of any Mana Flask
+{tags:resource}Mana Flask Effects are not removed when Unreserved Mana is Filled
+{tags:resource}Mana Flask Effects do not Queue
+]],
+[[
+Khatal's Weeping
+Lapis Amulet
+League: Mirage
+Source: No longer obtainable
+Requires Level 56
+Implicits: 1
+{tags:attribute}+(20-30) to Intelligence
+{tags:resource}+(80-100) to maximum Life
+{tags:resource}Can't use Mana Flasks
+{tags:resource}On non-channelling Attack, set a Life Flask with greater than 50% of maximum Charges remaining to 50%
+{tags:resource}For each Charge removed this way, that Attack gains +2% to Damage over time Multiplier
+{tags:resource}While on Low Life, Life Flasks gain (3-6) Charges every 3 seconds
 ]],[[
 Leadership's Price
 Onyx Amulet
@@ -838,18 +930,25 @@ Implicits: 1
 {tags:critical}Critical Strikes have Culling Strike
 ]],[[
 Natural Hierarchy
-Rotfeather Talisman
+{variant:1}Rotfeather Talisman
+{variant:2}Rhex Talisman
+Variant: Pre 3.29.0
+Variant: Current
 League: Talisman Standard, Talisman Hardcore
 Talisman Tier: 3
 Requires Level 44
 Implicits: 1
-(25-35)% increased Damage
-{tags:physical_damage}(10-15)% increased Global Physical Damage
-{tags:elemental_damage}(25-30)% increased Fire Damage
-{tags:elemental_damage}(20-25)% increased Cold Damage
-{tags:elemental_damage}(15-20)% increased Lightning Damage
-{tags:chaos_damage}(30-35)% increased Chaos Damage
-Corrupted
+{variant:1}(25-35)% increased Damage
+{variant:1}{tags:physical_damage}(10-15)% increased Global Physical Damage
+{variant:1}{tags:elemental_damage}(25-30)% increased Fire Damage
+{variant:1}{tags:elemental_damage}(20-25)% increased Cold Damage
+{variant:1}{tags:elemental_damage}(15-20)% increased Lightning Damage
+{variant:1}{tags:chaos_damage}(30-35)% increased Chaos Damage
+{variant:2}{tags:physical_damage,elemental_damage}Gain (10-15)% of Physical Damage as Extra Lightning Damage
+{variant:2}{tags:elemental_damage}Gain (15-20)% of Lightning Damage as Extra Cold Damage
+{variant:2}{tags:elemental_damage}Gain (20-25)% of Cold Damage as Extra Fire Damage
+{variant:2}{tags:elemental_damage,chaos_damage}Gain (25-30)% of Fire Damage as Extra Chaos Damage
+{variant:1}Corrupted
 ]],[[
 Night's Hold
 Black Maw Talisman
@@ -877,9 +976,9 @@ Nearby Allies' Damage with Hits is Lucky
 The Primordial Chain
 Coral Amulet
 League: Delve
-Requires Level 34
 Variant: Pre 3.26.0
 Variant: Current
+Requires Level 34
 Implicits: 1
 {tags:resource}Regenerate (2-4) Life per second
 +3 to maximum number of Summoned Golems
@@ -925,20 +1024,40 @@ Blind you inflict is Reflected to you
 {variant:2}(10-20)% chance to gain a Frenzy Charge on Hit while Blinded
 ]],[[
 Rigwald's Curse
-Wereclaw Talisman
+{variant:1,2}Wereclaw Talisman
+{variant:3}Wolf Alpha Talisman
 League: Talisman Standard
 Variant: Pre 2.2.0
+Variant: Pre 3.29.0
 Variant: Current
 Talisman Tier: 2
 Requires Level 28
 Implicits: 2
 {variant:1}{tags:critical}+(16-24)% to Global Critical Strike Multiplier
 {variant:2}{tags:critical}+(24-36)% to Global Critical Strike Multiplier
-{tags:critical}+7% to Unarmed Melee Attack Critical Strike Chance
+{variant:1,2}{tags:critical}+7% to Unarmed Melee Attack Critical Strike Chance
+{variant:3}{tags:critical}+(5-10)% to Unarmed Melee Attack Critical Strike Chance
 {tags:attack}Modifiers to Claw Damage also apply to Unarmed Attack Damage with Melee Skills
 {tags:attack,speed}Modifiers to Claw Attack Speed also apply to Unarmed Attack Speed with Melee Skills
 {tags:attack,critical}Modifiers to Claw Critical Strike Chance also apply to Unarmed Critical Strike Chance with Melee Skills
-Corrupted
+{variant:1,2}Corrupted
+]],[[
+Rotmother's Mutiny
+Pearlescent Amulet
+Variant: Fire
+Variant: Cold
+Variant: Lightning
+League: Allflame
+Source: Drops from Treasure Clam chests in normal{The Fathomless Depths}
+Requires Level 28
+Implicits: 1
+{tags:resistance}+(8-10)% to all Elemental Resistances
+{tags:resistance}+(20-25)% to all Elemental Resistances
+{tags:resistance}+(1-3)% to all maximum Resistances
+(25-75)% increased Light Radius
+{variant:2}+1% to Chaos Resistance per 1% Cold Resistance
+{variant:1}+1% to Chaos Resistance per 1% Fire Resistance
+{variant:3}+1% to Chaos Resistance per 1% Lightning Resistance
 ]],[[
 Sacrificial Heart
 Paua Amulet
@@ -978,7 +1097,6 @@ Agate Amulet
 Variant: Pre 2.6.0
 Variant: Pre 3.19.0
 Variant: Current
-Requires Level 16
 Implicits: 1
 {tags:attribute}+(16-24) to Strength and Intelligence
 {variant:1,2}{tags:resource}(30-50)% increased Mana Regeneration Rate
@@ -1006,7 +1124,7 @@ Implicits: 1
 {variant:4}Minions convert 50% of Physical Damage to Cold Damage
 {variant:1,2}Minions deal (10-15)% increased Damage
 {variant:3}{tags:elemental_damage}Minions deal (5-9) to (11-15) additional Cold Damage
-{variant:4}{tags:elemental_damage}Minions deal (25-35) to (60-65) additional Cold Damage
+{variant:4}{tags:elemental_damage}Minions deal (25-35) to (50-65) additional Cold Damage
 {variant:4}Minions deal no Non-Cold Damage
 {variant:2,3}{tags:resource}(10-15)% reduced Mana Cost of Minion Skills
 ]],[[
@@ -1051,7 +1169,6 @@ Lapis Amulet
 Variant: Pre 3.4.0
 Variant: Pre 3.19.0
 Variant: Current
-Requires Level 5
 Implicits: 1
 {tags:attribute}+(20-30) to Intelligence
 {variant:1}15% Chance to Block Spell Damage
@@ -1088,6 +1205,7 @@ Summon Raging Spirit has (20-30)% increased Duration
 ]],[[
 Tainted Pact
 Coral Amulet
+Requires Level 42
 Implicits: 1
 {tags:resource}Regenerate (2-4) Life per second
 {tags:attribute}+(20-30) to Strength
@@ -1100,7 +1218,6 @@ Lapis Amulet
 Variant: Pre 3.16.0
 Variant: Pre 3.19.0
 Variant: Current
-Requires Level 5
 Implicits: 1
 {tags:attribute}+(20-30) to Intelligence
 Grants Level 10 Purity of Elements Skill
@@ -1128,7 +1245,7 @@ Implicits: 1
 The Utmost
 Gold Amulet
 Source: Created from unique{Primordial Fragments} obtained from Uber bosses
-Requires Level 8
+Requires Level 40
 Implicits: 1
 (12-20)% increased Rarity of Items found
 +(0-30)% chance to Suppress Spell Damage
@@ -1152,7 +1269,6 @@ Socketed Support Gems can also Support Skills from Equipped Body Armour
 Victario's Acuity
 Turquoise Amulet
 League: Onslaught
-Requires Level 16
 Implicits: 1
 {tags:attribute}+(16-24) to Dexterity and Intelligence
 {tags:resistance}+(30-40)% to Lightning Resistance
@@ -1339,7 +1455,6 @@ Kill Enemies that have 15% or lower Life on Hit if The Searing Exarch is dominan
 Venarius' Astrolabe
 Astrolabe Amulet
 Source: Drops from unique{Incarnation of Neglect} in normal{Moment of Loneliness}
-Requires Level 69
 Implicits: 2
 Implicit Modifiers Cannot Be Changed
 Has Elder, Shaper and all Conqueror Influences
@@ -1353,7 +1468,6 @@ Seaglass Amulet
 Variant: Pre 3.27.0
 Variant: Current
 Source: Drops from unique{Incarnation of Dread} in normal{Moment of Reverence}
-Requires Level 74
 Implicits: 1
 {tags:defences}(10-15)% faster start of Energy Shield Recharge
 {tags:chaos_damage,resource,attack}(5-10) to (20-25) Added Attack Chaos Damage per 100 Maximum Mana
@@ -1365,7 +1479,6 @@ Implicits: 1
 Bonemeld
 Marble Amulet
 Source: Drops from unique{Incarnation of Dread} in normal{Moment of Reverence}
-Requires Level 74
 Implicits: 1
 {tags:resource}Regenerate (1.2-1.6)% of Life per second
 {tags:attribute}+(10-20) to all Attributes

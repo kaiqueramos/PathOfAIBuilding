@@ -86,7 +86,7 @@ describe("AI unique shortlist", function()
 		assert.is_nil(findResult("Unavailable Candidate"))
 
 		local calcFunc, baseOutput = build.calcsTab:GetMiscCalculator()
-		local lifeItem = new("Item", lifeRaw)
+		local lifeItem = new("Item"):Item(lifeRaw)
 		lifeItem:BuildModList()
 		local lifeOutput = calcFunc({ repSlotName = "Amulet", repItem = lifeItem }, false)
 		local expectedEHPGain = (lifeOutput.TotalEHP or 0) - (baseOutput.TotalEHP or 0)

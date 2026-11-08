@@ -969,7 +969,9 @@ function AIBridge:SerializeBuild(build, context)
 		if (projectsClass or projectsReset) and build.SaveDB and spec.tree and spec.tree.classNameMap then
 			local snapshotOk, snapshotXml = pcall(build.SaveDB, build)
 			if snapshotOk and snapshotXml then
-				local cloneOk, projectedBuild = pcall(new, "CompareEntry", snapshotXml, "AI tree planning")
+				local cloneOk, projectedBuild = pcall(function()
+					return new("CompareEntry"):CompareEntry(snapshotXml, "AI tree planning")
+				end)
 				local projectedSpec = cloneOk and projectedBuild and projectedBuild.spec
 				local classId = projectsClass and projectedSpec
 					and projectedSpec.tree.classNameMap[context.planningClass]
@@ -1640,7 +1642,7 @@ local function preselectUniqueCandidates(itemsTab, uniques, slotName, baseOutput
 	for _, unique in ipairs(uniques) do
 		local raw = type(unique) == "string" and unique or (type(unique) == "table" and unique[1])
 		if raw and not raw:lower():find("source: no longer obtainable", 1, true) then
-			local item = new("Item", raw)
+			local item = new("Item"):Item(raw)
 			if item and item.baseName and itemsTab:IsItemValidForSlot(item, slotName) then
 				item:BuildModList()
 				t_insert(candidates, {
@@ -3342,7 +3344,9 @@ function AIBridge:PreflightActions(build, actions, snapshotXml)
 		}
 	end
 
-	local cloneOk, shadowBuild = pcall(new, "CompareEntry", snapshotXml, "AI action preflight")
+	local cloneOk, shadowBuild = pcall(function()
+		return new("CompareEntry"):CompareEntry(snapshotXml, "AI action preflight")
+	end)
 	if not cloneOk or not shadowBuild or not shadowBuild.calcsTab or not shadowBuild.spec then
 		return {
 			ok = false,
@@ -3673,7 +3677,7 @@ function AIBridge:ActionEquipItem(build, action)
 	end
 
 	-- Create the item from raw text
-	local item = new("Item", raw)
+	local item = new("Item"):Item(raw)
 	if not item or not item.baseName then
 		return false, "Invalid item data"
 	end
@@ -4032,7 +4036,7 @@ function AIBridge:ActionEquipJewel(build, action)
 	end
 
 	-- Create the jewel item
-	local item = new("Item", raw)
+	local item = new("Item"):Item(raw)
 	if not item or not item.baseName then
 		return false, "Invalid jewel item data"
 	end

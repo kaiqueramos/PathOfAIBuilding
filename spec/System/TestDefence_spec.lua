@@ -17,6 +17,90 @@ describe("TestDefence", function()
 		return build.calcsTab.calcs.reducePoolsByDamage(nil, takenDamages, build.calcsTab.calcsEnv.player)
 	end
 
+	it("attributes resistances inherited by minions to Bonemeld after loading a build", function()
+		build.skillsTab:PasteSocketGroup("Raise Zombie 20/0  1")
+		build.itemsTab:CreateDisplayItemFromRaw("Rarity: UNIQUE\nBonemeld\nMarble Amulet\nImplicits: 0\nMinions gain added Resistances equal to 50% of your Resistances")
+		build.itemsTab:AddDisplayItem()
+		build.configTab.input.customMods = "+135% to Fire Resistance\n+111% to Cold Resistance\n+59% to Lightning Resistance\n+39% to Chaos Resistance"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		loadBuildFromXML(build:SaveDB("code"))
+
+		local env = build.calcsTab.calcsEnv
+		local source = env.player.modDB:Tabulate("BASE", nil, "ResistanceAddedToMinions")[1].mod.source
+		local breakdown = build.calcsTab.controls.breakdown
+		build.calcsTab.input.showMinion = true
+		for _, case in ipairs({
+			{ "Fire", 75, 37, 77 },
+			{ "Cold", 51, 25, 65 },
+			{ "Lightning", -1, -1, 39 },
+			{ "Chaos", -21, -11, 9 },
+		}) do
+			local elem, playerResist, addedResist, minionResist = unpack(case)
+			local mods = env.minion.modDB:Tabulate("BASE", { source = "Item" }, elem.."Resist")
+			assert.are.equal(1, #mods)
+			assert.are.equal(source, mods[1].mod.source)
+			assert.are.equal(addedResist, mods[1].value)
+			assert.are.equal(playerResist, env.player.output[elem.."Resist"])
+			assert.are.equal(minionResist, env.minion.output[elem.."ResistTotal"])
+			breakdown.sectionList = { }
+			breakdown:AddModSection({ modName = elem.."Resist", modSource = "Item" })
+			local row = breakdown.sectionList[1].rowList[1]
+			assert.are.equal("Item", row.source)
+			assert.is_truthy(row.sourceName:find("Bonemeld", 1, true))
+			assert.are.equal("function", type(row.sourceNameTooltip))
+		end
+	end)
+
+	it("lists each source of inherited minion resistances and rounds each contribution", function()
+		build.skillsTab:PasteSocketGroup("Raise Zombie 20/0  1")
+		build.itemsTab:CreateDisplayItemFromRaw("Rarity: UNIQUE\nBonemeld\nMarble Amulet\nImplicits: 0\nMinions gain added Resistances equal to 50% of your Resistances")
+		build.itemsTab:AddDisplayItem()
+		build.configTab.input.customMods = "+135% to Fire Resistance\n+59% to Lightning Resistance\nMinions gain added Resistances equal to 50% of your Resistances"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		loadBuildFromXML(build:SaveDB("code"))
+
+		local env = build.calcsTab.calcsEnv
+		local sources = env.player.modDB:Tabulate("BASE", nil, "ResistanceAddedToMinions")
+		assert.are.equal(2, #sources)
+		for _, case in ipairs({ { "Fire", 37, 114 }, { "Lightning", -1, 38 } }) do
+			local elem, contribution, total = unpack(case)
+			local mods = env.minion.modDB:Tabulate("BASE", nil, elem.."Resist")
+			for _, source in ipairs(sources) do
+				local matches = 0
+				for _, entry in ipairs(mods) do
+					if entry.mod.source == source.mod.source then
+						matches = matches + 1
+						assert.are.equal(contribution, entry.value)
+					end
+				end
+				assert.are.equal(1, matches)
+			end
+			assert.are.equal(total, env.minion.output[elem.."ResistTotal"])
+			assert.are.equal(0, #env.minion.modDB:Tabulate("BASE", { source = "Player" }, elem.."Resist"))
+		end
+	end)
+
+	it("applies Consecrated Ground curse reduction to the player and minion", function()
+		build.skillsTab:PasteSocketGroup("Raise Zombie 20/0  1")
+		build.configTab.input.conditionOnConsecratedGround = true
+		build.configTab.input.playerCursedWithElementalWeakness = 20
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+
+		assert.are.equals(50, build.calcsTab.mainOutput.CurseEffectOnSelf)
+		assert.are.equals(50, build.calcsTab.mainEnv.minion.output.CurseEffectOnSelf)
+		local fireResistOnConsecratedGround = build.calcsTab.mainOutput.FireResist
+
+		newBuild()
+		build.configTab.input.playerCursedWithElementalWeakness = 20
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+
+		assert.is_true(fireResistOnConsecratedGround > build.calcsTab.mainOutput.FireResist)
+	end)
+
 	-- boring part
 	it("no armour max hits", function()
 		build.configTab.input.enemyIsBoss = "None"
@@ -121,6 +205,21 @@ describe("TestDefence", function()
 		assert.are.equals(0, floor(poolsRemaining.EnergyShield))
 		assert.are.equals(0, floor(poolsRemaining.Life))
 		assert.are.equals(0, floor(poolsRemaining.OverkillDamage))
+	end)
+
+	it("applies physical damage reduction overrides", function()
+		build.configTab.input.customMods = "\z
+		+10000 to Armour\n\z
+		10% additional Physical Damage Reduction\n\z
+		Physical Damage Reduction is zero\n\z
+		"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+
+		assert.is_true(build.calcsTab.calcsOutput.Armour > 0)
+		assert.are.equals(0, build.calcsTab.calcsOutput.PhysicalEffectiveAppliedArmour)
+		assert.are.equals(0, build.calcsTab.calcsOutput.BasePhysicalDamageReduction)
+		assert.are.equals(0, build.calcsTab.calcsOutput.PhysicalDamageReduction)
 	end)
 	
 	-- a small helper function to calculate damage taken from limited test parameters
@@ -661,7 +760,7 @@ describe("TestDefence", function()
 			local minionLife = build.calcsTab.mainEnv.player.allyLifeList.TotalMinionLife[1].life
 			assert.are.equals(15, output.MinionAllyDamageMitigation)
 			assert.are.equals(minionLife, output.TotalMinionLife)
-			assert.are.near(unsupportedLife * 1.6, minionLife, 20)
+			assert.are.near(unsupportedLife, minionLife, 20)
 		end)
 
 		it("requires exactly one summoned minion for Companionship", function()
@@ -692,14 +791,35 @@ describe("TestDefence", function()
 			assert.is_true(build.calcsTab.calcsOutput.TotalMinionLife > 0)
 		end)
 
-		it("does not count invulnerable Minions for Companionship", function()
+		it("counts invulnerable Minions for Companionship's condition", function()
 			build.skillsTab:PasteSocketGroup("Animate Guardian 20/0  1\nCompanionship 3/0  1")
 			build.skillsTab:PasteSocketGroup("Summon Skitterbots 20/0  1")
 			runCallback("OnFrame")
 
-			assert.are.equals(1, build.calcsTab.calcsEnv.player.modDB:Sum("BASE", nil, "Multiplier:SummonedMinion"))
-			assert.are.equals(15, build.calcsTab.calcsOutput.MinionAllyDamageMitigation)
-			assert.is_true(build.calcsTab.calcsOutput.TotalMinionLife > 0)
+			assert.is_true(build.calcsTab.calcsEnv.player.modDB:Sum("BASE", nil, "Multiplier:SummonedMinion") > 1)
+			assert.are.equals(0, build.calcsTab.calcsOutput.MinionAllyDamageMitigation)
+			assert.is_nil(build.calcsTab.calcsOutput.TotalMinionLife)
+		end)
+
+		it("keeps invulnerable minion limits available to limitStat", function()
+			build.itemsTab:CreateDisplayItemFromRaw([[
+			Test Item
+			Fiend Dagger
+			100% chance to Trigger Level 1 Raise Spiders on Kill
+			]])
+			build.itemsTab:AddDisplayItem()
+			build.skillsTab:PasteSocketGroup("Reave 20/0  1")
+			runCallback("OnFrame")
+
+			build.configTab.input.raiseSpidersSpiderCount = 5
+			build.configTab:BuildModList()
+			runCallback("OnFrame")
+
+			local env = build.calcsTab.calcsEnv
+			local mainSkill = env.player.mainSkill
+			assert.are.equals(20, build.calcsTab.calcsOutput.ActiveSpiderLimit)
+			assert.are.equals(5, env.player.modDB:Sum("BASE", nil, "Multiplier:RaisedSpider"))
+			assert.are.equals(10, mainSkill.skillModList:Sum("INC", mainSkill.skillCfg, "Speed"))
 		end)
 
 		it("counts the same Minion type from different skills separately", function()
@@ -1602,6 +1722,31 @@ describe("TestDefence", function()
 		assert.are.equals(0, floor(poolsRemaining.OverkillDamage))
 	end)
 
+	it("applies permanent Avatar of Fire to conditional modifiers (issue #3062)", function()
+		build.itemsTab:CreateDisplayItemFromRaw([[
+		Vulconus
+		Demon Dagger
+		Variant: Pre 3.5.0
+		Variant: Current
+		Selected Variant: 2
+		Implicits: 1
+		40% increased Global Critical Strike Chance
+		50% chance to cause Bleeding on Hit
+		Every 8 seconds, gain Avatar of Fire for 4 seconds
+		160% increased Critical Strike Chance while you have Avatar of Fire
+		50% of Physical Damage Converted to Fire while you have Avatar of Fire
+		+2000 Armour while you do not have Avatar of Fire]])
+		build.itemsTab:AddDisplayItem()
+		runCallback("OnFrame")
+
+		local armourWithoutAvatarOfFire = build.calcsTab.mainOutput.Armour
+		build.itemsTab:CreateDisplayItemFromRaw("New Item\nAmber Amulet\nAvatar of Fire")
+		build.itemsTab:AddDisplayItem()
+		runCallback("OnFrame")
+
+		assert.are.equals(armourWithoutAvatarOfFire - 2000, build.calcsTab.mainOutput.Armour)
+	end)
+
 	it("limits EHP speedup when hit damage is delayed", function()
 		local function assertClose(actual, expected)
 			assert.is_true(math.abs(actual - expected) < 0.01,
@@ -1642,5 +1787,33 @@ describe("TestDefence", function()
 		assertClose(block.TotalEHP, 18488.832919738)
 		assertClose(block.EffectiveBlockChance, 10)
 		assert.is_true(block.TotalEHP > base.TotalEHP)
+	end)
+
+	it("does not lower EHP with life gained on block when resistance increases", function()
+		local function calcEHP(coldResist)
+			newBuild()
+			build.configTab.input.enemyDamageType = "Melee"
+			build.configTab.input.enemyPhysicalDamage = "0"
+			build.configTab.input.enemyFireDamage = "0"
+			build.configTab.input.enemyColdDamage = "600"
+			build.configTab.input.enemyLightningDamage = "0"
+			build.configTab.input.enemyChaosDamage = "0"
+			build.configTab.input.customMods = [[
+				+1000 to maximum Life
+				+75% chance to Block Attack Damage
+				+100 Life gained when you Block
+			]] .. "+" .. coldResist .. "% to Cold Resistance\n"
+			build.configTab:BuildModList()
+			runCallback("OnFrame")
+			return build.calcsTab.calcsOutput.TotalEHP
+		end
+
+		local lowerResistEHP = calcEHP(30)
+		local higherResistEHP = calcEHP(33)
+
+		newBuild()
+
+		assert.is_true(higherResistEHP >= lowerResistEHP,
+			string.format("EHP fell from %.1f to %.1f", lowerResistEHP, higherResistEHP))
 	end)
 end)

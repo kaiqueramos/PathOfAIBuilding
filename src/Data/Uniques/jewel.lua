@@ -24,7 +24,6 @@ Cobalt Jewel
 League: Heist
 Source: Drops from unique{The Unbreakable} in normal{Contract: Breaking the Unbreakable}
 Limited to: 1
-Requires Level 20
 (20-25)% increased Spell Damage
 Spells have 10% reduced Critical Strike Chance per Intensity
 Spells which have gained Intensity Recently gain 1 Intensity every 0.5 Seconds
@@ -124,7 +123,7 @@ Increases and Reductions to Physical Damage in Radius are Transformed to apply t
 Increases and Reductions to Cold Damage in Radius are Transformed to apply to Physical Damage
 ]],[[
 Dissolution of the Flesh
-Prismatic Jewel
+Crimson Jewel
 Source: Drops from unique{The Searing Exarch}
 Limited to: 1
 Removes all Energy Shield
@@ -622,10 +621,10 @@ Cobalt Jewel
 Variant: Pre 3.25.0
 Variant: Current
 League: Heist
-{variant:1}+(2-4)% Chance to Block Spell Damage
-{variant:2}+(2-6)% Chance to Block Spell Damage
 {variant:1}+(2-4)% Chance to Block Attack Damage
 {variant:2}+(2-6)% Chance to Block Attack Damage
+{variant:1}+(2-4)% Chance to Block Spell Damage
+{variant:2}+(2-6)% Chance to Block Spell Damage
 +10% chance to be Frozen, Shocked and Ignited
 ]],[[
 The Red Dream
@@ -777,9 +776,9 @@ Radius: Variable
 Implicits: 0
 {variant:1}Only affects Passives in Small Ring
 {variant:5}Only affects Passives in Massive Ring
--(20-10)% to all Elemental Resistances
 Passive Skills in Radius can be Allocated without being connected to your tree
 Passage
+-(20-10)% to all Elemental Resistances
 {variant:2}Only affects Passives in Medium Ring
 {variant:3}Only affects Passives in Large Ring
 {variant:4}Only affects Passives in Very Large Ring
@@ -857,18 +856,23 @@ Radius: Medium
 [[
 Amanamu's Gaze
 Ghastly Eye Jewel
+Source: Drops from unique{Abyssal Liches} in normal{Abyssal Depths}
+Requires Level 40
 +(5-10) to all Attributes
 Minions have +6% to Damage over Time Multiplier per
 Ghastly Eye Jewel affecting you, up to a maximum of +30%
 ]],[[
 Kurgal's Gaze
 Hypnotic Eye Jewel
+Source: Drops from unique{Abyssal Liches} in normal{Abyssal Depths}
+Requires Level 40
 +(10-20) to Intelligence
 8% increased Effect of Arcane Surge on you per
 Hypnotic Eye Jewel affecting you, up to a maximum of 40%
 ]],[[
 Tecrod's Gaze
 Murderous Eye Jewel
+Source: Drops from unique{Abyssal Liches} in normal{Abyssal Depths}
 Variant: Pre 3.21.0
 Variant: Current
 Requires Level 40
@@ -884,6 +888,7 @@ Requires Level 40
 ]],[[
 Ulaman's Gaze
 Searching Eye Jewel
+Source: Drops from unique{Abyssal Liches} in normal{Abyssal Depths}
 Requires Level 40
 +(10-20) to Dexterity
 Projectiles have 4% chance to be able to Chain when colliding with terrain per
@@ -1459,7 +1464,6 @@ Cobalt Jewel
 Source: Use currency{Vaal Orb} on normal{Cobalt Jewel}
 Variant: Pre 3.20.0
 Variant: Current
-Requires Level: 20
 Limited to: 1
 Radius: Medium
 Minions deal (35-45)% increased Damage
@@ -1557,7 +1561,6 @@ Viridian Jewel
 Source: Use currency{Vaal Orb} on normal{Viridian Jewel}
 Variant: Pre 3.20.0
 Variant: Current
-Requires Level: 20
 Limited to: 1
 Radius: Medium
 Minions have (12-16)% increased Attack Speed
@@ -1585,10 +1588,10 @@ Variant: Pre 3.20.0
 Variant: Pre 3.25.0
 Variant: Current
 {variant:1,2,3}(2-4)% Chance to Block Attack Damage
+{variant:4}+(2-6)% Chance to Block Attack Damage
 {variant:1}+6% Chance to Block Spell Damage
 {variant:2,3}+(2-4)% Chance to Block Spell Damage
 {variant:4}+(2-6)% Chance to Block Spell Damage
-{variant:4}+(2-6)% Chance to Block Attack Damage
 Hits have (140-200)% increased Critical Strike Chance against you
 {variant:3}Corrupted
 ]],[[
@@ -1606,7 +1609,6 @@ Variant: Pre 3.16.0
 Variant: Pre 3.20.0
 Variant: Current
 League: Legion
-Requires Level: 20
 Limited to: 1
 (10-15)% increased Attack Damage while holding a Shield
 {variant:1}+0.2% to Off Hand Critical Strike Chance per 10 Maximum Energy Shield on Shield
@@ -1933,9 +1935,10 @@ Variant: Duration of Curses
 Variant: Minion Attack and Cast Speed
 Variant: Minions Accuracy Rating
 Variant: Mana Regen
-Variant: Skill Cost
+Variant: Skill Cost (Pre 3.29.0)
 Variant: Non-Curse Aura Effect
 Variant: Defences from Shield
+Variant: Skill Cost
 Radius: Large
 Implicits: 0
 {variant:1}Carved to glorify (2000-10000) new faithful converted by High Templar Avarius
@@ -1943,6 +1946,7 @@ Implicits: 0
 {variant:3}Carved to glorify (2000-10000) new faithful converted by High Templar Venarius
 {variant:4}Carved to glorify (2000-10000) new faithful converted by High Templar Maxarius
 {variant:8}4% increased Area Damage per 10 Devotion
+{variant:20}3% increased Mana Cost Efficiency per 10 Devotion
 {variant:7}Channelling Skills deal 4% increased Damage per 10 Devotion
 {variant:9}4% increased Elemental Damage per 10 Devotion
 {variant:10}+2% to all Elemental Resistances per 10 Devotion
@@ -1959,5 +1963,64 @@ Implicits: 0
 {variant:5}4% increased Totem Damage per 10 Devotion
 Passives in radius are Conquered by the Templars
 Historic
-]],
+]],[[
+Festering Vengeance
+Murderous Eye Jewel
+League: Abyss
+Source: Drops from unique{Zorath, Vile Assembled}
+Limited to: 1 Historic
+Implicits: 0
+Subjugating (100-8000) souls in the thrall of Tecrod
+Passives affected are Conquered by the Abyssal
+Historic
+]],[[
+Extinguishing Grasp
+Searching Eye Jewel
+League: Abyss
+Source: Drops from unique{Zorath, Vile Assembled}
+Limited to: 1 Historic
+Implicits: 0
+Subjugating (100-8000) souls in the thrall of Ulaman
+Passives affected are Conquered by the Abyssal
+Historic
+]],[[
+Baleful Dominion
+Hypnotic Eye Jewel
+League: Abyss
+Source: Drops from unique{Zorath, Vile Assembled}
+Limited to: 1 Historic
+Implicits: 0
+Subjugating (100-8000) souls in the thrall of Kurgal
+Passives affected are Conquered by the Abyssal
+Historic
+]],[[
+Destructive Aspiration
+Ghastly Eye Jewel
+League: Abyss
+Source: Drops from unique{Zorath, Vile Assembled}
+Limited to: 1 Historic
+Implicits: 0
+Subjugating (100-8000) souls in the thrall of Amanamu
+Passives affected are Conquered by the Abyssal
+Historic
+]],[[
+Reclaimed Malevolence
+Assembled Eye Jewel
+League: Abyss
+Source: Vendor Recipe
+Limited to: 1 Historic
+Implicits: 0
+Binding (100-8000) souls to phylacteries to sustain Zorath
+Passives affected are Conquered by the Abyssal
+Historic
+]],[[
+Item Class: Jewels
+Rarity: Unique
+That Which Was Taken
+Crimson Jewel
+Crafted: true
+League: Affliction
+Limited to: 1
+Implicits: 0
+]]
 }

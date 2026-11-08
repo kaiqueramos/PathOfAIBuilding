@@ -45,6 +45,8 @@ jobs:
         if: steps.check.outputs.behind != '0'
         run: |
           if git merge upstream/dev --no-edit; then
+            git checkout HEAD -- .github/workflows/ || true
+            git commit --amend --no-edit || true
             git push origin dev
             echo "✅ Merge limpo — pushed direto pra dev."
           else
@@ -59,6 +61,7 @@ jobs:
           BRANCH="sync/upstream-$(date +%Y%m%d)"
           git checkout -b "$BRANCH"
           git merge upstream/dev --no-edit || true
+          git checkout HEAD -- .github/workflows/ || true
           git add -A
           git commit -m "sync: merge upstream (com conflitos — resolver manualmente)" || true
           git push origin "$BRANCH" --force

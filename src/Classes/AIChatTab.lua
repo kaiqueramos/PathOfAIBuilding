@@ -155,9 +155,11 @@ local function translit(text)
 	return text
 end
 
-local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(self, build)
-	self.ControlHost()
-	self.Control()
+local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control")
+
+function AIChatTabClass:AIChatTab(build)
+	self:ControlHost()
+	self:Control()
 
 	self.build = build
 	self.messages = {}  -- {role="user"|"ai"|"system", text=string, full=string}
@@ -171,16 +173,16 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 	self.planningSession = nil
 
 	-- === TOP: header + build summary ===
-	self.controls.header = new("LabelControl", {"TOPLEFT",self,"TOPLEFT"}, {8, 8, 0, 16}, "^7AI Build Advisor")
-	self.controls.summary = new("LabelControl", {"TOPLEFT",self.controls.header,"BOTTOMLEFT"}, {0, 4, 0, 16}, "")
+	self.controls.header = new("LabelControl"):LabelControl({"TOPLEFT",self,"TOPLEFT"}, {8, 8, 0, 16}, "^7AI Build Advisor")
+	self.controls.summary = new("LabelControl"):LabelControl({"TOPLEFT",self.controls.header,"BOTTOMLEFT"}, {0, 4, 0, 16}, "")
 	self.controls.summary.label = function()
 		return "^8" .. AIBridge:GetBuildSummary(self.build)
 	end
 
 	-- === BOTTOM: status, input, quick buttons (anchored from bottom) ===
-	self.controls.status = new("LabelControl", {"BOTTOMLEFT",self,"BOTTOMLEFT"}, {8, -4, 0, 16}, "")
+	self.controls.status = new("LabelControl"):LabelControl({"BOTTOMLEFT",self,"BOTTOMLEFT"}, {8, -4, 0, 16}, "")
 
-	self.controls.input = new("EditControl", {"BOTTOMLEFT",self.controls.status,"TOPLEFT"}, {0, -4, 0, 22}, "", nil, "^%C\t\n", nil, function(buf)
+	self.controls.input = new("EditControl"):EditControl({"BOTTOMLEFT",self.controls.status,"TOPLEFT"}, {0, -4, 0, 22}, "", nil, "^%C\t\n", nil, function(buf)
 		self.controls.send.enabled = #buf > 0
 	end)
 	self.controls.input.width = function()
@@ -199,7 +201,7 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 		end
 	end
 
-	self.controls.send = new("ButtonControl", {"LEFT",self.controls.input,"RIGHT"}, {6, 0, 76, 22}, "Send", function()
+	self.controls.send = new("ButtonControl"):ButtonControl({"LEFT",self.controls.input,"RIGHT"}, {6, 0, 76, 22}, "Send", function()
 		local msg = self.controls.input.buf
 		if msg and #msg > 0 then
 			self:SendMessage(msg)
@@ -207,44 +209,44 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 	end)
 	self.controls.send.enabled = false
 
-	self.controls.quickImprove = new("ButtonControl", {"BOTTOMLEFT",self.controls.input,"TOPLEFT"}, {0, -6, 150, 20}, "How do I improve?", function()
+	self.controls.quickImprove = new("ButtonControl"):ButtonControl({"BOTTOMLEFT",self.controls.input,"TOPLEFT"}, {0, -6, 150, 20}, "How do I improve?", function()
 		self:SendMessage("How do I improve this build? Give me the top 3 highest-impact changes.")
 	end)
-	self.controls.quickUpgrade = new("ButtonControl", {"LEFT",self.controls.quickImprove,"RIGHT"}, {6, 0, 150, 20}, "Next upgrade?", function()
+	self.controls.quickUpgrade = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickImprove,"RIGHT"}, {6, 0, 150, 20}, "Next upgrade?", function()
 		self:SendMessage("What is my best next upgrade considering cost vs impact?")
 	end)
-	self.controls.quickTank = new("ButtonControl", {"LEFT",self.controls.quickUpgrade,"RIGHT"}, {6, 0, 150, 20}, "Can I tank?", function()
+	self.controls.quickTank = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickUpgrade,"RIGHT"}, {6, 0, 150, 20}, "Can I tank?", function()
 		self:SendMessage("Analyze my defenses. What can I tank and what will kill me?")
 	end)
 
 	-- Apply button (top-right, always visible above chat, hidden until actions available)
-	self.controls.applyActions = new("ButtonControl", {"TOPRIGHT",self,"TOPRIGHT"}, {-8, 8, 220, 22}, "^2Apply Suggested Changes", function()
+	self.controls.applyActions = new("ButtonControl"):ButtonControl({"TOPRIGHT",self,"TOPRIGHT"}, {-8, 8, 220, 22}, "^2Apply Suggested Changes", function()
 		ConPrintf("[AIChat] Apply button clicked!")
 		self:ApplyPendingActions()
 	end)
 	self.controls.applyActions.shown = false
 
-	self.controls.confirmBrief = new("ButtonControl", {"TOPRIGHT",self,"TOPRIGHT"}, {-8, 8, 150, 22}, "^2Confirm direction", function()
+	self.controls.confirmBrief = new("ButtonControl"):ButtonControl({"TOPRIGHT",self,"TOPRIGHT"}, {-8, 8, 150, 22}, "^2Confirm direction", function()
 		self:ConfirmBrief()
 	end)
 	self.controls.confirmBrief.shown = false
-	self.controls.reviseBrief = new("ButtonControl", {"RIGHT",self.controls.confirmBrief,"LEFT"}, {-6, 0, 140, 22}, "Revise direction", function()
+	self.controls.reviseBrief = new("ButtonControl"):ButtonControl({"RIGHT",self.controls.confirmBrief,"LEFT"}, {-6, 0, 140, 22}, "Revise direction", function()
 		self:ReviseBrief()
 	end)
 	self.controls.reviseBrief.shown = false
 
-	self.controls.applyFoundation = new("ButtonControl", {"TOPRIGHT",self,"TOPRIGHT"}, {-8, 8, 150, 22}, "^2Apply Foundation", function()
+	self.controls.applyFoundation = new("ButtonControl"):ButtonControl({"TOPRIGHT",self,"TOPRIGHT"}, {-8, 8, 150, 22}, "^2Apply Foundation", function()
 		self:ApplyFoundation()
 	end)
 	self.controls.applyFoundation.shown = false
 
-	self.controls.applyPassivePlan = new("ButtonControl", {"TOPRIGHT",self,"TOPRIGHT"}, {-8, 8, 160, 22}, "^2Apply Passive Plan", function()
+	self.controls.applyPassivePlan = new("ButtonControl"):ButtonControl({"TOPRIGHT",self,"TOPRIGHT"}, {-8, 8, 160, 22}, "^2Apply Passive Plan", function()
 		self:ApplyPassivePlan()
 	end)
 	self.controls.applyPassivePlan.shown = false
 
 	-- === MIDDLE: chat history fills remaining space (READ-ONLY) ===
-	self.controls.history = new("EditControl", {"TOPLEFT",self.controls.summary,"BOTTOMLEFT"}, {0, 8, 0, 0}, "", nil, "^%C\t\n", nil, nil, 16, true)
+	self.controls.history = new("EditControl"):EditControl({"TOPLEFT",self.controls.summary,"BOTTOMLEFT"}, {0, 8, 0, 0}, "", nil, "^%C\t\n", nil, nil, 16, true)
 	self.controls.history.width = function()
 		return self.width - 16
 	end
@@ -259,7 +261,8 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 	self.controls.history.ReplaceSel = function() end
 
 	self:SelectControl(self.controls.input)
-end)
+	return self
+end
 
 --- Send a message to the AI and display the response
 function AIChatTabClass:SendMessage(text)
