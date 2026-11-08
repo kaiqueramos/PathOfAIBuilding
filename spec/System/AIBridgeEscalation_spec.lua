@@ -562,4 +562,74 @@ describe("AI context escalation", function()
 		assert.are.equal("idle", planningSession.state)
 		assert.is_false(bridge.pending)
 	end)
+
+	it("stores a foundation proposal only after a confirmed brief", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local planning = LoadModule("Modules/AIPlanning")
+		local planningSession = planning:NewSession()
+		local callbackPlanningSession
+		local callbackError
+
+		local brief = {
+			stage = "brief",
+			mainSkill = "Fireball",
+			class = "Witch",
+			ascendancy = "Elementalist",
+			targetLevel = 30,
+			priority = "balanced",
+			constraints = { "league starter" },
+			assumptions = { "no required uniques" },
+		}
+		local fingerprint = assert(bridge:GetBuildFingerprint(build))
+		planningSession = assert(planning:StoreBrief(planningSession, brief, fingerprint))
+		assert(planning:ConfirmBrief(planningSession, fingerprint))
+
+		withMockedTransport(bridge, function()
+			return 'Apply this foundation.\n<actions>[{"type":"set_level","value":30}]</actions>\n'
+				.. '<turn>{"next":"proposal","goal":"apply foundation","reason":"direction is confirmed"}</turn>'
+		end, function()
+			bridge:Ask(build, "Apply the foundation", function(_, err, _, _, _, session)
+				callbackError = err
+				callbackPlanningSession = session
+			end, {}, false, nil, planningSession)
+		end)
+
+		assert.is_nil(callbackError)
+		assert.are.equal("foundation_pending", callbackPlanningSession.state)
+		assert.are.equal(1, #callbackPlanningSession.pendingFoundation)
+	end)
+
+	it("rejects a foundation proposal with disallowed actions", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local planning = LoadModule("Modules/AIPlanning")
+		local planningSession = planning:NewSession()
+		local callbackError
+
+		local brief = {
+			stage = "brief",
+			mainSkill = "Fireball",
+			class = "Witch",
+			ascendancy = "Elementalist",
+			targetLevel = 30,
+			priority = "balanced",
+			constraints = { "league starter" },
+			assumptions = { "no required uniques" },
+		}
+		local fingerprint = assert(bridge:GetBuildFingerprint(build))
+		planningSession = assert(planning:StoreBrief(planningSession, brief, fingerprint))
+		assert(planning:ConfirmBrief(planningSession, fingerprint))
+
+		withMockedTransport(bridge, function()
+			return 'Apply this foundation.\n<actions>[{"type":"alloc_node","name":"Resolute Technique"}]</actions>\n'
+				.. '<turn>{"next":"proposal","goal":"apply foundation","reason":"direction is confirmed"}</turn>'
+		end, function()
+			bridge:Ask(build, "Apply the foundation", function(_, err)
+				callbackError = err
+			end, {}, false, nil, planningSession)
+		end)
+
+		assert.is_truthy(callbackError:find("Invalid AI foundation proposal", 1, true))
+		assert.are.equal("brief_confirmed", planningSession.state)
+		assert.is_false(bridge.pending)
+	end)
 end)

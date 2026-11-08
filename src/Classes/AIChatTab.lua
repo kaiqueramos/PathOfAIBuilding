@@ -233,6 +233,11 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 	end)
 	self.controls.reviseBrief.shown = false
 
+	self.controls.applyFoundation = new("ButtonControl", {"RIGHT",self.controls.confirmBrief,"LEFT"}, {-6, 0, 150, 22}, "^2Apply Foundation", function()
+		self:ApplyFoundation()
+	end)
+	self.controls.applyFoundation.shown = false
+
 	-- === MIDDLE: chat history fills remaining space (READ-ONLY) ===
 	self.controls.history = new("EditControl", {"TOPLEFT",self.controls.summary,"BOTTOMLEFT"}, {0, 8, 0, 0}, "", nil, "^%C\t\n", nil, nil, 16, true)
 	self.controls.history.width = function()
@@ -270,6 +275,12 @@ function AIChatTabClass:SendMessage(text)
 		self.conversationSession = AIConversation:NewSession()
 	end
 	self.planningSession = self.planningSession or AIPlanning:NewSession()
+	if self.planningSession.state == "foundation_pending" then
+		self.planningSession.pendingFoundation = nil
+		self.planningSession.foundationFingerprint = nil
+		self.planningSession.state = "brief_confirmed"
+		self.controls.applyFoundation.shown = false
+	end
 	if self.planningSession.state == "brief_pending" then
 		AIPlanning:ReviseBrief(self.planningSession)
 		self.controls.confirmBrief.shown = false
@@ -312,6 +323,7 @@ function AIChatTabClass:SendMessage(text)
 	end
 	local function showRequestFailure(message)
 		AIConversation:AbortRequest(self.conversationSession)
+		self.controls.applyFoundation.shown = false
 		resetRequestState()
 		self.pendingActions = nil
 		self.pendingActionsFingerprint = nil
@@ -356,10 +368,22 @@ function AIChatTabClass:SendMessage(text)
 				end
 				self.planningSession = storedPlanningSession
 			end
+			local planningState = self.planningSession and self.planningSession.state or "idle"
 			self.pendingActions = actions
 			self.pendingActionsFingerprint = actions and #actions > 0 and responseFingerprint or nil
 			self.controls.applyActions.shown = (actions ~= nil and #actions > 0)
 			ConPrintf("[AIChat] Parsed %d actions, shown=%s", actions and #actions or 0, tostring(self.controls.applyActions.shown))
+			if planningState == "foundation_pending" then
+				self.pendingActions = nil
+				self.pendingActionsFingerprint = nil
+				self.controls.applyActions.shown = false
+				self.controls.applyFoundation.shown = true
+				self.controls.input:SetPlaceholder("Use Apply Foundation or describe a revision...")
+				self.controls.status.label = "^7Review build foundation"
+				self:StartStream(translit(displayText))
+				return
+			end
+			self.controls.applyFoundation.shown = false
 
 			if brief then
 				self.pendingActions = nil
@@ -550,25 +574,15 @@ function AIChatTabClass:RefreshHistory()
 	self.controls.history:ScrollCaretIntoView()
 end
 
---- Apply the pending actions parsed from the last AI response
-function AIChatTabClass:ApplyPendingActions()
-	ConPrintf("[AIChat] ApplyPendingActions called")
-	ConPrintf("[AIChat] pendingActions: %s", tostring(self.pendingActions))
-	ConPrintf("[AIChat] build: %s", tostring(self.build))
-
-	if not self.pendingActions or #self.pendingActions == 0 then
-		ConPrintf("[AIChat] No pending actions to apply")
-		return
-	end
-
-	self.controls.applyActions.enabled = false
-	ConPrintf("[AIChat] Preflighting %d actions", #self.pendingActions)
+--- Run one action batch through PoB preflight, fingerprint checks, and metric diff.
+function AIChatTabClass:RunActionBatch(actions, fingerprint, labels)
+	ConPrintf("[AIChat] RunActionBatch: %d actions", actions and #actions or 0)
 	local callOk, report = pcall(
 		AIBridge.ApplyActionBatch,
 		AIBridge,
 		self.build,
-		self.pendingActions,
-		self.pendingActionsFingerprint
+		actions,
+		fingerprint
 	)
 	if not callOk then
 		report = {
@@ -580,11 +594,11 @@ function AIChatTabClass:ApplyPendingActions()
 
 	local lines
 	if report.ok then
-		lines = { "^7--- Applied changes ---" }
+		lines = { "^7--- " .. labels.okHeader .. " ---" }
 	elseif report.partial then
 		lines = { "^1--- Partial application error ---" }
 	else
-		lines = { "^1--- Changes not applied ---" }
+		lines = { "^1--- " .. labels.failHeader .. " ---" }
 	end
 
 	local okCount, failCount = 0, 0
@@ -609,23 +623,99 @@ function AIChatTabClass:ApplyPendingActions()
 
 	if report.ok then
 		t_insert(lines, string.format("^7%d applied, %d failed", okCount, failCount))
-		self.controls.status.label = "^2Changes applied"
+		self.controls.status.label = labels.okStatus
 	elseif report.partial then
 		t_insert(lines, string.format("^1%d applied before failure; review the build", okCount))
 		self.controls.status.label = "^1Partial changes - review build"
 	else
-		t_insert(lines, "^1No changes were applied")
-		self.controls.status.label = "^1No changes applied"
+		t_insert(lines, labels.failLine)
+		self.controls.status.label = labels.failStatus
 	end
 	self:AddMessage("system", table.concat(lines, "\n"))
+	ConPrintf("[AIChat] Apply complete: ok=%s applied=%s",
+		tostring(report.ok), tostring(report.applied))
+	return report
+end
+
+--- Apply the pending actions parsed from the last AI response
+function AIChatTabClass:ApplyPendingActions()
+	ConPrintf("[AIChat] ApplyPendingActions called")
+	ConPrintf("[AIChat] pendingActions: %s", tostring(self.pendingActions))
+	ConPrintf("[AIChat] build: %s", tostring(self.build))
+
+	if not self.pendingActions or #self.pendingActions == 0 then
+		ConPrintf("[AIChat] No pending actions to apply")
+		return
+	end
+
+	self.controls.applyActions.enabled = false
+	ConPrintf("[AIChat] Preflighting %d actions", #self.pendingActions)
+	self:RunActionBatch(self.pendingActions, self.pendingActionsFingerprint, {
+		okHeader = "Applied changes",
+		failHeader = "Changes not applied",
+		okStatus = "^2Changes applied",
+		failLine = "^1No changes were applied",
+		failStatus = "^1No changes applied",
+	})
 
 	self.pendingActions = nil
 	self.pendingActionsFingerprint = nil
 	self.conversationSession = nil
 	self.controls.applyActions.shown = false
 	self.controls.applyActions.enabled = true
-	ConPrintf("[AIChat] Apply complete: ok=%s applied=%s",
-		tostring(report.ok), tostring(report.applied))
+end
+
+--- Apply the confirmed foundation batch and advance the local planning session.
+function AIChatTabClass:ApplyFoundation()
+	if self.pending then
+		return
+	end
+	if not self.planningSession or self.planningSession.state ~= "foundation_pending"
+		or not self.planningSession.pendingFoundation then
+		self:AddMessage("system", "Error: No foundation batch is awaiting application")
+		self.controls.status.label = "^1No foundation to apply"
+		return
+	end
+
+	local fingerprint, fingerprintError = AIBridge:GetBuildFingerprint(self.build)
+	if not fingerprint then
+		self:AddMessage("system", "Error: " .. tostring(fingerprintError))
+		self.controls.status.label = "^1Could not apply foundation"
+		return
+	end
+
+	self.controls.applyFoundation.enabled = false
+	local report = self:RunActionBatch(
+		self.planningSession.pendingFoundation,
+		fingerprint,
+		{
+			okHeader = "Applied foundation",
+			failHeader = "Foundation not applied",
+			okStatus = "^2Foundation applied",
+			failLine = "^1No foundation changes were applied",
+			failStatus = "^1Foundation not applied",
+		}
+	)
+
+	if report.ok then
+		local newFingerprint, newFingerprintError = AIBridge:GetBuildFingerprint(self.build)
+		if not newFingerprint then
+			self:AddMessage("system", "Error: " .. tostring(newFingerprintError))
+			self.controls.status.label = "^1Foundation applied but could not advance"
+		else
+			local advanced, advanceError = AIPlanning:CompleteFoundation(self.planningSession, newFingerprint)
+			if not advanced then
+				self:AddMessage("system", "Error: " .. advanceError)
+				self.controls.status.label = "^1Foundation applied but could not advance"
+			else
+				self.controls.status.label = "^2Foundation applied - tree stage ready"
+				self.controls.input:SetPlaceholder("Ask for the passive tree plan...")
+			end
+		end
+	end
+
+	self.controls.applyFoundation.shown = false
+	self.controls.applyFoundation.enabled = true
 end
 
 --- Load/Save (no persistence for chat history - session only)

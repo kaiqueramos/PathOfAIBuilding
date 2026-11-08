@@ -2370,6 +2370,14 @@ it MUST NOT include an actions block, it never changes the PoB build, and it is 
 until the player explicitly uses Confirm direction. For existing-build advisor requests, do not
 emit a brief unless the player explicitly asks to create or rebuild a build.
 
+When the guided planning session state is brief_confirmed, propose ONLY the build foundation as a
+proposal turn with one actions block. Foundation actions are limited to set_level, set_class,
+set_ascendancy, reset_tree, add_skill, and set_main_skill. Do not include alloc_node, gear,
+mastery, tattoo, bandit, pantheon, jewel, or configuration actions in the foundation stage.
+Use the confirmed brief's class, ascendancy, main skill, and target level. Emit set_level to the
+target level before other foundation actions when it changes the level. After adding the main
+skill group, emit set_main_skill so PoB calculates the intended skill.
+
 The simulated uniqueShortlist is a preselected sample, not an exhaustive proof about every
 unique in the catalog. If no entry improves both DPS and EHP, say "none among the tested
 candidates", never "no unique exists". balancedGainPct is positive only when both metrics improve.
@@ -2479,7 +2487,7 @@ complete <actions> block for the requested change; never assume the previous pro
 		callback(nil, message)
 	end
 
-	local function complete(content, finalState, turn, mentionContent, brief)
+	local function complete(content, finalState, turn, mentionContent, brief, proposedActions)
 		local turnApplied, turnError = AIConversation:ApplyTurn(
 			conversationSession,
 			turn,
@@ -2500,6 +2508,18 @@ complete <actions> block for the requested change; never assume the previous pro
 				return
 			end
 			planningSession = storedPlanningSession
+		end
+		if proposedActions and planningSession.state == "brief_confirmed" then
+			local foundationSession, foundationError = AIPlanning:StoreFoundation(
+				planningSession,
+				proposedActions,
+				requestFingerprint
+			)
+			if not foundationSession then
+				fail("Invalid AI foundation proposal: " .. tostring(foundationError))
+				return
+			end
+			planningSession = foundationSession
 		end
 		self.pending = false
 		self.lastError = nil
@@ -2698,6 +2718,13 @@ complete <actions> block for the requested change; never assume the previous pro
 				complete(briefContent, currentState, rejectedTurn, displayText)
 				return
 			end
+			if proposedActions and planningSession.state == "brief_confirmed" then
+				local foundationValid, foundationError = AIPlanning:ValidateFoundationActions(proposedActions)
+				if not foundationValid then
+					fail("Invalid AI foundation proposal: " .. tostring(foundationError))
+					return
+				end
+			end
 			local treeActionsValid, treeActionError =
 				self:ValidateTreeActionReferences(proposedActions, currentState)
 			if not actionParseError and proposedActions and not treeActionsValid then
@@ -2743,7 +2770,7 @@ complete <actions> block for the requested change; never assume the previous pro
 				return
 			end
 
-			complete(briefContent, currentState, turn, displayText, brief)
+			complete(briefContent, currentState, turn, displayText, brief, proposedActions)
 		end
 		local function onResponse(response, errMsg)
 			if responseHandled then

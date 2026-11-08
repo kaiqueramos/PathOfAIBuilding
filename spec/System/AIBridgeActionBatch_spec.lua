@@ -127,7 +127,7 @@ describe("AI safe action batch", function()
 		chat.pendingActionsFingerprint = assert(bridge:GetBuildFingerprint(build))
 		chat.controls.applyActions.shown = true
 
-		bridge.Ask = function(_, _, _, callback, _, supersedes)
+		bridge.Ask = function(_, _, _, callback, _, supersedes, _, planningSession)
 			supersedesUnappliedActions = supersedes
 			callback([[
 Use level 97 instead.
@@ -137,7 +137,7 @@ Use level 97 instead.
 				next = "proposal",
 				goal = "correct the level",
 				reason = "player requested a correction",
-			})
+			}, nil, planningSession)
 		end
 
 		local ok, err = pcall(function()
@@ -161,13 +161,13 @@ Use level 97 instead.
 		chat.pendingActionsFingerprint = assert(bridge:GetBuildFingerprint(build))
 		chat.controls.applyActions.shown = true
 
-		bridge.Ask = function(_, _, _, callback)
+		bridge.Ask = function(_, _, _, callback, _, _, _, planningSession)
 			callback('Use level 97 instead.\n<actions>{"type":"set_level","value":97}</actions>', nil,
 				assert(bridge:GetBuildFingerprint(build)), {
 					next = "proposal",
 					goal = "correct the level",
 					reason = "player requested a correction",
-				})
+				}, nil, planningSession)
 		end
 		local ok, err = pcall(function()
 			chat:SendMessage("Correct the previous suggestion.")
@@ -215,13 +215,13 @@ Use level 97 instead.
 		local originalAsk = bridge.Ask
 		local requestCount = 0
 
-		bridge.Ask = function(_, _, _, callback)
+		bridge.Ask = function(_, _, _, callback, _, _, _, planningSession)
 			requestCount = requestCount + 1
 			callback(requestCount == 1 and "First complete reply." or "Second complete reply.", nil, nil, {
 				next = "answer",
 				goal = "answer question",
 				reason = "sufficient PoB context",
-			})
+			}, nil, planningSession)
 		end
 		local ok, err = pcall(function()
 			chat:SendMessage("First question.")
@@ -265,7 +265,7 @@ Use level 97 instead.
 		local requestCount = 0
 		local firstSession
 
-		bridge.Ask = function(_, _, _, callback, _, _, session)
+		bridge.Ask = function(_, _, _, callback, _, _, session, planningSession)
 			requestCount = requestCount + 1
 			local fingerprint = assert(bridge:GetBuildFingerprint(build))
 			assert(conversation:BeginRequest(session, fingerprint))
@@ -282,7 +282,7 @@ Use level 97 instead.
 					},
 				}
 				assert.is_true(conversation:ApplyTurn(session, turn, fingerprint))
-				callback("I need one preference.", nil, fingerprint, turn)
+				callback("I need one preference.", nil, fingerprint, turn, nil, planningSession)
 				return
 			end
 
@@ -294,7 +294,7 @@ Use level 97 instead.
 				reason = "priority is now known",
 			}
 			assert.is_true(conversation:ApplyTurn(session, turn, fingerprint))
-			callback("Prioritize defensive upgrades first.", nil, fingerprint, turn)
+			callback("Prioritize defensive upgrades first.", nil, fingerprint, turn, nil, planningSession)
 		end
 
 		local ok, err = pcall(function()
@@ -436,5 +436,72 @@ Use level 97 instead.
 		assert.are.equal("Create a Fireball league starter at level 30.", secondHistory[1].content)
 		assert.is_truthy(secondHistory[2].content:find("Build direction", 1, true))
 		assert.are.equal(originalLevel, build.characterLevel)
+	end)
+
+	it("applies a confirmed foundation and advances the planning session", function()
+		local chat = build.aiChatTab
+		local bridge = assert(findUpvalue(chat.SendMessage, "AIBridge"))
+		local conversation = LoadModule("Modules/AIConversation")
+		local planning = LoadModule("Modules/AIPlanning")
+		local originalAsk = bridge.Ask
+		local originalLevel = build.characterLevel
+		local targetLevel = changedLevel(originalLevel)
+		local requestCount = 0
+
+		bridge.Ask = function(_, _, _, callback, _, _, session, planningSession)
+			requestCount = requestCount + 1
+			local fingerprint = assert(bridge:GetBuildFingerprint(build))
+			assert(conversation:BeginRequest(session, fingerprint))
+			if requestCount == 1 then
+				local turn = {
+					next = "proposal",
+					goal = "confirm build direction",
+					reason = "brief is complete",
+				}
+				local brief = {
+					stage = "brief",
+					mainSkill = "Fireball",
+					class = "Witch",
+					ascendancy = "Elementalist",
+					targetLevel = 30,
+					priority = "balanced",
+					constraints = { "league starter" },
+					assumptions = { "no required uniques" },
+				}
+				assert.is_true(conversation:ApplyTurn(session, turn, fingerprint))
+				local storedSession = assert(planning:StoreBrief(planningSession, brief, fingerprint))
+				callback("Review this direction.", nil, fingerprint, turn, brief, storedSession)
+				return
+			end
+
+			assert.are.equal("brief_confirmed", planningSession.state)
+			local turn = {
+				next = "proposal",
+				goal = "apply foundation",
+				reason = "direction is confirmed",
+			}
+			local actions = { { type = "set_level", value = targetLevel } }
+			assert.is_true(conversation:ApplyTurn(session, turn, fingerprint))
+			local storedSession = assert(planning:StoreFoundation(planningSession, actions, fingerprint))
+			callback("Apply this foundation.", nil, fingerprint, turn, nil, storedSession)
+		end
+
+		local ok, err = pcall(function()
+			chat:SendMessage("Create a Fireball league starter at level 30.")
+			chat:FinishStream()
+			chat:ConfirmBrief()
+			chat:SendMessage("Apply the foundation.")
+			chat:FinishStream()
+			chat:ApplyFoundation()
+		end)
+		bridge.Ask = originalAsk
+
+		assert(ok, err)
+		assert.are.equal(2, requestCount)
+		assert.are.equal("tree", chat.planningSession.state)
+		assert.is_nil(chat.planningSession.pendingFoundation)
+		assert.is_false(chat.controls.applyFoundation.shown)
+		assert.are.equal(targetLevel, build.characterLevel)
+		assert.are.equal("^2Foundation applied - tree stage ready", chat.controls.status.label)
 	end)
 end)

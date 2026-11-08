@@ -13,6 +13,15 @@ shows that summary with **Confirm direction** and **Revise direction** controls.
 stores only local planning state; it never changes the active PoB build. Invalid briefs and any
 brief mixed with executable actions are rejected before the controls can advance.
 
+## V1.1.7: confirmed build foundation
+
+After a confirmed build direction, the AI can propose a restricted foundation batch:
+level, class, ascendancy, tree reset, main skill group, and main-skill selection. The batch is
+validated before display, preflighted on a cloned build, and applied only through an explicit
+**Apply Foundation** button. A successful application records a fresh fingerprint and advances the
+local planning session to the tree stage. Passive nodes, gear, masteries, tattoos, and
+configuration actions remain unavailable in this stage.
+
 ## V1.1.5: resilient AI context recovery
 
 When a model wraps one valid `<context_request>` in prose, the bridge now ignores

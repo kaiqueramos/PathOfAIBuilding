@@ -17,6 +17,15 @@ local VALID_PRIORITIES = {
 	defense = true,
 	balanced = true,
 }
+local FOUNDATION_ACTION_TYPES = {
+	set_level = true,
+	set_class = true,
+	set_ascendancy = true,
+	reset_tree = true,
+	add_skill = true,
+	set_main_skill = true,
+}
+
 
 local function isNonEmptyString(value)
 	return type(value) == "string" and value:find("%S") ~= nil
@@ -187,6 +196,75 @@ function AIPlanning:ConfirmBrief(session, fingerprint)
 	return true, copyBrief(session.confirmedBrief)
 end
 
+
+--- Validate one foundation action batch without changing session state.
+function AIPlanning:ValidateFoundationActions(actions)
+	if type(actions) ~= "table" then
+		return false, "Foundation batch must be an array"
+	end
+	local meta = getmetatable(actions)
+	if meta and meta.__jsontype == "object" then
+		return false, "Foundation batch must be an array"
+	end
+	local count = 0
+	local highestIndex = 0
+	for key in pairs(actions) do
+		if type(key) ~= "number" or key < 1 or key ~= m_floor(key) then
+			return false, "Foundation batch must be a dense array"
+		end
+		count = count + 1
+		highestIndex = math.max(highestIndex, key)
+	end
+	if count ~= highestIndex then
+		return false, "Foundation batch must be a dense array"
+	end
+	if count == 0 then
+		return false, "Foundation batch must contain at least one action"
+	end
+	for index, action in ipairs(actions) do
+		if type(action) ~= "table" or type(action.type) ~= "string" then
+			return false, "Foundation action " .. index .. " must be an object with a type"
+		end
+		if not FOUNDATION_ACTION_TYPES[action.type] then
+			return false, "Foundation action " .. index .. " is not allowed in the foundation stage"
+		end
+	end
+	return true
+end
+
+--- Store one validated, unapplied foundation batch locally.
+function AIPlanning:StoreFoundation(session, actions, fingerprint)
+	local valid, validationError = self:ValidateFoundationActions(actions)
+	if not valid then
+		return nil, validationError
+	end
+	if not isNonEmptyString(fingerprint) then
+		return nil, "Build fingerprint is missing"
+	end
+	if not session or session.state ~= "brief_confirmed" or not session.confirmedBrief then
+		return nil, "A confirmed build direction is required before applying a foundation"
+	end
+	session.pendingFoundation = { }
+	for _, action in ipairs(actions) do
+		t_insert(session.pendingFoundation, action)
+	end
+	session.foundationFingerprint = fingerprint
+	session.state = "foundation_pending"
+	return session
+end
+
+--- Advance the local session only after a successful foundation application.
+function AIPlanning:CompleteFoundation(session, fingerprint)
+	if not session or session.state ~= "foundation_pending" or not session.pendingFoundation then
+		return false, "No foundation batch is awaiting application"
+	end
+	session.pendingFoundation = nil
+	session.foundationFingerprint = nil
+	session.fingerprint = fingerprint
+	session.state = "tree"
+	return true
+end
+
 --- Discard only an unconfirmed brief while retaining the chat history and session constraints.
 function AIPlanning:ReviseBrief(session)
 	if not session or session.state ~= "brief_pending" or not session.pendingBrief then
@@ -210,6 +288,12 @@ function AIPlanning:GetPromptState(session)
 	end
 	if session.confirmedBrief then
 		state.confirmedBrief = copyBrief(session.confirmedBrief)
+	end
+	if session.pendingFoundation then
+		state.pendingFoundation = { }
+		for _, action in ipairs(session.pendingFoundation) do
+			t_insert(state.pendingFoundation, action)
+		end
 	end
 	return state
 end
