@@ -75,6 +75,17 @@ describe("AI conversation session", function()
 		assert.are.equal(0, resumed.contextAttempts)
 	end)
 
+	it("normalizes numeric clarification options into strings", function()
+		local conversation = LoadModule("Modules/AIConversation")
+		local _, turn, err = conversation:ParseTurn(
+			'<turn>{"next":"clarify","goal":"choose target level","reason":"level materially changes the plan",'
+				.. '"question":{"id":"targetLevel","prompt":"Which target level?",'
+				.. '"options":[30,60,100]}}</turn>'
+		)
+		assert.is_nil(err)
+		assert.same({ "30", "60", "100" }, turn.question.options)
+	end)
+
 	it("rejects a changed build while a clarification is pending", function()
 		local conversation = LoadModule("Modules/AIConversation")
 		local session = assert(conversation:BeginRequest(conversation:NewSession(), "first"))

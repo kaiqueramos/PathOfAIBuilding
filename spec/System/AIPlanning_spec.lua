@@ -38,6 +38,18 @@ describe("AI build brief", function()
 		assert.is_truthy(objectArrayError:find("constraints", 1, true))
 	end)
 
+	it("normalizes numeric brief array entries into strings", function()
+		local planning = LoadModule("Modules/AIPlanning")
+		local _, brief, err = planning:ParseBrief(
+			'<brief>{"stage":"brief","mainSkill":"Fireball","class":"Witch",'
+				.. '"ascendancy":"Elementalist","targetLevel":30,"priority":"balanced",'
+				.. '"constraints":[1,2],"assumptions":[3]}</brief>'
+		)
+		assert.is_nil(err)
+		assert.same({ "1", "2" }, brief.constraints)
+		assert.same({ "3" }, brief.assumptions)
+	end)
+
 	it("stores, revises, and confirms only local planning state", function()
 		local planning = LoadModule("Modules/AIPlanning")
 		local _, brief = planning:ParseBrief(validBriefBlock())

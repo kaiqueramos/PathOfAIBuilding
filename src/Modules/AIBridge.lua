@@ -2347,7 +2347,8 @@ Every final response after sufficient context MUST include exactly one valid JSO
 </turn>
 Use answer for read-only advice. Use clarify only when a missing player decision would materially
 change the result; do not ask for information already present in the build state or conversation.
-A clarify turn MUST include question.id and question.prompt, and may include question.options.
+A clarify turn MUST include question.id and question.prompt, and may include question.options
+as a JSON array of non-empty strings.
 Use proposal when presenting a change. Only proposal turns may include an actions block. Clarify
 and answer turns MUST NOT include actions. If the player must choose between meaningful tradeoffs,
 ask one focused clarification instead of silently assuming a preference.

@@ -43,7 +43,12 @@ local function validateDenseStringArray(value, label)
 		return false, label .. " must be a dense array"
 	end
 	for index, entry in ipairs(value) do
-		if not isNonEmptyString(entry) then
+		local entryType = type(entry)
+		if entryType ~= "string" and entryType ~= "number" and entryType ~= "boolean" then
+			return false, label .. " entry " .. index .. " must be a non-empty string"
+		end
+		value[index] = tostring(entry)
+		if not isNonEmptyString(value[index]) then
 			return false, label .. " entry " .. index .. " must be a non-empty string"
 		end
 	end
