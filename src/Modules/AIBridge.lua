@@ -2685,7 +2685,9 @@ brief block followed by a proposal turn:
 <turn>
 {"next":"proposal","goal":"confirm build direction","reason":"brief is complete"}
 </turn>
-Use priority values damage, defense, or balanced. A brief is only a direction for player review:
+Use priority values damage, defense, or balanced. If the target level is below 33 (before the
+first Labyrinth), set ascendancy to "None" or the planned future ascendancy name (never an empty
+string). A brief is only a direction for player review:
 it MUST NOT include an actions block, it never changes the PoB build, and it is not confirmed
 until the player explicitly uses Confirm direction. For existing-build advisor requests, do not
 emit a brief unless the player explicitly asks to create or rebuild a build.
@@ -2694,7 +2696,9 @@ When the guided planning session state is brief_confirmed, propose ONLY the buil
 proposal turn with one actions block. Foundation actions are limited to set_level, set_class,
 set_ascendancy, reset_tree, add_skill, and set_main_skill. Do not include alloc_node, gear,
 mastery, tattoo, bandit, pantheon, jewel, or configuration actions in the foundation stage.
-Use the confirmed brief's class, ascendancy, main skill, and target level. Emit set_level to the
+Use the confirmed brief's class, ascendancy, main skill, and target level. If the confirmed
+brief's ascendancy is "None", omit set_ascendancy or pass {"type":"set_ascendancy","name":"None"}.
+Emit set_level to the
 target level before other foundation actions when it changes the level. After adding the main
 skill group, emit set_main_skill so PoB calculates the intended skill.
 
@@ -4079,15 +4083,18 @@ function AIBridge:ActionSetClass(build, action)
 	return true, "Changed class to " .. name
 end
 
---- Change the ascendancy class by name (e.g. "Inquisitor", "Necromancer")
+--- Change the ascendancy class by name (e.g. "Inquisitor", "Necromancer", or "None")
 function AIBridge:ActionSetAscendancy(build, action)
 	local spec = build.spec
 	if not spec then
 		return false, "No passive tree spec"
 	end
 	local name = action.name
-	if not name then
-		return false, "No ascendancy name provided"
+	if not name or name == "" or name:lower() == "none" then
+		spec:SelectAscendClass(0)
+		build.treeTab.modFlag = true
+		build.buildFlag = true
+		return true, "Cleared ascendancy"
 	end
 	local curClass = spec.curClass
 	if not curClass or not curClass.classes then
@@ -4095,8 +4102,9 @@ function AIBridge:ActionSetAscendancy(build, action)
 	end
 	local foundId
 	for ascId, ascClass in pairs(curClass.classes) do
-		if ascId ~= 0 and ascClass.name == name then
+		if ascId ~= 0 and ascClass.name and ascClass.name:lower() == name:lower() then
 			foundId = ascId
+			name = ascClass.name
 			break
 		end
 	end

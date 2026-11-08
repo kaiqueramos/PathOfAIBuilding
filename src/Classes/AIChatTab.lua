@@ -601,7 +601,7 @@ function AIChatTabClass:RefreshHistory()
 		end
 		for line in (msg.text .. "\n"):gmatch("([^\n]*)\n") do
 			t_insert(lines, prefix .. line)
-			prefix = "  "
+			prefix = msg.role == "ai" and "  ^7" or "  "
 		end
 		t_insert(lines, "")
 	end

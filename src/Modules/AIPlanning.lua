@@ -138,10 +138,16 @@ function AIPlanning:ValidateBrief(brief)
 	if brief.stage ~= "brief" then
 		return false, "Brief stage must be brief"
 	end
-	for _, field in ipairs({ "mainSkill", "class", "ascendancy" }) do
+	for _, field in ipairs({ "mainSkill", "class" }) do
 		if not isNonEmptyString(brief[field]) then
 			return false, "Brief " .. field .. " must be a non-empty string"
 		end
+	end
+	if brief.ascendancy == nil or brief.ascendancy == dkjson.null
+		or (type(brief.ascendancy) == "string" and not isNonEmptyString(brief.ascendancy)) then
+		brief.ascendancy = "None"
+	elseif type(brief.ascendancy) ~= "string" then
+		return false, "Brief ascendancy must be a string"
 	end
 	if type(brief.targetLevel) ~= "number" or brief.targetLevel ~= m_floor(brief.targetLevel)
 		or brief.targetLevel < 1 or brief.targetLevel > 100 then
