@@ -23,6 +23,9 @@ local AIBridge = {
 	gemShortlistFingerprint = nil,
 	uniqueShortlistCache = nil,
 	uniqueShortlistFingerprint = nil,
+	treeSimulationCache = nil,
+	treeSimulationFingerprint = nil,
+	treeSimulationKey = nil,
 	activeBuildFingerprint = nil,
 	lastMentionsFingerprint = nil,
 }
@@ -463,6 +466,8 @@ function AIBridge:BuildTreeRecommendationPlan(spec, candidates, mainAvailable, a
 						ascendancyPointCost = ascendancyCost,
 						cumulativeMainPoints = mainUsed,
 						cumulativeAscendancyPoints = ascendancyUsed,
+						simulatedDelta = candidate.simulatedDelta,
+						tradeoff = candidate.tradeoff,
 					})
 					if #plan == 12 then
 						break
@@ -472,6 +477,217 @@ function AIBridge:BuildTreeRecommendationPlan(spec, candidates, mainAvailable, a
 		end
 	end
 	return plan, mainUsed, ascendancyUsed
+end
+
+local function computePriorityScore(priority, dpsGainPct, ehpGainPct, maxHitGainPct, sustainGain)
+	local posDps = dpsGainPct > 0 and dpsGainPct or 0
+	local posEhp = ehpGainPct > 0 and ehpGainPct or 0
+	local posHit = maxHitGainPct > 0 and maxHitGainPct or 0
+	local posSustain = sustainGain > 0 and math.min(sustainGain / 5, 10) or 0
+	if priority == "damage" then
+		return posDps * 1.6 + posEhp * 0.25 + posHit * 0.15 + posSustain
+	elseif priority == "defense" then
+		return posEhp * 1.5 + posHit * 0.6 + posSustain * 1.5 + posDps * 0.2
+	end
+	local bothBonus = (posDps > 0 and posEhp > 0) and math.min(posDps, posEhp) * 0.5 or 0
+	return posDps + posEhp + posHit * 0.35 + posSustain + bothBonus
+end
+
+--- Rank a bounded semantic shortlist of passive candidates using isolated PoB simulations (US-006).
+--- Never brute-forces the passive tree: simulates at most maxSimulations compatible/defensive candidates
+--- from the same current build snapshot, caching by build fingerprint + skill profile + priority.
+function AIBridge:RankPassiveCandidatesBySimulation(build, candidates, skillProfile, priority, fingerprint, maxSimulations)
+	maxSimulations = maxSimulations or 12
+	priority = (priority == "damage" or priority == "defense" or priority == "balanced") and priority or "balanced"
+	if not build or not skillProfile or type(candidates) ~= "table" or #candidates == 0 then
+		return candidates, {}
+	end
+	if type(build.SaveDB) ~= "function" then
+		return candidates, {}
+	end
+
+	fingerprint = fingerprint or self:GetBuildFingerprint(build)
+	local cacheKey = tostring(skillProfile.skillName) .. "|" .. tostring(priority) .. "|" .. tostring(maxSimulations)
+	if fingerprint and self.treeSimulationCache
+		and self.treeSimulationFingerprint == fingerprint
+		and self.treeSimulationKey == cacheKey then
+		local cachedByName = self.treeSimulationCache.byName or {}
+		for _, candidate in ipairs(candidates) do
+			local sim = cachedByName[candidate.name]
+			if sim then
+				candidate.simulatedDelta = sim.simulatedDelta
+				candidate.tradeoff = sim.tradeoff
+				candidate.simulationRankScore = sim.simulationRankScore
+				candidate.simulationStatus = sim.simulationStatus
+				candidate.simulationExcludedReason = sim.simulationExcludedReason
+			end
+		end
+		table.sort(candidates, function(a, b)
+			local aSim = a.simulationRankScore or -1
+			local bSim = b.simulationRankScore or -1
+			if aSim ~= bSim then
+				return aSim > bSim
+			end
+			if a.goalScore ~= b.goalScore then
+				return a.goalScore > b.goalScore
+			end
+			if a.pathLength ~= b.pathLength then
+				return a.pathLength < b.pathLength
+			end
+			return a.name < b.name
+		end)
+		return candidates, self.treeSimulationCache.excluded or {}
+	end
+
+	if build.calcsTab and build.buildFlag then
+		pcall(self.RebuildBuild, self, build)
+	end
+	local baseMetrics = self:CaptureBuildMetrics(build)
+	if not baseMetrics or (baseMetrics.dps <= 0 and baseMetrics.ehp <= 0) then
+		return candidates, {}
+	end
+	local baseOutput = build.calcsTab and build.calcsTab.mainOutput or {}
+	local baseSustain = (tonumber(baseOutput.LifeRegen) or 0) + (tonumber(baseOutput.EnergyShieldRegen) or 0)
+	local baseMinMaxHit = math.min(
+		baseMetrics.maxHits.physical > 0 and baseMetrics.maxHits.physical or math.huge,
+		baseMetrics.maxHits.fire > 0 and baseMetrics.maxHits.fire or math.huge,
+		baseMetrics.maxHits.cold > 0 and baseMetrics.maxHits.cold or math.huge,
+		baseMetrics.maxHits.lightning > 0 and baseMetrics.maxHits.lightning or math.huge
+	)
+	if baseMinMaxHit == math.huge then
+		baseMinMaxHit = 0
+	end
+
+	local snapshotOk, snapshotXml = pcall(build.SaveDB, build, "AI passive shortlist simulation")
+	if not snapshotOk or not snapshotXml then
+		return candidates, {}
+	end
+
+	local simulatedCount = 0
+	local byName = {}
+	local excluded = {}
+	for _, candidate in ipairs(candidates) do
+		if simulatedCount >= maxSimulations then
+			break
+		end
+		if candidate.classification == "compatible" or candidate.classification == "defensive" then
+			simulatedCount = simulatedCount + 1
+			local cloneOk, shadowBuild = pcall(function()
+				return new("CompareEntry"):CompareEntry(snapshotXml, "AI passive candidate sim")
+			end)
+			if not cloneOk or not shadowBuild or not shadowBuild.spec or not shadowBuild.calcsTab then
+				candidate.simulationStatus = "excluded"
+				candidate.simulationExcludedReason = "simulation clone could not be initialized"
+				candidate.simulationRankScore = -10
+				t_insert(excluded, { name = candidate.name, reason = candidate.simulationExcludedReason })
+			else
+				local node = self:FindNode(shadowBuild.spec, { name = candidate.name })
+				if not node or not node.path then
+					candidate.simulationStatus = "excluded"
+					candidate.simulationExcludedReason = "candidate node is not reachable in simulation snapshot"
+					candidate.simulationRankScore = -10
+					t_insert(excluded, { name = candidate.name, reason = candidate.simulationExcludedReason })
+				else
+					local allocOk = pcall(shadowBuild.spec.AllocNode, shadowBuild.spec, node)
+					local rebuiltOk, rebuildErr = self:RebuildBuild(shadowBuild)
+					local afterMetrics = (allocOk and rebuiltOk) and self:CaptureBuildMetrics(shadowBuild) or nil
+					if not afterMetrics then
+						candidate.simulationStatus = "excluded"
+						candidate.simulationExcludedReason = "simulation calculation failed: " .. tostring(rebuildErr or "no metrics")
+						candidate.simulationRankScore = -10
+						t_insert(excluded, { name = candidate.name, reason = candidate.simulationExcludedReason })
+					else
+						local afterOutput = shadowBuild.calcsTab.mainOutput or {}
+						local afterSustain = (tonumber(afterOutput.LifeRegen) or 0) + (tonumber(afterOutput.EnergyShieldRegen) or 0)
+						local afterMinMaxHit = math.min(
+							afterMetrics.maxHits.physical > 0 and afterMetrics.maxHits.physical or math.huge,
+							afterMetrics.maxHits.fire > 0 and afterMetrics.maxHits.fire or math.huge,
+							afterMetrics.maxHits.cold > 0 and afterMetrics.maxHits.cold or math.huge,
+							afterMetrics.maxHits.lightning > 0 and afterMetrics.maxHits.lightning or math.huge
+						)
+						if afterMinMaxHit == math.huge then
+							afterMinMaxHit = 0
+						end
+
+						local dpsGain = afterMetrics.dps - baseMetrics.dps
+						local dpsGainPct = baseMetrics.dps > 0 and (dpsGain / baseMetrics.dps) * 100 or 0
+						local ehpGain = afterMetrics.ehp - baseMetrics.ehp
+						local ehpGainPct = baseMetrics.ehp > 0 and (ehpGain / baseMetrics.ehp) * 100 or 0
+						local maxHitGain = afterMinMaxHit - baseMinMaxHit
+						local maxHitGainPct = baseMinMaxHit > 0 and (maxHitGain / baseMinMaxHit) * 100 or 0
+						local sustainGain = afterSustain - baseSustain
+						local pointCost = math.max(candidate.mainPointCost or 1, 1)
+
+						local tradeoffs = {}
+						if dpsGain < -0.5 then
+							t_insert(tradeoffs, string.format("%.1f%% DPS", dpsGainPct))
+						end
+						if ehpGain < -0.5 then
+							t_insert(tradeoffs, string.format("%.1f%% EHP", ehpGainPct))
+						end
+						if maxHitGain < -0.5 then
+							t_insert(tradeoffs, string.format("%.1f%% max hit", maxHitGainPct))
+						end
+
+						local rawPriorityScore = computePriorityScore(priority, dpsGainPct, ehpGainPct, maxHitGainPct, sustainGain)
+						local perPointScore = rawPriorityScore / pointCost
+						candidate.simulationStatus = "simulated"
+						candidate.simulatedDelta = {
+							priority = priority,
+							dpsGain = dpsGain,
+							dpsGainPct = dpsGainPct,
+							ehpGain = ehpGain,
+							ehpGainPct = ehpGainPct,
+							maxHitGain = maxHitGain,
+							maxHitGainPct = maxHitGainPct,
+							sustainGain = sustainGain,
+							perPointScore = perPointScore,
+						}
+						candidate.tradeoff = #tradeoffs > 0 and table.concat(tradeoffs, ", ") or nil
+						candidate.simulationRankScore = perPointScore * 100 + (candidate.goalScore or 0) * 0.1
+					end
+				end
+			end
+			byName[candidate.name] = {
+				simulatedDelta = candidate.simulatedDelta,
+				tradeoff = candidate.tradeoff,
+				simulationRankScore = candidate.simulationRankScore,
+				simulationStatus = candidate.simulationStatus,
+				simulationExcludedReason = candidate.simulationExcludedReason,
+			}
+		end
+	end
+
+	-- Restore the active build's global calculation cache after shadow simulations.
+	if build.calcsTab then
+		pcall(self.RebuildBuild, self, build)
+	end
+
+	table.sort(candidates, function(a, b)
+		local aSim = a.simulationRankScore or -1
+		local bSim = b.simulationRankScore or -1
+		if aSim ~= bSim then
+			return aSim > bSim
+		end
+		if a.goalScore ~= b.goalScore then
+			return a.goalScore > b.goalScore
+		end
+		if a.pathLength ~= b.pathLength then
+			return a.pathLength < b.pathLength
+		end
+		return a.name < b.name
+	end)
+
+	if fingerprint then
+		self.treeSimulationCache = {
+			byName = byName,
+			excluded = excluded,
+		}
+		self.treeSimulationFingerprint = fingerprint
+		self.treeSimulationKey = cacheKey
+	end
+
+	return candidates, excluded
 end
 
 --- Reject a requested allocation before it can over-spend the current build.
@@ -1009,7 +1225,20 @@ function AIBridge:SerializeBuild(build, context)
 				skillProfile,
 				explicitNodeNames
 			)
+		local excludedTreeCandidates
+		if skillProfile and context.simulatePassiveShortlist and not (projectsClass or projectsReset) then
+			availableNodes, excludedTreeCandidates = self:RankPassiveCandidatesBySimulation(
+				build,
+				availableNodes,
+				skillProfile,
+				context.planningPriority or "balanced",
+				context.fingerprint
+			)
+		end
 		state.tree.availableNodes = availableNodes
+		if excludedTreeCandidates and #excludedTreeCandidates > 0 then
+			state.tree.excludedSimulationCandidates = excludedTreeCandidates
+		end
 		if skillProfile then
 			state.tree.skillProfile = {
 				skillName = skillProfile.skillName,
@@ -1180,6 +1409,9 @@ function AIBridge:InvalidateBuildContext()
 	self.gemShortlistFingerprint = nil
 	self.uniqueShortlistCache = nil
 	self.uniqueShortlistFingerprint = nil
+	self.treeSimulationCache = nil
+	self.treeSimulationFingerprint = nil
+	self.treeSimulationKey = nil
 	self.lastMentions = nil
 	self.lastMentionsFingerprint = nil
 	self.activeBuildFingerprint = nil
@@ -2385,7 +2617,10 @@ function AIBridge:Ask(build, userMessage, callback, history, supersedesUnapplied
 	if planningSession.state == "tree" or planningSession.state == "tree_pending" then
 		initialContextOverrides = {
 			includeTreeCandidates = true,
+			simulatePassiveShortlist = true,
 			planningSkill = planningSession.confirmedBrief and planningSession.confirmedBrief.mainSkill or nil,
+			planningPriority = planningSession.confirmedBrief and planningSession.confirmedBrief.priority or "balanced",
+			fingerprint = requestFingerprint,
 		}
 	end
 

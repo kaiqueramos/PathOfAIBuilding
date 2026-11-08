@@ -225,4 +225,70 @@ describe("AI build brief", function()
 		assert.are.equal("tree", session.state)
 		assert.is_nil(session.pendingPassivePlan)
 	end)
+
+	it("ranks a bounded semantic passive shortlist by isolated PoB simulation and caches by fingerprint (US-006)", function()
+		local planning = LoadModule("Modules/AIPlanning")
+		local bridge = LoadModule("Modules/AIBridge")
+
+		build.characterLevel = 30
+		build.characterLevelAutoMode = false
+		build.spec:ResetNodes()
+		build.spec:SelectClass(assert(build.spec.tree.classNameMap.Witch))
+		build.spec:BuildAllDependsAndPaths()
+		local okSkill = bridge:ActionAddSkill(build, {
+			label = "Main",
+			gems = { { name = "Fireball", level = 8, quality = 0 } },
+		})
+		assert.is_true(okSkill)
+		assert.is_true((bridge:ActionSetMainSkill(build, { name = "Fireball" })))
+		assert.is_true((bridge:RebuildBuild(build)))
+
+		local profile = assert(planning:BuildSkillProfile(build, "Fireball"))
+		local mainLimit, ascLimit = bridge:GetPassivePointLimits(build)
+		local used, ascUsed = build.spec:CountAllocNodes()
+		local candidates = bridge:CollectTreeCandidates(
+			build.spec,
+			math.max(mainLimit - used, 0),
+			math.max(ascLimit - ascUsed, 0),
+			{},
+			profile
+		)
+		assert.is_true(#candidates > 0)
+
+		-- Inject one unreachable candidate to verify safe exclusion with a reason
+		table.insert(candidates, 1, {
+			name = "NonExistentSimulationNode",
+			type = "Notable",
+			stats = {},
+			pathLength = 2,
+			mainPointCost = 2,
+			ascendancyPointCost = 0,
+			goalScore = 200,
+			classification = "compatible",
+		})
+
+		local fp = assert(bridge:GetBuildFingerprint(build))
+		local rankedDamage, excluded = bridge:RankPassiveCandidatesBySimulation(
+			build,
+			candidates,
+			profile,
+			"damage",
+			fp,
+			6
+		)
+		assert.are.equal(1, #excluded)
+		assert.are.equal("NonExistentSimulationNode", excluded[1].name)
+		assert.is_truthy(excluded[1].reason:find("not reachable", 1, true))
+
+		local simulatedCount = 0
+		for _, c in ipairs(rankedDamage) do
+			if c.simulationStatus == "simulated" then
+				simulatedCount = simulatedCount + 1
+				assert.is_table(c.simulatedDelta)
+				assert.are.equal("damage", c.simulatedDelta.priority)
+			end
+		end
+		assert.is_true(simulatedCount > 0 and simulatedCount <= 6)
+		assert.are.equal(fp, bridge.treeSimulationFingerprint)
+	end)
 end)
