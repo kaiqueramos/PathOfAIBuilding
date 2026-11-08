@@ -145,6 +145,18 @@ local ASCENDANCY_POINT_STEPS = {
 	{ level = 1, points = 0 },
 }
 
+local function isPassiveOnlyBatch(actions)
+	if type(actions) ~= "table" or #actions == 0 then
+		return false
+	end
+	for _, action in ipairs(actions) do
+		if type(action) ~= "table" or action.type ~= "alloc_node" then
+			return false
+		end
+	end
+	return true
+end
+
 local function getChatCompletionURL(endpoint)
 	return endpoint:gsub("/+$", "") .. "/chat/completions"
 end
@@ -1402,6 +1414,8 @@ function AIBridge:GetBuildFingerprint(build)
 	if not ok or not snapshot then
 		return nil, "Could not snapshot the active build"
 	end
+	-- Strip the conversational <AIChat> XML section so saving messages never invalidates the build fingerprint.
+	snapshot = snapshot:gsub("<AIChat>[%s%S]-</AIChat>", ""):gsub("<AIChat%s*/>", "")
 
 	return sha1(tostring(build) .. "\0" .. snapshot)
 end
@@ -2618,13 +2632,21 @@ function AIBridge:Ask(build, userMessage, callback, history, supersedesUnapplied
 	planningSession = planningSession or AIPlanning:NewSession()
 	local initialContextOverrides
 	if planningSession.state == "tree" or planningSession.state == "tree_pending" then
-		initialContextOverrides = {
-			includeTreeCandidates = true,
-			simulatePassiveShortlist = true,
-			planningSkill = planningSession.confirmedBrief and planningSession.confirmedBrief.mainSkill or nil,
-			planningPriority = planningSession.confirmedBrief and planningSession.confirmedBrief.priority or "balanced",
-			fingerprint = requestFingerprint,
-		}
+		if not planningSession.passivePlanApplied then
+			initialContextOverrides = {
+				includeTreeCandidates = true,
+				simulatePassiveShortlist = true,
+				planningSkill = planningSession.confirmedBrief and planningSession.confirmedBrief.mainSkill or nil,
+				planningPriority = planningSession.confirmedBrief and planningSession.confirmedBrief.priority or "balanced",
+				fingerprint = requestFingerprint,
+			}
+		else
+			initialContextOverrides = {
+				planningSkill = planningSession.confirmedBrief and planningSession.confirmedBrief.mainSkill or nil,
+				planningPriority = planningSession.confirmedBrief and planningSession.confirmedBrief.priority or "balanced",
+				fingerprint = requestFingerprint,
+			}
+		end
 	end
 
 	local state, contextOrErr =
@@ -2702,12 +2724,18 @@ Emit set_level to the
 target level before other foundation actions when it changes the level. After adding the main
 skill group, emit set_main_skill so PoB calculates the intended skill.
 
-When the guided planning session state is tree or tree_pending, propose ONLY the passive tree plan
+When the guided planning session state is tree or tree_pending and passivePlanApplied is not true,
+propose ONLY the passive tree plan
 as a proposal turn with one actions block containing only alloc_node actions from
 tree.recommendedPlan (or tree.availableNodes when compatible/defensive). Do not include set_class,
 set_level, skills, items, or configuration actions in the passive tree stage. Present the exact
 node names, incremental path cost, cumulative point cost, and semantic reason. Never select a
 keystone unless the player explicitly requested it.
+
+Once passivePlanApplied is true (or in advisor mode), the player may ask for:
+- Complementary skills (auras, curses/marks, guard skills, movement skills, secondary setups): propose add_skill actions using exact canonical gem names from state.reference.gemNames (request "gems" context if omitted).
+- Recommended gear/items: explain best-in-slot starter uniques and rare stat priorities per slot, and propose equip_item actions with valid PoB item raw text (e.g. Rarity: RARE\nName\nBase\nImplicits: 0\n+50 to maximum Life\n+35% to Fire Resistance) when helpful.
+- Playstyle & leveling guide: provide skill rotation, single-target vs clear combo, aura/curse usage, defensive layers, and leveling progression.
 
 The simulated uniqueShortlist is a preselected sample, not an exhaustive proof about every
 unique in the catalog. If no entry improves both DPS and EHP, say "none among the tested
@@ -2851,7 +2879,8 @@ complete <actions> block for the requested change; never assume the previous pro
 				return
 			end
 			planningSession = foundationSession
-		elseif proposedActions and (planningSession.state == "tree" or planningSession.state == "tree_pending") then
+		elseif proposedActions and (planningSession.state == "tree" or planningSession.state == "tree_pending")
+			and (not planningSession.passivePlanApplied or isPassiveOnlyBatch(proposedActions)) then
 			local passivePlanSession, passivePlanError = AIPlanning:StorePassivePlan(
 				planningSession,
 				proposedActions,
@@ -3066,7 +3095,8 @@ complete <actions> block for the requested change; never assume the previous pro
 					fail("Invalid AI foundation proposal: " .. tostring(foundationError))
 					return
 				end
-			elseif proposedActions and (planningSession.state == "tree" or planningSession.state == "tree_pending") then
+			elseif proposedActions and (planningSession.state == "tree" or planningSession.state == "tree_pending")
+				and (not planningSession.passivePlanApplied or isPassiveOnlyBatch(proposedActions)) then
 				local passivePlanValid, passivePlanError = AIPlanning:ValidatePassivePlanActions(proposedActions)
 				if not passivePlanValid then
 					fail("Invalid AI passive plan proposal: " .. tostring(passivePlanError))

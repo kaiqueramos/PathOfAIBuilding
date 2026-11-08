@@ -369,6 +369,7 @@ function AIPlanning:CompletePassivePlan(session, fingerprint)
 	session.pendingPassivePlan = nil
 	session.passivePlanFingerprint = nil
 	session.fingerprint = fingerprint
+	session.passivePlanApplied = true
 	session.state = "tree"
 	return true
 end
@@ -926,6 +927,9 @@ function AIPlanning:GetPromptState(session)
 		for _, action in ipairs(session.pendingPassivePlan) do
 			t_insert(state.pendingPassivePlan, action)
 		end
+	end
+	if session.passivePlanApplied then
+		state.passivePlanApplied = true
 	end
 	return state
 end

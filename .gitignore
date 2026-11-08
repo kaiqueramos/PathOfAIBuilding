@@ -5,6 +5,7 @@
 .vscode/
 *.code-workspace
 inspect.lua
+HANDOFF.md
 
 # Development files
 *.lnk

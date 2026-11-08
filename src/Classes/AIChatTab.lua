@@ -217,21 +217,31 @@ function AIChatTabClass:AIChatTab(build)
 		self:ResetChat()
 	end)
 
-	self.controls.quickImprove = new("ButtonControl"):ButtonControl({"BOTTOMLEFT",self.controls.input,"TOPLEFT"}, {0, -6, 150, 22}, "How do I improve?", function()
+	self.controls.quickImprove = new("ButtonControl"):ButtonControl({"BOTTOMLEFT",self.controls.input,"TOPLEFT"}, {0, -6, 132, 22}, "How do I improve?", function()
 		self:SendMessage("How do I improve this build? Give me the top 3 highest-impact changes.")
 	end)
-	self.controls.quickUpgrade = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickImprove,"RIGHT"}, {6, 0, 145, 22}, "Next upgrade?", function()
+	self.controls.quickUpgrade = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickImprove,"RIGHT"}, {5, 0, 118, 22}, "Next upgrade?", function()
 		self:SendMessage("What is my best next upgrade considering cost vs impact?")
 	end)
-	self.controls.quickTank = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickUpgrade,"RIGHT"}, {6, 0, 135, 22}, "Can I tank?", function()
+	self.controls.quickTank = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickUpgrade,"RIGHT"}, {5, 0, 102, 22}, "Can I tank?", function()
 		self:SendMessage("Analyze my defenses. What can I tank and what will kill me?")
 	end)
-	self.controls.quickNewBuild = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickTank,"RIGHT"}, {6, 0, 155, 22}, "^x5CF0BB+ New Guided Build", function()
+	self.controls.quickSkills = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickTank,"RIGHT"}, {5, 0, 148, 22}, "Complementary Skills", function()
+		self:SendMessage("Propose complementary skills for this build (auras, curses/marks, guard skill, and movement skill) and add them with add_skill actions.")
+	end)
+	self.controls.quickGear = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickSkills,"RIGHT"}, {5, 0, 142, 22}, "Recommended Gear", function()
+		self:SendMessage("Recommend the best starter/upgrade items for each slot (uniques and rare stat priorities) and propose equip_item actions for key slots.")
+	end)
+	self.controls.quickGuide = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickGear,"RIGHT"}, {5, 0, 128, 22}, "Playstyle Guide", function()
+		self.saveGuideToNotesNext = true
+		self:SendMessage("Write a complete playstyle, skill rotation, leveling progression, and defensive mechanics guide for this build.")
+	end)
+	self.controls.quickNewBuild = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickGuide,"RIGHT"}, {5, 0, 145, 22}, "^x5CF0BB+ New Guided Build", function()
 		self.controls.input:SetText("Create a league starter build at level 30: ")
 		self.controls.send.enabled = true
 		self:SelectControl(self.controls.input)
 	end)
-	self.controls.quickTreePlan = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickNewBuild,"RIGHT"}, {6, 0, 170, 22}, "^2Plan Passive Tree ->", function()
+	self.controls.quickTreePlan = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickNewBuild,"RIGHT"}, {5, 0, 155, 22}, "^2Plan Passive Tree ->", function()
 		self:SendMessage("Propose my passive tree plan for this foundation.")
 	end)
 	self.controls.quickTreePlan.shown = function()
@@ -240,13 +250,13 @@ function AIChatTabClass:AIChatTab(build)
 
 	-- Option chips (shown when AI asks a clarification question with options)
 	self.optionButtons = {}
-	for idx = 1, 4 do
+	for idx = 1, 5 do
 		local anchor = idx == 1
 			and {"BOTTOMLEFT",self.controls.quickImprove,"TOPLEFT"}
 			or {"LEFT",self.optionButtons[idx - 1],"RIGHT"}
 		local offsetX = idx == 1 and 0 or 6
 		local offsetY = idx == 1 and -6 or 0
-		local btn = new("ButtonControl"):ButtonControl(anchor, {offsetX, offsetY, 180, 22}, "", function()
+		local btn = new("ButtonControl"):ButtonControl(anchor, {offsetX, offsetY, 170, 22}, "", function()
 			local choice = self.optionValues and self.optionValues[idx]
 			if choice and not self.pending then
 				self:SendMessage(choice)
@@ -327,6 +337,7 @@ end
 --- Populate clickable option buttons when the AI asks a clarification question.
 function AIChatTabClass:SetClarificationOptions(options)
 	self.optionValues = {}
+	local count = options and math.min(#options, 4) or 0
 	for idx = 1, 4 do
 		local btn = self.optionButtons and self.optionButtons[idx]
 		local opt = options and options[idx]
@@ -342,12 +353,24 @@ function AIChatTabClass:SetClarificationOptions(options)
 				if #shortLabel > 24 then
 					shortLabel = shortLabel:sub(1, 22) .. ".."
 				end
-				btn.label = "^x5CF0BB" .. idx .. ". ^7" .. shortLabel
-				btn.width = math.max(110, math.min(220, #shortLabel * 7 + 28))
+				btn.label = "^x5CF0BB[" .. idx .. "] ^7" .. shortLabel
+				btn.width = math.max(110, math.min(220, #shortLabel * 7 + 32))
 				btn.shown = true
 			else
 				btn.shown = false
 			end
+		end
+	end
+	local autoBtn = self.optionButtons and self.optionButtons[5]
+	if autoBtn then
+		if count > 0 then
+			local autoIndex = count + 1
+			self.optionValues[5] = "Choose the best option for me"
+			autoBtn.label = "^2[" .. autoIndex .. "] AI Decides (Recommended)"
+			autoBtn.width = 205
+			autoBtn.shown = true
+		else
+			autoBtn.shown = false
 		end
 	end
 end
@@ -380,11 +403,15 @@ function AIChatTabClass:SendMessage(text)
 	if self.pending then
 		return
 	end
-	self:SetClarificationOptions(nil)
-
 	local awaitingClarification = self.conversationSession
 		and self.conversationSession.state == "awaiting_user"
 	if awaitingClarification then
+		local numChoice = tonumber(text:match("^%s*(%d)%s*$"))
+		if numChoice and self.optionValues and self.optionValues[numChoice] then
+			text = self.optionValues[numChoice]
+		elseif numChoice and numChoice == (#(self.optionValues or {}) + 1) or (numChoice and self.optionValues and self.optionValues[5]) then
+			text = self.optionValues[numChoice] or self.optionValues[5] or text
+		end
 		local accepted, answerError = AIConversation:SubmitAnswer(self.conversationSession, text)
 		if not accepted then
 			self:AddMessage("system", "Error: " .. answerError)
@@ -394,6 +421,7 @@ function AIChatTabClass:SendMessage(text)
 	else
 		self.conversationSession = AIConversation:NewSession()
 	end
+	self:SetClarificationOptions(nil)
 	self.planningSession = self.planningSession or AIPlanning:NewSession()
 	if self.planningSession.state == "foundation_pending" then
 		self.planningSession.pendingFoundation = nil
@@ -561,7 +589,20 @@ function AIChatTabClass:SendRequest(text)
 			end
 
 			-- Transliterate only the display text.
-			self:StartStream(translit(displayText))
+			local cleanDisplay = translit(displayText)
+			self:StartStream(cleanDisplay)
+			if self.saveGuideToNotesNext then
+				self.saveGuideToNotesNext = false
+				if self.build and self.build.notesTab and self.build.notesTab.controls and self.build.notesTab.controls.edit then
+					local existingNotes = self.build.notesTab.controls.edit.buf or ""
+					local guideHeader = "^x5CF0BB=== AI Playstyle & Leveling Guide ===\n^7"
+					self.build.notesTab.controls.edit:SetText(
+						(#existingNotes > 0 and (existingNotes .. "\n\n") or "") .. guideHeader .. cleanDisplay
+					)
+					self.build.notesTab.modFlag = true
+					self:AddMessage("system", "^2Playstyle guide also saved to the 'Notes' tab.")
+				end
+			end
 			if actionError then
 				self:AddMessage("system", "Action proposal ignored: " .. actionError)
 				self.controls.status.label = "^1Action proposal ignored - ask again"
@@ -920,12 +961,33 @@ function AIChatTabClass:ApplyPassivePlan()
 			self.controls.status.label = "^1Passive plan applied but could not update state"
 		else
 			local completed, completeError = AIPlanning:CompletePassivePlan(self.planningSession, newFingerprint)
-			if not completed then
+			if completed then
+				self.controls.status.label = "^2Passive plan applied"
+				self.controls.input:SetPlaceholder("Use Complementary Skills, Recommended Gear, or Playstyle Guide below...")
+				if self.build and self.build.notesTab and self.build.notesTab.controls and self.build.notesTab.controls.edit then
+					local brief = self.planningSession and self.planningSession.confirmedBrief
+					if brief then
+						local existingNotes = self.build.notesTab.controls.edit.buf or ""
+						local summaryBlock = string.format(
+							"^x5CF0BB=== AI Guided Build: %s (%s / %s, Lv %d) ===\n^7Priority: ^2%s\n^7Passive tree stage applied (%d action(s)).\n",
+							tostring(brief.mainSkill),
+							tostring(brief.class),
+							tostring(brief.ascendancy),
+							tonumber(brief.targetLevel) or 1,
+							tostring(brief.priority),
+							#(report.results or {})
+						)
+						if not existingNotes:find("AI Guided Build:", 1, true) then
+							self.build.notesTab.controls.edit:SetText(
+								(#existingNotes > 0 and (existingNotes .. "\n\n") or "") .. summaryBlock
+							)
+							self.build.notesTab.modFlag = true
+						end
+					end
+				end
+			else
 				self:AddMessage("system", "Error: " .. completeError)
 				self.controls.status.label = "^1Passive plan applied but could not update state"
-			else
-				self.controls.status.label = "^2Passive plan applied"
-				self.controls.input:SetPlaceholder("Ask about your build or next passive steps...")
 			end
 		end
 	end
@@ -934,12 +996,65 @@ function AIChatTabClass:ApplyPassivePlan()
 	self.controls.applyPassivePlan.enabled = true
 end
 
---- Load/Save (no persistence for chat history - session only)
+--- Load/Save chat history and local planning state in the build XML (<AIChat> section)
 function AIChatTabClass:Load(xml, dbFileName)
+	self.messages = {}
+	self.conversationSession = nil
+	self.planningSession = nil
+	for _, node in ipairs(xml or {}) do
+		if type(node) == "table" then
+			if node.elem == "Message" and node.attrib and node.attrib.role then
+				local text = node[1] or node.attrib.text or ""
+				t_insert(self.messages, {
+					role = node.attrib.role,
+					text = text,
+					full = text,
+				})
+			elseif node.elem == "Session" and type(node[1]) == "string" then
+				local decoded = dkjson.decode(node[1])
+				if type(decoded) == "table" then
+					if type(decoded.conversation) == "table" then
+						self.conversationSession = decoded.conversation
+					end
+					if type(decoded.planning) == "table" then
+						self.planningSession = decoded.planning
+					end
+				end
+			end
+		end
+	end
+	self:RefreshHistory()
+	self.modFlag = false
 	return false
 end
 
 function AIChatTabClass:Save(xml)
+	if not xml then
+		return
+	end
+	for _, msg in ipairs(self.messages or {}) do
+		local content = msg.full or msg.text or ""
+		if content ~= "" then
+			t_insert(xml, {
+				elem = "Message",
+				attrib = { role = msg.role or "system" },
+				[1] = content,
+			})
+		end
+	end
+	if self.conversationSession or self.planningSession then
+		local sessionJson = dkjson.encode({
+			conversation = self.conversationSession,
+			planning = self.planningSession,
+		}, { indent = false })
+		if sessionJson then
+			t_insert(xml, {
+				elem = "Session",
+				[1] = sessionJson,
+			})
+		end
+	end
+	self.modFlag = false
 end
 
 function AIChatTabClass:Draw(viewPort, inputEvents)
