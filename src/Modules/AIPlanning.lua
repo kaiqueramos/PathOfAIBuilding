@@ -936,7 +936,7 @@ function AIPlanning:FormatBrief(brief)
 		return "^1Invalid build direction"
 	end
 	local lines = {
-		"^x5CF0BB=== Build Direction Summary ===",
+		"^x5CF0BB=== Build direction ===",
 		"^7Class: ^2" .. brief.class .. " ^8/ ^2" .. brief.ascendancy,
 		"^7Main skill: ^2" .. brief.mainSkill,
 		"^7Target level: ^2" .. brief.targetLevel .. " ^8| ^7Priority: ^2" .. brief.priority,
