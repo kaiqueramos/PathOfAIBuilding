@@ -13,6 +13,7 @@ local t_remove = table.remove
 local dkjson = require "dkjson"
 local sha1 = require "sha1"
 local AIConfig = LoadModule("Modules/AIConfig")
+local AIConversation = LoadModule("Modules/AIConversation")
 local AIBridge = {
 	pending = false,
 	lastError = nil,
@@ -2278,7 +2279,8 @@ end
 -- @param callback function(response, errMsg, fingerprint) called with the result
 -- @param history optional array of prior {role, content} messages
 -- @param supersedesUnappliedActions whether this request replaces a proposal that was not applied
-function AIBridge:Ask(build, userMessage, callback, history, supersedesUnappliedActions)
+-- @param conversationSession optional local AIConversation session
+function AIBridge:Ask(build, userMessage, callback, history, supersedesUnappliedActions, conversationSession)
 	if self.pending then
 		callback(nil, "Request already in progress")
 		return
@@ -2296,6 +2298,12 @@ function AIBridge:Ask(build, userMessage, callback, history, supersedesUnapplied
 		return
 	end
 	self:SyncBuildFingerprint(requestFingerprint)
+	local sessionError
+	conversationSession, sessionError = AIConversation:BeginRequest(conversationSession, requestFingerprint)
+	if not conversationSession then
+		callback(nil, sessionError)
+		return
+	end
 
 	local state, contextOrErr = self:BuildQuestionState(build, userMessage, requestFingerprint)
 	if not state then
@@ -2309,7 +2317,7 @@ function AIBridge:Ask(build, userMessage, callback, history, supersedesUnapplied
 
 	local systemPrompt = [[You are an expert Path of Exile 1 build advisor integrated into Path of Building.
 You have access to the player's current core build state and selected optional context.
-You can DIRECTLY MODIFY the build by emitting actions; you are not just an advisor.
+You can propose typed build changes, but PoB validates them and the player explicitly decides whether to apply them.
 Give specific, actionable advice with numbers. Reference actual stats from the build.
 When suggesting changes, explain the expected impact (e.g. "+15% DPS", "+200 life").
 Be concise. Use PoB color codes: ^2=green/good, ^1=red/bad, ^7=white, ^8=gray.
@@ -2329,6 +2337,17 @@ Never include prose with a context request. Do not include actions either: if yo
 the bridge safely discards them, obtains the requested PoB data, and repeats the original
 question automatically. If escalationRemaining is 0, do not request more context; answer
 from the available evidence and state any limitation.
+
+Every final response after sufficient context MUST include exactly one valid JSON object in this block:
+<turn>
+{"next":"answer|clarify|proposal","goal":"short semantic goal","reason":"short explanation"}
+</turn>
+Use answer for read-only advice. Use clarify only when a missing player decision would materially
+change the result; do not ask for information already present in the build state or conversation.
+A clarify turn MUST include question.id and question.prompt, and may include question.options.
+Use proposal when presenting a change. Only proposal turns may include an actions block. Clarify
+and answer turns MUST NOT include actions. If the player must choose between meaningful tradeoffs,
+ask one focused clarification instead of silently assuming a preference.
 
 The simulated uniqueShortlist is a preselected sample, not an exhaustive proof about every
 unique in the catalog. If no entry improves both DPS and EHP, say "none among the tested
@@ -2357,13 +2376,16 @@ numeric ID. If treeCandidates is false, request the "tree" context before propos
 If state.context.actionRecovery is present, the previous action batch was rejected because its
 tree data did not match the requested class/reset/plan. Replace it with one complete, ordered
 batch using the supplied projected candidates and plan.
-When the user asks you to make a change (allocate, level up, change class, add a skill, etc.),
-DO IT by emitting actions. Don't tell the user to do it manually - you can do it for them.
-Never claim the build changed unless you emit a valid actions block. End your message with one
-actions block on its own line, exactly like this (valid JSON array):
+When enough evidence exists and no material player decision is missing, propose requested changes
+with a proposal turn. Do not tell the player to do work that a valid proposal can do.
+Never claim the build changed unless you emit a valid actions block inside a proposal turn.
+End the final response with its one turn block, exactly like this:
 <actions>
 [{"type":"set_level","value":100},{"type":"alloc_node","name":"Resolute Technique"}]
 </actions>
+<turn>
+{"next":"proposal","goal":"improve damage","reason":"validated change proposal"}
+</turn>
 
 Supported action types:
 - {"type":"set_level","value":<1-100>}  -- change character level
@@ -2428,18 +2450,28 @@ complete <actions> block for the requested change; never assume the previous pro
 		.. "Authorization: Bearer " .. AIConfig:GetAPIKey()
 
 	local function fail(message)
+		AIConversation:AbortRequest(conversationSession)
 		self.pending = false
 		self.lastError = message
 		callback(nil, message)
 	end
 
-	local function complete(content, finalState)
+	local function complete(content, finalState, turn, mentionContent)
+		local turnApplied, turnError = AIConversation:ApplyTurn(
+			conversationSession,
+			turn,
+			requestFingerprint
+		)
+		if not turnApplied then
+			fail("Invalid AI dialogue turn: " .. tostring(turnError))
+			return
+		end
 		self.pending = false
 		self.lastError = nil
 		self.lastResponse = content
-		self.lastMentions = self:ExtractMentions(content, finalState)
+		self.lastMentions = self:ExtractMentions(mentionContent or content, finalState)
 		self.lastMentionsFingerprint = requestFingerprint
-		callback(content, nil, requestFingerprint)
+		callback(content, nil, requestFingerprint, turn)
 	end
 
 	local function buildRequest(currentState)
@@ -2454,6 +2486,14 @@ complete <actions> block for the requested change; never assume the previous pro
 				.. mentionDetails
 		end
 		userPrompt = userPrompt .. "\n\nPlayer question: " .. userMessage
+		local conversationJson, conversationEncodeError = dkjson.encode(
+			AIConversation:GetPromptState(conversationSession),
+			{ indent = false }
+		)
+		if not conversationJson then
+			return nil, nil, "Could not encode conversation state: " .. tostring(conversationEncodeError)
+		end
+		userPrompt = userPrompt .. "\n\nConversation session (JSON):\n" .. conversationJson
 
 		local messages = {
 			{ role = "system", content = systemPrompt },
@@ -2525,6 +2565,11 @@ complete <actions> block for the requested change; never assume the previous pro
 			local lowerContent = content:lower()
 			local hasActionMarker = lowerContent:find("<actions", 1, true)
 				or lowerContent:find("</actions", 1, true)
+			if lowerContent:find("<context_request", 1, true)
+				and AIConversation:HasTurnMarker(content) then
+				fail("AI context request cannot include a turn block")
+				return
+			end
 			local _, requestedScopes, contextRequestError =
 				self:ParseContextRequest(content, hasActionMarker)
 			if contextRequestError then
@@ -2543,6 +2588,7 @@ complete <actions> block for the requested change; never assume the previous pro
 					fail("Invalid AI context request: " .. scopeError)
 					return
 				end
+				AIConversation:RecordContextExpansion(conversationSession, missingScopes)
 
 				local expandedState, expandedContextOrError = self:BuildQuestionState(
 					build,
@@ -2571,15 +2617,40 @@ complete <actions> block for the requested change; never assume the previous pro
 				return
 			end
 
-			local displayText, proposedActions, actionParseError = self:ParseActions(content)
+			local turnContent, turn, turnError = AIConversation:ParseTurn(content)
+			if turnError then
+				fail("Invalid AI dialogue turn: " .. turnError)
+				return
+			end
+			local displayText, proposedActions, actionParseError = self:ParseActions(turnContent)
+			if proposedActions and turn.next ~= "proposal" then
+				fail("AI returned actions outside a proposal turn")
+				return
+			end
+			if actionParseError and turn.next ~= "proposal" then
+				fail("AI returned an action block outside a proposal turn")
+				return
+			end
+			if actionParseError then
+				local rejectedTurn = {
+					next = "answer",
+					goal = turn.goal,
+					reason = "Action block failed local validation",
+				}
+				complete(turnContent, currentState, rejectedTurn, displayText)
+				return
+			end
 			local treeActionsValid, treeActionError =
 				self:ValidateTreeActionReferences(proposedActions, currentState)
 			if not actionParseError and proposedActions and not treeActionsValid then
 				if expansionsUsed >= 1 then
-					complete(
-						displayText .. "\n\n^1Action proposal ignored: " .. treeActionError,
-						currentState
-					)
+					local rejectedText = displayText .. "\n\n^1Action proposal ignored: " .. treeActionError
+					local rejectedTurn = {
+						next = "answer",
+						goal = turn.goal,
+						reason = "Tree action proposal failed local validation",
+					}
+					complete(rejectedText, currentState, rejectedTurn, rejectedText)
 					return
 				end
 
@@ -2614,8 +2685,7 @@ complete <actions> block for the requested change; never assume the previous pro
 				return
 			end
 
-
-			complete(content, currentState)
+			complete(turnContent, currentState, turn, displayText)
 		end
 		local function onResponse(response, errMsg)
 			if responseHandled then

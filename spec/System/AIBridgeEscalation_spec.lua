@@ -36,6 +36,16 @@ local function availableScopeNames(state)
 	return names
 end
 
+local function answerTurn(text)
+	return text
+		.. '\n<turn>{"next":"answer","goal":"answer question","reason":"sufficient PoB context"}</turn>'
+end
+
+local function proposalTurn(text)
+	return text
+		.. '\n<turn>{"next":"proposal","goal":"change the build","reason":"validated proposal"}</turn>'
+end
+
 local function withMockedTransport(bridge, responder, run)
 	local aiConfig = findUpvalue(bridge.Ask, "AIConfig")
 	assert.is_table(aiConfig)
@@ -184,7 +194,7 @@ describe("AI context escalation", function()
 			if attempt == 1 then
 				return '<context_request>["config"]</context_request>'
 			end
-			return "Final answer with real config context"
+			return answerTurn("Final answer with real config context")
 		end, function(requests)
 			bridge:Ask(build, "Explain this build", function(content, err)
 				callbackCount = callbackCount + 1
@@ -231,7 +241,7 @@ describe("AI context escalation", function()
 					.. '<context_request>["config"]</context_request>\n'
 					.. "Then I will provide the recommendation."
 			end
-			return "Final answer after context recovery"
+			return answerTurn("Final answer after context recovery")
 		end, function(requests)
 			bridge:Ask(build, "Explain this build", function(content, err)
 				callbackContent = content
@@ -280,7 +290,7 @@ describe("AI context escalation", function()
 				return '<context_request>["config"]</context_request>\n'
 					.. '<actions>[{"type":"set_level","value":100}]</actions>'
 			end
-			return "Final answer after discarding intermediate actions"
+			return answerTurn("Final answer after discarding intermediate actions")
 		end, function(requests)
 			bridge:Ask(build, "Explain this build", function(content, err)
 				callbackContent = content
@@ -304,10 +314,10 @@ describe("AI context escalation", function()
 
 		withMockedTransport(bridge, function(attempt, request)
 			if attempt == 1 then
-				return "I will allocate the tree.\n"
-					.. '<actions>[{"type":"alloc_node","id":21050}]</actions>'
+				return proposalTurn("I will allocate the tree.\n"
+					.. '<actions>[{"type":"alloc_node","id":21050}]</actions>')
 			end
-			return "Recovered after receiving tree candidates."
+			return answerTurn("Recovered after receiving tree candidates.")
 		end, function(requests)
 			bridge:Ask(build, "Explain this build", function(content, err)
 				callbackContent = content
@@ -364,5 +374,116 @@ describe("AI context escalation", function()
 
 		assert.is_truthy(callbackError:find("changed while preparing additional", 1, true))
 		assert.is_false(bridge.pending)
+	end)
+
+	it("requires a final dialogue turn before exposing an answer", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local callbackContent
+		local callbackError
+
+		withMockedTransport(bridge, function()
+			return "This response has no turn envelope."
+		end, function(requests)
+			bridge:Ask(build, "Explain this build", function(content, err)
+				callbackContent = content
+				callbackError = err
+			end, {})
+			assert.are.equal(1, #requests)
+		end)
+
+		assert.is_nil(callbackContent)
+		assert.is_truthy(callbackError:find("missing a turn block", 1, true))
+		assert.is_false(bridge.pending)
+	end)
+
+	it("rejects actions attached to an answer turn", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local callbackError
+
+		withMockedTransport(bridge, function()
+			return "Do this.\n<actions>[{\"type\":\"set_level\",\"value\":100}]</actions>\n"
+				.. '<turn>{"next":"answer","goal":"give advice","reason":"enough context"}</turn>'
+		end, function()
+			bridge:Ask(build, "Explain this build", function(_, err)
+				callbackError = err
+			end, {})
+		end)
+
+		assert.is_truthy(callbackError:find("outside a proposal turn", 1, true))
+		assert.is_false(bridge.pending)
+	end)
+
+
+	it("rejects actions attached to a clarification turn", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local originalLevel = build.characterLevel
+		local callbackContent
+		local callbackError
+
+		withMockedTransport(bridge, function()
+			return "Choose one.\n<actions>[{\"type\":\"set_level\",\"value\":100}]</actions>\n"
+				.. '<turn>{"next":"clarify","goal":"choose priority","reason":"a preference is missing",'
+				.. '"question":{"id":"priority","prompt":"Damage or defense?"}}</turn>'
+		end, function()
+			bridge:Ask(build, "Improve this build", function(content, err)
+				callbackContent = content
+				callbackError = err
+			end, {})
+		end)
+
+		assert.is_nil(callbackContent)
+		assert.is_truthy(callbackError:find("outside a proposal turn", 1, true))
+		assert.are.equal(originalLevel, build.characterLevel)
+		assert.is_false(bridge.pending)
+	end)
+
+	it("downgrades a malformed proposal action block to read-only advice", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local conversation = LoadModule("Modules/AIConversation")
+		local session = conversation:NewSession()
+		local callbackTurn
+		local callbackError
+
+		withMockedTransport(bridge, function()
+			return 'Use level 100.\n<actions>{"type":"set_level","value":100}</actions>\n'
+				.. '<turn>{"next":"proposal","goal":"raise level","reason":"valid upgrade"}</turn>'
+		end, function()
+			bridge:Ask(build, "Improve this build", function(_, err, _, turn)
+				callbackError = err
+				callbackTurn = turn
+			end, {}, false, session)
+		end)
+
+		assert.is_nil(callbackError)
+		assert.are.equal("answer", callbackTurn.next)
+		assert.are.equal("ready", session.state)
+		assert.is_false(bridge.pending)
+	end)
+	it("returns a validated clarification turn and keeps its session local", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local conversation = LoadModule("Modules/AIConversation")
+		local session = conversation:NewSession()
+		local callbackContent
+		local callbackTurn
+		local callbackError
+
+		withMockedTransport(bridge, function()
+			return "I need one preference before proposing a change.\n"
+				.. '<turn>{"next":"clarify","goal":"choose priority","reason":"damage and defense trade off",'
+				.. '"question":{"id":"priority","prompt":"Prioritize damage or defense?",'
+				.. '"options":["damage","defense"]}}</turn>'
+		end, function()
+			bridge:Ask(build, "Improve this build", function(content, err, _, turn)
+				callbackContent = content
+				callbackError = err
+				callbackTurn = turn
+			end, {}, false, session)
+		end)
+
+		assert.is_nil(callbackError)
+		assert.are.equal("I need one preference before proposing a change.", callbackContent)
+		assert.are.equal("clarify", callbackTurn.next)
+		assert.are.equal("awaiting_user", session.state)
+		assert.are.equal("priority", session.pendingQuestion.id)
 	end)
 end)

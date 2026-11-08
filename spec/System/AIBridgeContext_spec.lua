@@ -20,6 +20,19 @@ local function findUpvalue(fn, targetName)
 	end
 end
 
+local function answerResponse(text)
+	return assert(dkjson.encode({
+		choices = {
+			{
+				message = {
+					content = text
+						.. '\n<turn>{"next":"answer","goal":"answer question","reason":"sufficient PoB context"}</turn>',
+				},
+			},
+		},
+	}))
+end
+
 describe("AI question context", function()
 	it("classifies compact and specialized questions deterministically", function()
 		local bridge = LoadModule("Modules/AIBridge")
@@ -456,7 +469,7 @@ describe("AI selective build serialization", function()
 		launch.DownloadPage = function(_, _, callback, options)
 			capturedOptions = options
 			callback({
-				body = '{"choices":[{"message":{"content":"Selective context OK"}}]}',
+				body = answerResponse("Selective context OK"),
 			}, nil)
 		end
 
@@ -541,7 +554,7 @@ describe("AI selective build serialization", function()
 
 		launch.DownloadPage = function(_, _, callback)
 			callback({
-				body = '{"choices":[{"message":{"content":"Recovered"}}]}',
+				body = answerResponse("Recovered"),
 			}, nil)
 			return 1
 		end
@@ -644,7 +657,7 @@ describe("AI selective build serialization", function()
 		launch.DownloadPage = function(_, _, callback, options)
 			capturedOptions = options
 			callback({
-				body = '{"choices":[{"message":{"content":"Direct answer"}}]}',
+				body = answerResponse("Direct answer"),
 			}, nil)
 		end
 

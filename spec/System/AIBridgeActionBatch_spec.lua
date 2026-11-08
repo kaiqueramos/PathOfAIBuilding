@@ -133,7 +133,11 @@ describe("AI safe action batch", function()
 Use level 97 instead.
 <actions>
 [{"type":"set_level","value":97}]
-</actions>]], nil, assert(bridge:GetBuildFingerprint(build)))
+</actions>]], nil, assert(bridge:GetBuildFingerprint(build)), {
+				next = "proposal",
+				goal = "correct the level",
+				reason = "player requested a correction",
+			})
 		end
 
 		local ok, err = pcall(function()
@@ -159,7 +163,11 @@ Use level 97 instead.
 
 		bridge.Ask = function(_, _, _, callback)
 			callback('Use level 97 instead.\n<actions>{"type":"set_level","value":97}</actions>', nil,
-				assert(bridge:GetBuildFingerprint(build)))
+				assert(bridge:GetBuildFingerprint(build)), {
+					next = "proposal",
+					goal = "correct the level",
+					reason = "player requested a correction",
+				})
 		end
 		local ok, err = pcall(function()
 			chat:SendMessage("Correct the previous suggestion.")
@@ -209,7 +217,11 @@ Use level 97 instead.
 
 		bridge.Ask = function(_, _, _, callback)
 			requestCount = requestCount + 1
-			callback(requestCount == 1 and "First complete reply." or "Second complete reply.", nil)
+			callback(requestCount == 1 and "First complete reply." or "Second complete reply.", nil, nil, {
+				next = "answer",
+				goal = "answer question",
+				reason = "sufficient PoB context",
+			})
 		end
 		local ok, err = pcall(function()
 			chat:SendMessage("First question.")
@@ -243,5 +255,61 @@ Use level 97 instead.
 		assert.is_false(bridge.pending)
 		assert.are.equal("^1Request failed", chat.controls.status.label)
 		assert.is_truthy(chat.messages[#chat.messages].text:find("AI request crashed", 1, true))
+	end)
+
+	it("keeps a clarification answer in the same local conversation session", function()
+		local chat = build.aiChatTab
+		local bridge = assert(findUpvalue(chat.SendMessage, "AIBridge"))
+		local conversation = LoadModule("Modules/AIConversation")
+		local originalAsk = bridge.Ask
+		local requestCount = 0
+		local firstSession
+
+		bridge.Ask = function(_, _, _, callback, _, _, session)
+			requestCount = requestCount + 1
+			local fingerprint = assert(bridge:GetBuildFingerprint(build))
+			assert(conversation:BeginRequest(session, fingerprint))
+			if requestCount == 1 then
+				firstSession = session
+				local turn = {
+					next = "clarify",
+					goal = "choose priority",
+					reason = "damage and defense trade off",
+					question = {
+						id = "priority",
+						prompt = "Prioritize damage or defense?",
+						options = { "damage", "defense" },
+					},
+				}
+				assert.is_true(conversation:ApplyTurn(session, turn, fingerprint))
+				callback("I need one preference.", nil, fingerprint, turn)
+				return
+			end
+
+			assert.are.equal(firstSession, session)
+			assert.are.equal("defense", session.constraints.priority)
+			local turn = {
+				next = "answer",
+				goal = "recommend next upgrade",
+				reason = "priority is now known",
+			}
+			assert.is_true(conversation:ApplyTurn(session, turn, fingerprint))
+			callback("Prioritize defensive upgrades first.", nil, fingerprint, turn)
+		end
+
+		local ok, err = pcall(function()
+			chat:SendMessage("How should I improve this build?")
+			chat:FinishStream()
+			chat:SendMessage("defense")
+			chat:FinishStream()
+		end)
+		bridge.Ask = originalAsk
+
+		assert(ok, err)
+		assert.are.equal(2, requestCount)
+		assert.are.equal("ready", firstSession.state)
+		assert.are.equal("^2Ready", chat.controls.status.label)
+		assert.is_truthy(chat.messages[2].full:find("Prioritize damage or defense?", 1, true))
+		assert.are.equal("Prioritize defensive upgrades first.", chat.messages[#chat.messages].full)
 	end)
 end)

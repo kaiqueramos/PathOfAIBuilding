@@ -6,6 +6,7 @@
 local t_insert = table.insert
 local dkjson = require "dkjson"
 local AIBridge = LoadModule("Modules/AIBridge")
+local AIConversation = LoadModule("Modules/AIConversation")
 
 -- Transliterate accented characters to ASCII.
 -- Handles both:
@@ -165,6 +166,7 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 	self.streamPos = 0
 	self.pendingActions = nil  -- actions parsed from last AI response
 	self.pendingActionsFingerprint = nil
+	self.conversationSession = nil
 
 	-- === TOP: header + build summary ===
 	self.controls.header = new("LabelControl", {"TOPLEFT",self,"TOPLEFT"}, {8, 8, 0, 16}, "^7AI Build Advisor")
@@ -244,6 +246,19 @@ function AIChatTabClass:SendMessage(text)
 		return
 	end
 
+	local awaitingClarification = self.conversationSession
+		and self.conversationSession.state == "awaiting_user"
+	if awaitingClarification then
+		local accepted, answerError = AIConversation:SubmitAnswer(self.conversationSession, text)
+		if not accepted then
+			self:AddMessage("system", "Error: " .. answerError)
+			self.controls.status.label = "^1Clarification could not be recorded"
+			return
+		end
+	else
+		self.conversationSession = AIConversation:NewSession()
+	end
+
 	self:AddMessage("user", text)
 	self.controls.input:SetText("")
 	self.controls.send.enabled = false
@@ -279,6 +294,7 @@ function AIChatTabClass:SendMessage(text)
 		self.controls.quickTank.enabled = true
 	end
 	local function showRequestFailure(message)
+		AIConversation:AbortRequest(self.conversationSession)
 		resetRequestState()
 		self.pendingActions = nil
 		self.pendingActionsFingerprint = nil
@@ -286,7 +302,7 @@ function AIChatTabClass:SendMessage(text)
 		self:AddMessage("system", "Error: " .. message)
 		self.controls.status.label = "^1Request failed"
 	end
-	local function handleResponse(response, errMsg, responseFingerprint)
+	local function handleResponse(response, errMsg, responseFingerprint, turn)
 		if responseHandled then
 			return
 		end
@@ -296,19 +312,43 @@ function AIChatTabClass:SendMessage(text)
 				showRequestFailure(errMsg)
 				return
 			end
+			if not turn then
+				showRequestFailure("AI response is missing a validated dialogue turn")
+				return
+			end
 
 			resetRequestState()
-			-- Parse actions FIRST (before translit to avoid corrupting JSON)
+			-- Parse actions FIRST (before translit to avoid corrupting JSON).
 			local displayText, actions, actionError = AIBridge:ParseActions(response)
 			self.pendingActions = actions
 			self.pendingActionsFingerprint = actions and #actions > 0 and responseFingerprint or nil
 			self.controls.applyActions.shown = (actions ~= nil and #actions > 0)
 			ConPrintf("[AIChat] Parsed %d actions, shown=%s", actions and #actions or 0, tostring(self.controls.applyActions.shown))
-			-- Transliterate only the display text
+
+			if turn.next == "clarify" then
+				local question = turn.question
+				local lines = { displayText }
+				if #lines[1] == 0 then
+					lines[1] = "^7" .. question.prompt
+				else
+					t_insert(lines, "^7" .. question.prompt)
+				end
+				if question.options and #question.options > 0 then
+					t_insert(lines, "^8Options: " .. table.concat(question.options, " / "))
+				end
+				displayText = table.concat(lines, "\n\n")
+				self.controls.input:SetPlaceholder("Answer: " .. translit(question.prompt))
+			else
+				self.controls.input:SetPlaceholder("Ask about your build...")
+			end
+
+			-- Transliterate only the display text.
 			self:StartStream(translit(displayText))
 			if actionError then
 				self:AddMessage("system", "Action proposal ignored: " .. actionError)
 				self.controls.status.label = "^1Action proposal ignored - ask again"
+			elseif turn.next == "clarify" then
+				self.controls.status.label = "^7Clarification needed"
 			else
 				self.controls.status.label = self.controls.applyActions.shown
 					and "^2Ready - actions available below" or "^2Ready"
@@ -326,7 +366,8 @@ function AIChatTabClass:SendMessage(text)
 		text,
 		handleResponse,
 		history,
-		supersedesUnappliedActions
+		supersedesUnappliedActions,
+		self.conversationSession
 	)
 	if not started and not responseHandled then
 		AIBridge.pending = false
@@ -484,6 +525,7 @@ function AIChatTabClass:ApplyPendingActions()
 
 	self.pendingActions = nil
 	self.pendingActionsFingerprint = nil
+	self.conversationSession = nil
 	self.controls.applyActions.shown = false
 	self.controls.applyActions.enabled = true
 	ConPrintf("[AIChat] Apply complete: ok=%s applied=%s",
