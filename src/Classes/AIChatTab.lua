@@ -238,6 +238,11 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 	end)
 	self.controls.applyFoundation.shown = false
 
+	self.controls.applyPassivePlan = new("ButtonControl", {"TOPRIGHT",self,"TOPRIGHT"}, {-8, 8, 160, 22}, "^2Apply Passive Plan", function()
+		self:ApplyPassivePlan()
+	end)
+	self.controls.applyPassivePlan.shown = false
+
 	-- === MIDDLE: chat history fills remaining space (READ-ONLY) ===
 	self.controls.history = new("EditControl", {"TOPLEFT",self.controls.summary,"BOTTOMLEFT"}, {0, 8, 0, 0}, "", nil, "^%C\t\n", nil, nil, 16, true)
 	self.controls.history.width = function()
@@ -280,6 +285,12 @@ function AIChatTabClass:SendMessage(text)
 		self.planningSession.foundationFingerprint = nil
 		self.planningSession.state = "brief_confirmed"
 		self.controls.applyFoundation.shown = false
+	end
+	if self.planningSession.state == "tree_pending" then
+		self.planningSession.pendingPassivePlan = nil
+		self.planningSession.passivePlanFingerprint = nil
+		self.planningSession.state = "tree"
+		self.controls.applyPassivePlan.shown = false
 	end
 	if self.planningSession.state == "brief_pending" then
 		AIPlanning:ReviseBrief(self.planningSession)
@@ -333,6 +344,7 @@ function AIChatTabClass:SendRequest(text)
 	local function showRequestFailure(message)
 		AIConversation:AbortRequest(self.conversationSession)
 		self.controls.applyFoundation.shown = false
+		self.controls.applyPassivePlan.shown = false
 		resetRequestState()
 		self.pendingActions = nil
 		self.pendingActionsFingerprint = nil
@@ -386,6 +398,7 @@ function AIChatTabClass:SendRequest(text)
 				self.pendingActions = nil
 				self.pendingActionsFingerprint = nil
 				self.controls.applyActions.shown = false
+				self.controls.applyPassivePlan.shown = false
 				self.controls.applyFoundation.shown = true
 				self.controls.input:SetPlaceholder("Use Apply Foundation or describe a revision...")
 				self.controls.status.label = "^7Review build foundation"
@@ -393,6 +406,17 @@ function AIChatTabClass:SendRequest(text)
 				return
 			end
 			self.controls.applyFoundation.shown = false
+			if planningState == "tree_pending" then
+				self.pendingActions = nil
+				self.pendingActionsFingerprint = nil
+				self.controls.applyActions.shown = false
+				self.controls.applyPassivePlan.shown = true
+				self.controls.input:SetPlaceholder("Use Apply Passive Plan or describe a revision...")
+				self.controls.status.label = "^7Review passive plan"
+				self:StartStream(translit(displayText))
+				return
+			end
+			self.controls.applyPassivePlan.shown = false
 
 			if brief then
 				self.pendingActions = nil
@@ -725,6 +749,59 @@ function AIChatTabClass:ApplyFoundation()
 
 	self.controls.applyFoundation.shown = false
 	self.controls.applyFoundation.enabled = true
+end
+
+--- Apply the proposed passive tree plan without automatically requesting the next stage.
+function AIChatTabClass:ApplyPassivePlan()
+	if self.pending then
+		return
+	end
+	if not self.planningSession or self.planningSession.state ~= "tree_pending"
+		or not self.planningSession.pendingPassivePlan then
+		self:AddMessage("system", "Error: No passive plan is awaiting application")
+		self.controls.status.label = "^1No passive plan to apply"
+		return
+	end
+
+	local fingerprint, fingerprintError = AIBridge:GetBuildFingerprint(self.build)
+	if not fingerprint then
+		self:AddMessage("system", "Error: " .. tostring(fingerprintError))
+		self.controls.status.label = "^1Could not apply passive plan"
+		return
+	end
+
+	self.controls.applyPassivePlan.enabled = false
+	local report = self:RunActionBatch(
+		self.planningSession.pendingPassivePlan,
+		fingerprint,
+		{
+			okHeader = "Applied passive plan",
+			failHeader = "Passive plan not applied",
+			okStatus = "^2Passive plan applied",
+			failLine = "^1No passive plan changes were applied",
+			failStatus = "^1Passive plan not applied",
+		}
+	)
+
+	if report.ok then
+		local newFingerprint, newFingerprintError = AIBridge:GetBuildFingerprint(self.build)
+		if not newFingerprint then
+			self:AddMessage("system", "Error: " .. tostring(newFingerprintError))
+			self.controls.status.label = "^1Passive plan applied but could not update state"
+		else
+			local completed, completeError = AIPlanning:CompletePassivePlan(self.planningSession, newFingerprint)
+			if not completed then
+				self:AddMessage("system", "Error: " .. completeError)
+				self.controls.status.label = "^1Passive plan applied but could not update state"
+			else
+				self.controls.status.label = "^2Passive plan applied"
+				self.controls.input:SetPlaceholder("Ask about your build or next passive steps...")
+			end
+		end
+	end
+
+	self.controls.applyPassivePlan.shown = false
+	self.controls.applyPassivePlan.enabled = true
 end
 
 --- Load/Save (no persistence for chat history - session only)

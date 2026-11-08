@@ -13,6 +13,14 @@ shows that summary with **Confirm direction** and **Revise direction** controls.
 stores only local planning state; it never changes the active PoB build. Invalid briefs and any
 brief mixed with executable actions are rejected before the controls can advance.
 
+## V1.1.8: semantic skill profile and safe passive plan
+
+After applying a confirmed build foundation, the AI enters the `tree` stage with a semantic skill
+profile derived from PoB's `grantedEffect.skillTypes`, `baseFlags`, and parsed passive `node.modList`
+data. Candidate notables are classified as `compatible`, `defensive`, `manual_only`, or `unknown`
+with explicit reasons, and the AI tab exposes an explicit **Apply Passive Plan** action batch
+restricted to validated `alloc_node` steps.
+
 ## V1.1.7: confirmed build foundation
 
 After a confirmed build direction, the AI can propose a restricted foundation batch:

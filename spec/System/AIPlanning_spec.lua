@@ -120,4 +120,109 @@ describe("AI build brief", function()
 		assert.is_truthy(storeError:find("not allowed", 1, true))
 		assert.are.equal("brief_confirmed", session.state)
 	end)
+
+	it("builds a semantic skill profile and classifies representative passive fixtures (US-004)", function()
+		local planning = LoadModule("Modules/AIPlanning")
+		local nodeByName = {}
+		for _, node in pairs(build.spec.nodes) do
+			if node.name and (node.type == "Notable" or node.type == "Keystone") then
+				nodeByName[node.name] = node
+			end
+		end
+
+		-- 1. Fireball hit
+		local fireball = assert(planning:BuildSkillProfile(build, "Fireball"))
+		assert.is_true(fireball.isSpell)
+		assert.is_true(fireball.isHit)
+		assert.is_true(fireball.elements.Fire)
+		local cls, reason = planning:ClassifyPassiveNode(nodeByName["Heart of Flame"], fireball)
+		assert.are.equal("compatible", cls)
+		assert.is_truthy(reason:find("fire", 1, true))
+		cls, reason = planning:ClassifyPassiveNode(nodeByName["Lord of the Dead"], fireball)
+		assert.are.equal("unknown", cls)
+		assert.is_truthy(reason:find("minion", 1, true))
+
+		-- 2. Righteous Fire / fire DoT
+		local rf = assert(planning:BuildSkillProfile(build, "Righteous Fire"))
+		assert.is_true(rf.isDoT)
+		assert.is_false(rf.isHit)
+		cls, reason = planning:ClassifyPassiveNode(nodeByName["Heart of Flame"], rf)
+		assert.are.equal("compatible", cls)
+
+		-- 3. Toxic Rain
+		local tr = assert(planning:BuildSkillProfile(build, "Toxic Rain"))
+		assert.is_true(tr.isAttack)
+		assert.is_true(tr.isProjectile)
+		assert.is_true(tr.elements.Chaos)
+		cls, reason = planning:ClassifyPassiveNode(nodeByName["Fatal Toxins"], tr)
+		assert.are.equal("compatible", cls)
+		assert.is_truthy(reason:find("damage over time", 1, true))
+
+		-- 4. Melee attack (Heavy Strike)
+		local melee = assert(planning:BuildSkillProfile(build, "Heavy Strike"))
+		assert.is_true(melee.isAttack)
+		assert.is_true(melee.isMelee)
+		cls, reason = planning:ClassifyPassiveNode(nodeByName["Master of the Arena"], melee)
+		assert.are.equal("compatible", cls)
+		assert.is_truthy(reason:find("melee", 1, true))
+
+		-- 5. Raise Zombie (minion)
+		local zombie = assert(planning:BuildSkillProfile(build, "Raise Zombie"))
+		assert.is_true(zombie.isMinion)
+		assert.is_false(zombie.isSpell)
+		cls, reason = planning:ClassifyPassiveNode(nodeByName["Lord of the Dead"], zombie)
+		assert.are.equal("compatible", cls)
+		assert.is_truthy(reason:find("minion", 1, true))
+		cls, reason = planning:ClassifyPassiveNode(nodeByName["Heart of Flame"], zombie)
+		assert.are.equal("unknown", cls)
+		assert.is_truthy(reason:find("minion", 1, true))
+
+		-- 6. Explosive Trap (trap)
+		local trap = assert(planning:BuildSkillProfile(build, "Explosive Trap"))
+		assert.is_true(trap.isTrap)
+		cls, reason = planning:ClassifyPassiveNode(nodeByName["Saboteur"], trap)
+		assert.are.equal("compatible", cls)
+		assert.is_truthy(reason:find("trap", 1, true))
+
+		-- Defensive & Keystones
+		cls, reason = planning:ClassifyPassiveNode(nodeByName["Constitution"], fireball)
+		assert.are.equal("defensive", cls)
+		assert.is_truthy(reason:find("life", 1, true))
+		cls, reason = planning:ClassifyPassiveNode(nodeByName["Resolute Technique"], melee)
+		assert.are.equal("manual_only", cls)
+		assert.is_truthy(reason:find("keystone", 1, true))
+		cls, reason = planning:ClassifyPassiveNode(nodeByName["Resolute Technique"], melee, { ["resolute technique"] = true })
+		assert.are.equal("compatible", cls)
+	end)
+
+	it("stores and completes only alloc_node actions in the passive plan stage (US-005)", function()
+		local planning = LoadModule("Modules/AIPlanning")
+		local _, brief = planning:ParseBrief(validBriefBlock())
+		local session = assert(planning:StoreBrief(nil, brief, "fingerprint"))
+		assert(planning:ConfirmBrief(session, "fingerprint"))
+		session = assert(planning:StoreFoundation(session, { { type = "set_level", value = 30 } }, "fingerprint"))
+		assert.is_true(planning:CompleteFoundation(session, "fingerprint-2"))
+		assert.are.equal("tree", session.state)
+
+		local invalidPlan = {
+			{ type = "set_class", name = "Witch" },
+			{ type = "alloc_node", name = "Heart of Flame" },
+		}
+		local badSession, badErr = planning:StorePassivePlan(session, invalidPlan, "fingerprint-2")
+		assert.is_nil(badSession)
+		assert.is_truthy(badErr:find("not allowed", 1, true))
+
+		local validPlan = {
+			{ type = "alloc_node", name = "Heart of Flame" },
+		}
+		session = assert(planning:StorePassivePlan(session, validPlan, "fingerprint-2"))
+		assert.are.equal("tree_pending", session.state)
+		assert.are.equal(1, #session.pendingPassivePlan)
+
+		local completed, completeErr = planning:CompletePassivePlan(session, "fingerprint-3")
+		assert.is_true(completed)
+		assert.is_nil(completeErr)
+		assert.are.equal("tree", session.state)
+		assert.is_nil(session.pendingPassivePlan)
+	end)
 end)

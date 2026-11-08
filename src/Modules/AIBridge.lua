@@ -364,7 +364,7 @@ end
 
 --- Return reachable notable and keystone candidates with their real PoB stat lines.
 --- Scoring is driven by generic skill mechanics, never by a named build archetype.
-function AIBridge:CollectTreeCandidates(spec, mainAvailable, ascendancyAvailable, goals)
+function AIBridge:CollectTreeCandidates(spec, mainAvailable, ascendancyAvailable, goals, skillProfile, explicitNodeNames)
 	local candidates = {}
 	for _, node in pairs(spec.nodes or {}) do
 		if (node.type == "Notable" or node.type == "Keystone") and node.name and not node.alloc and node.path then
@@ -373,6 +373,24 @@ function AIBridge:CollectTreeCandidates(spec, mainAvailable, ascendancyAvailable
 				local stats = getNodeStatLines(node)
 				local goalScore, goalReason =
 					scoreTreeCandidate(node.name, node.type, stats, mainPointCost, goals)
+				local semanticClassification, semanticReason, semanticScore
+				if skillProfile then
+					semanticClassification, semanticReason, semanticScore =
+						AIPlanning:ClassifyPassiveNode(node, skillProfile, explicitNodeNames)
+					if semanticClassification == "compatible" or semanticClassification == "defensive" then
+						local adjustedSemanticScore = math.max(semanticScore - mainPointCost * 2, 1)
+						if adjustedSemanticScore > goalScore then
+							goalScore = adjustedSemanticScore
+						end
+						goalReason = semanticReason or goalReason
+					elseif semanticClassification == "manual_only" then
+						goalScore = -1000
+						goalReason = semanticReason
+					else
+						goalScore = 0
+						goalReason = semanticReason
+					end
+				end
 				t_insert(candidates, {
 					name = node.name,
 					type = node.type,
@@ -382,13 +400,14 @@ function AIBridge:CollectTreeCandidates(spec, mainAvailable, ascendancyAvailable
 					ascendancyPointCost = ascendancyPointCost,
 					goalScore = goalScore,
 					goalReason = goalReason,
+					classification = semanticClassification,
 				})
 			end
 		end
 	end
 
 	table.sort(candidates, function(a, b)
-		if #goals > 0 and a.goalScore ~= b.goalScore then
+		if (#goals > 0 or skillProfile ~= nil) and a.goalScore ~= b.goalScore then
 			return a.goalScore > b.goalScore
 		end
 		if a.pathLength ~= b.pathLength then
@@ -404,8 +423,8 @@ function AIBridge:CollectTreeCandidates(spec, mainAvailable, ascendancyAvailable
 end
 
 --- Select a bounded, path-aware sequence from the mechanic-matched notables.
-function AIBridge:BuildTreeRecommendationPlan(spec, candidates, mainAvailable, ascendancyAvailable, goals)
-	if #goals == 0 then
+function AIBridge:BuildTreeRecommendationPlan(spec, candidates, mainAvailable, ascendancyAvailable, goals, skillProfile)
+	if #goals == 0 and not skillProfile then
 		return {}, 0, 0
 	end
 
@@ -420,7 +439,11 @@ function AIBridge:BuildTreeRecommendationPlan(spec, candidates, mainAvailable, a
 	local plan = {}
 	local mainUsed, ascendancyUsed = 0, 0
 	for _, candidate in ipairs(candidates) do
-		if candidate.goalScore > 0 then
+		local eligible = candidate.goalScore > 0
+		if skillProfile then
+			eligible = eligible and (candidate.classification == "compatible" or candidate.classification == "defensive")
+		end
+		if eligible then
 			local node = nodesByName[candidate.name:lower()]
 			if node then
 				local mainCost, ascendancyCost = self:GetAllocationCosts(node, reservedNodes)
@@ -434,6 +457,7 @@ function AIBridge:BuildTreeRecommendationPlan(spec, candidates, mainAvailable, a
 						name = candidate.name,
 						type = candidate.type,
 						stats = candidate.stats,
+						classification = candidate.classification,
 						goalReason = candidate.goalReason,
 						mainPointCost = mainCost,
 						ascendancyPointCost = ascendancyCost,
@@ -969,17 +993,36 @@ function AIBridge:SerializeBuild(build, context)
 		local mainAvailable = math.max(mainTotal - candidateMainUsed, 0)
 		local ascendancyAvailable = math.max(ascendancyTotal - candidateAscendancyUsed, 0)
 		local goals = context.treeGoals or {}
+		local skillProfile = context.skillProfile
+		if not skillProfile and #goals == 0 then
+			skillProfile = AIPlanning:BuildSkillProfile(build, context.planningSkill)
+		end
+		local explicitNodeNames = context.explicitNodeNames
 		local availableNodes =
-			self:CollectTreeCandidates(candidateSpec, mainAvailable, ascendancyAvailable, goals)
+			self:CollectTreeCandidates(
+				candidateSpec,
+				mainAvailable,
+				ascendancyAvailable,
+				goals,
+				skillProfile,
+				explicitNodeNames
+			)
 		state.tree.availableNodes = availableNodes
-		if #goals > 0 then
+		if skillProfile then
+			state.tree.skillProfile = {
+				skillName = skillProfile.skillName,
+				categories = skillProfile.categories,
+			}
+		end
+		if #goals > 0 or skillProfile ~= nil then
 			local recommendedPlan, planMainPoints, planAscendancyPoints =
 				self:BuildTreeRecommendationPlan(
 					candidateSpec,
 					availableNodes,
 					mainAvailable,
 					ascendancyAvailable,
-					goals
+					goals,
+					skillProfile
 				)
 			state.tree.goals = goals
 			state.tree.recommendedPlan = recommendedPlan
@@ -2021,6 +2064,23 @@ function AIBridge:BuildQuestionState(build, userMessage, fingerprint, requestedS
 		context[key] = value
 	end
 	context.treeGoals = self:DeriveTreeGoals(build, userMessage)
+	local explicitNodeNames = {}
+	local lowerMessage = (userMessage or ""):lower()
+	if build and build.spec and build.spec.nodes then
+		for _, node in pairs(build.spec.nodes) do
+			if (node.type == "Notable" or node.type == "Keystone")
+				and type(node.name) == "string" and #node.name >= 3
+				and lowerMessage:find(node.name:lower(), 1, true) then
+				explicitNodeNames[node.name:lower()] = true
+			end
+		end
+	end
+	if next(explicitNodeNames) then
+		context.explicitNodeNames = explicitNodeNames
+	end
+	if context.planningSkill or #context.treeGoals == 0 then
+		context.skillProfile = AIPlanning:BuildSkillProfile(build, context.planningSkill)
+	end
 	local normalizedScopes = {}
 	if requestedScopes then
 		local scopeError
@@ -2038,8 +2098,6 @@ function AIBridge:BuildQuestionState(build, userMessage, fingerprint, requestedS
 
 	-- A named notable/keystone is an explicit player decision, not an automatic
 	-- recommendation. Preserve that escape hatch while keeping starter plans safe.
-	local explicitNodeNames = {}
-	local lowerMessage = (userMessage or ""):lower()
 	for _, node in ipairs(state.tree.availableNodes or {}) do
 		if type(node.name) == "string" and #node.name >= 3
 			and lowerMessage:find(node.name:lower(), 1, true) then
@@ -2187,6 +2245,20 @@ function AIBridge:ValidateTreeActionReferences(actions, state)
 			if not candidateNames[name] then
 				return false, "alloc_node is not a supplied tree candidate: " .. action.name
 			end
+			for _, candidate in ipairs(treeState.availableNodes or {}) do
+				if type(candidate.name) == "string" and candidate.name:lower() == name then
+					if candidate.type == "Keystone" and not explicitNodeNames[name] then
+						return false, "Keystone requires explicit player intent: " .. action.name
+					end
+					if candidate.classification == "manual_only" and not explicitNodeNames[name] then
+						return false, "Node requires explicit player intent: " .. action.name
+					end
+					if candidate.classification == "unknown" and not explicitNodeNames[name] then
+						return false, "Node is not compatible with the active skill profile: " .. action.name
+					end
+					break
+				end
+			end
 			if treeState.candidateResetsTree and next(plannedNodeNames)
 				and not plannedNodeNames[name] and not explicitNodeNames[name] then
 				return false, "alloc_node is not in the supplied verified tree plan: " .. action.name
@@ -2307,8 +2379,16 @@ function AIBridge:Ask(build, userMessage, callback, history, supersedesUnapplied
 		return
 	end
 	planningSession = planningSession or AIPlanning:NewSession()
+	local initialContextOverrides
+	if planningSession.state == "tree" or planningSession.state == "tree_pending" then
+		initialContextOverrides = {
+			includeTreeCandidates = true,
+			planningSkill = planningSession.confirmedBrief and planningSession.confirmedBrief.mainSkill or nil,
+		}
+	end
 
-	local state, contextOrErr = self:BuildQuestionState(build, userMessage, requestFingerprint)
+	local state, contextOrErr =
+		self:BuildQuestionState(build, userMessage, requestFingerprint, nil, false, initialContextOverrides)
 	if not state then
 		callback(nil, contextOrErr)
 		return
@@ -2377,6 +2457,13 @@ mastery, tattoo, bandit, pantheon, jewel, or configuration actions in the founda
 Use the confirmed brief's class, ascendancy, main skill, and target level. Emit set_level to the
 target level before other foundation actions when it changes the level. After adding the main
 skill group, emit set_main_skill so PoB calculates the intended skill.
+
+When the guided planning session state is tree or tree_pending, propose ONLY the passive tree plan
+as a proposal turn with one actions block containing only alloc_node actions from
+tree.recommendedPlan (or tree.availableNodes when compatible/defensive). Do not include set_class,
+set_level, skills, items, or configuration actions in the passive tree stage. Present the exact
+node names, incremental path cost, cumulative point cost, and semantic reason. Never select a
+keystone unless the player explicitly requested it.
 
 The simulated uniqueShortlist is a preselected sample, not an exhaustive proof about every
 unique in the catalog. If no entry improves both DPS and EHP, say "none among the tested
@@ -2520,6 +2607,17 @@ complete <actions> block for the requested change; never assume the previous pro
 				return
 			end
 			planningSession = foundationSession
+		elseif proposedActions and (planningSession.state == "tree" or planningSession.state == "tree_pending") then
+			local passivePlanSession, passivePlanError = AIPlanning:StorePassivePlan(
+				planningSession,
+				proposedActions,
+				requestFingerprint
+			)
+			if not passivePlanSession then
+				fail("Invalid AI passive plan proposal: " .. tostring(passivePlanError))
+				return
+			end
+			planningSession = passivePlanSession
 		end
 		self.pending = false
 		self.lastError = nil
@@ -2722,6 +2820,12 @@ complete <actions> block for the requested change; never assume the previous pro
 				local foundationValid, foundationError = AIPlanning:ValidateFoundationActions(proposedActions)
 				if not foundationValid then
 					fail("Invalid AI foundation proposal: " .. tostring(foundationError))
+					return
+				end
+			elseif proposedActions and (planningSession.state == "tree" or planningSession.state == "tree_pending") then
+				local passivePlanValid, passivePlanError = AIPlanning:ValidatePassivePlanActions(proposedActions)
+				if not passivePlanValid then
+					fail("Invalid AI passive plan proposal: " .. tostring(passivePlanError))
 					return
 				end
 			end

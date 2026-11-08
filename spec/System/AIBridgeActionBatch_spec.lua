@@ -517,4 +517,80 @@ Use level 97 instead.
 		assert.are.equal(targetLevel, build.characterLevel)
 		assert.are.equal("^2Foundation applied - tree stage ready", chat.controls.status.label)
 	end)
+
+	it("proposes and applies a safe passive plan without auto-requesting the next stage (US-005)", function()
+		local chat = build.aiChatTab
+		local bridge = assert(findUpvalue(chat.SendRequest, "AIBridge"))
+		local conversation = LoadModule("Modules/AIConversation")
+		local planning = LoadModule("Modules/AIPlanning")
+		local originalAsk = bridge.Ask
+		local requestCount = 0
+
+		build.characterLevel = 30
+		build.characterLevelAutoMode = false
+		build.spec:ResetNodes()
+		build.spec:SelectClass(assert(build.spec.tree.classNameMap.Witch))
+		build.spec:BuildAllDependsAndPaths()
+
+		local state = assert(bridge:SerializeBuild(build, {
+			includeTreeCandidates = true,
+			skillProfile = assert(planning:BuildSkillProfile(build, "Fireball")),
+		}))
+		local plannedNode = assert(state.tree.recommendedPlan[1])
+
+		local fingerprint = assert(bridge:GetBuildFingerprint(build))
+		chat.planningSession = {
+			state = "tree",
+			fingerprint = fingerprint,
+			confirmedBrief = {
+				stage = "brief",
+				mainSkill = "Fireball",
+				class = "Witch",
+				ascendancy = "Elementalist",
+				targetLevel = 30,
+				priority = "balanced",
+				constraints = { "league starter" },
+				assumptions = { "no required uniques" },
+			},
+		}
+
+		bridge.Ask = function(_, _, _, callback, _, _, session, planningSession)
+			requestCount = requestCount + 1
+			local fp = assert(bridge:GetBuildFingerprint(build))
+			assert(conversation:BeginRequest(session, fp))
+			assert.are.equal("tree", planningSession.state)
+			local turn = {
+				next = "proposal",
+				goal = "propose passive plan",
+				reason = "foundation is applied",
+			}
+			local actions = { { type = "alloc_node", name = plannedNode.name } }
+			assert.is_true(conversation:ApplyTurn(session, turn, fp))
+			local storedSession = assert(planning:StorePassivePlan(planningSession, actions, fp))
+			callback("Review this passive plan.", nil, fp, turn, nil, storedSession)
+		end
+
+		local ok, err = pcall(function()
+			chat:SendMessage("Propose my passive tree plan.")
+			chat:FinishStream()
+		end)
+		assert(ok, err)
+		assert.are.equal(1, requestCount)
+		assert.are.equal("tree_pending", chat.planningSession.state)
+		assert.is_true(chat.controls.applyPassivePlan.shown)
+		assert.is_false(chat.controls.applyActions.shown)
+		assert.are.equal("^7Review passive plan", chat.controls.status.label)
+
+		local okApply, errApply = pcall(function()
+			chat:ApplyPassivePlan()
+		end)
+		bridge.Ask = originalAsk
+
+		assert(okApply, errApply)
+		assert.are.equal(1, requestCount)
+		assert.are.equal("tree", chat.planningSession.state)
+		assert.is_nil(chat.planningSession.pendingPassivePlan)
+		assert.is_false(chat.controls.applyPassivePlan.shown)
+		assert.are.equal("^2Passive plan applied", chat.controls.status.label)
+	end)
 end)
