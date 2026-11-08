@@ -5,6 +5,14 @@ the desktop application. It reads the active PoE 1 build, uses PoB's calculated
 numbers as the source of truth, proposes validated changes, and applies them only
 after a preview.
 
+## V1.1.6: confirmed build directions
+
+An explicit create or rebuild request can now produce a non-executable build direction:
+class, ascendancy, main skill, target level, priority, constraints, and assumptions. The AI tab
+shows that summary with **Confirm direction** and **Revise direction** controls. Confirmation
+stores only local planning state; it never changes the active PoB build. Invalid briefs and any
+brief mixed with executable actions are rejected before the controls can advance.
+
 ## V1.1.5: resilient AI context recovery
 
 When a model wraps one valid `<context_request>` in prose, the bridge now ignores

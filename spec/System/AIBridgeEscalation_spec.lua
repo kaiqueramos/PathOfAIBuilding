@@ -486,4 +486,80 @@ describe("AI context escalation", function()
 		assert.are.equal("awaiting_user", session.state)
 		assert.are.equal("priority", session.pendingQuestion.id)
 	end)
+
+	it("stores a validated build brief without mutating PoB", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local planning = LoadModule("Modules/AIPlanning")
+		local planningSession = planning:NewSession()
+		local originalLevel = build.characterLevel
+		local callbackContent
+		local callbackTurn
+		local callbackBrief
+		local callbackPlanningSession
+		local callbackError
+
+		withMockedTransport(bridge, function()
+			return "Review this direction before changing anything.\n"
+				.. '<brief>{"stage":"brief","mainSkill":"Fireball","class":"Witch",'
+				.. '"ascendancy":"Elementalist","targetLevel":30,"priority":"balanced",'
+				.. '"constraints":["league starter"],"assumptions":["no required uniques"]}</brief>\n'
+				.. '<turn>{"next":"proposal","goal":"confirm build direction","reason":"brief is complete"}</turn>'
+		end, function(requests)
+			bridge:Ask(build, "Create a Fireball league starter at level 30", function(content, err, _, turn, brief, session)
+				callbackContent = content
+				callbackError = err
+				callbackTurn = turn
+				callbackBrief = brief
+				callbackPlanningSession = session
+			end, {}, false, nil, planningSession)
+			assert.is_truthy(requests[1].messages[#requests[1].messages].content:find(
+				"Guided planning session (JSON):", 1, true))
+		end)
+
+		assert.is_nil(callbackError)
+		assert.are.equal("Review this direction before changing anything.", callbackContent)
+		assert.are.equal("proposal", callbackTurn.next)
+		assert.are.equal("Fireball", callbackBrief.mainSkill)
+		assert.is_true(callbackPlanningSession == planningSession)
+		assert.are.equal("brief_pending", planningSession.state)
+		assert.are.equal("Fireball", planningSession.pendingBrief.mainSkill)
+		assert.are.equal(originalLevel, build.characterLevel)
+	end)
+
+	it("rejects an incomplete or executable build brief", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local planning = LoadModule("Modules/AIPlanning")
+		local planningSession = planning:NewSession()
+		local callbackError
+
+		withMockedTransport(bridge, function()
+			return '<brief>{"stage":"brief","mainSkill":"Fireball","class":"Witch"}</brief>\n'
+				.. '<turn>{"next":"proposal","goal":"confirm build direction","reason":"brief is complete"}</turn>'
+		end, function()
+			bridge:Ask(build, "Create a build", function(_, err)
+				callbackError = err
+			end, {}, false, nil, planningSession)
+		end)
+
+		assert.is_truthy(callbackError:find("Invalid AI build brief", 1, true))
+		assert.are.equal("idle", planningSession.state)
+		assert.is_false(bridge.pending)
+
+		callbackError = nil
+		withMockedTransport(bridge, function()
+			return '<actions>[{"type":"set_level","value":30}]</actions>\n'
+				.. '<brief>{"stage":"brief","mainSkill":"Fireball","class":"Witch",'
+				.. '"ascendancy":"Elementalist","targetLevel":30,"priority":"balanced",'
+				.. '"constraints":[],"assumptions":[]}</brief>\n'
+				.. '<turn>{"next":"proposal","goal":"confirm build direction","reason":"brief is complete"}</turn>'
+		end, function()
+			bridge:Ask(build, "Create a build", function(_, err)
+				callbackError = err
+			end, {}, false, nil, planningSession)
+		end)
+
+		assert.is_truthy(callbackError:find("cannot include executable actions", 1, true))
+		assert.are.equal("idle", planningSession.state)
+		assert.is_false(bridge.pending)
+	end)
 end)

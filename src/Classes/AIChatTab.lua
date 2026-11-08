@@ -7,6 +7,7 @@ local t_insert = table.insert
 local dkjson = require "dkjson"
 local AIBridge = LoadModule("Modules/AIBridge")
 local AIConversation = LoadModule("Modules/AIConversation")
+local AIPlanning = LoadModule("Modules/AIPlanning")
 
 -- Transliterate accented characters to ASCII.
 -- Handles both:
@@ -167,6 +168,7 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 	self.pendingActions = nil  -- actions parsed from last AI response
 	self.pendingActionsFingerprint = nil
 	self.conversationSession = nil
+	self.planningSession = nil
 
 	-- === TOP: header + build summary ===
 	self.controls.header = new("LabelControl", {"TOPLEFT",self,"TOPLEFT"}, {8, 8, 0, 16}, "^7AI Build Advisor")
@@ -222,6 +224,15 @@ local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control", function(
 	end)
 	self.controls.applyActions.shown = false
 
+	self.controls.confirmBrief = new("ButtonControl", {"TOPRIGHT",self,"TOPRIGHT"}, {-8, 8, 150, 22}, "^2Confirm direction", function()
+		self:ConfirmBrief()
+	end)
+	self.controls.confirmBrief.shown = false
+	self.controls.reviseBrief = new("ButtonControl", {"RIGHT",self.controls.confirmBrief,"LEFT"}, {-6, 0, 140, 22}, "Revise direction", function()
+		self:ReviseBrief()
+	end)
+	self.controls.reviseBrief.shown = false
+
 	-- === MIDDLE: chat history fills remaining space (READ-ONLY) ===
 	self.controls.history = new("EditControl", {"TOPLEFT",self.controls.summary,"BOTTOMLEFT"}, {0, 8, 0, 0}, "", nil, "^%C\t\n", nil, nil, 16, true)
 	self.controls.history.width = function()
@@ -257,6 +268,12 @@ function AIChatTabClass:SendMessage(text)
 		end
 	else
 		self.conversationSession = AIConversation:NewSession()
+	end
+	self.planningSession = self.planningSession or AIPlanning:NewSession()
+	if self.planningSession.state == "brief_pending" then
+		AIPlanning:ReviseBrief(self.planningSession)
+		self.controls.confirmBrief.shown = false
+		self.controls.reviseBrief.shown = false
 	end
 
 	self:AddMessage("user", text)
@@ -302,7 +319,7 @@ function AIChatTabClass:SendMessage(text)
 		self:AddMessage("system", "Error: " .. message)
 		self.controls.status.label = "^1Request failed"
 	end
-	local function handleResponse(response, errMsg, responseFingerprint, turn)
+	local function handleResponse(response, errMsg, responseFingerprint, turn, brief, returnedPlanningSession)
 		if responseHandled then
 			return
 		end
@@ -316,16 +333,44 @@ function AIChatTabClass:SendMessage(text)
 				showRequestFailure("AI response is missing a validated dialogue turn")
 				return
 			end
+			if returnedPlanningSession then
+				self.planningSession = returnedPlanningSession
+			end
 
 			resetRequestState()
 			-- Parse actions FIRST (before translit to avoid corrupting JSON).
 			local displayText, actions, actionError = AIBridge:ParseActions(response)
+			if brief and ((actions and #actions > 0) or actionError) then
+				showRequestFailure("AI build brief cannot include executable actions")
+				return
+			end
+			if brief and not returnedPlanningSession then
+				local storedPlanningSession, planningError = AIPlanning:StoreBrief(
+					self.planningSession,
+					brief,
+					responseFingerprint
+				)
+				if not storedPlanningSession then
+					showRequestFailure("Invalid AI build brief: " .. planningError)
+					return
+				end
+				self.planningSession = storedPlanningSession
+			end
 			self.pendingActions = actions
 			self.pendingActionsFingerprint = actions and #actions > 0 and responseFingerprint or nil
 			self.controls.applyActions.shown = (actions ~= nil and #actions > 0)
 			ConPrintf("[AIChat] Parsed %d actions, shown=%s", actions and #actions or 0, tostring(self.controls.applyActions.shown))
 
-			if turn.next == "clarify" then
+			if brief then
+				self.pendingActions = nil
+				self.pendingActionsFingerprint = nil
+				self.controls.applyActions.shown = false
+				local summary = AIPlanning:FormatBrief(brief)
+				displayText = #displayText > 0 and displayText .. "\n\n" .. summary or summary
+				self.controls.confirmBrief.shown = true
+				self.controls.reviseBrief.shown = true
+				self.controls.input:SetPlaceholder("Use Confirm direction or describe a revision...")
+			elseif turn.next == "clarify" then
 				local question = turn.question
 				local lines = { displayText }
 				if #lines[1] == 0 then
@@ -347,6 +392,8 @@ function AIChatTabClass:SendMessage(text)
 			if actionError then
 				self:AddMessage("system", "Action proposal ignored: " .. actionError)
 				self.controls.status.label = "^1Action proposal ignored - ask again"
+			elseif brief then
+				self.controls.status.label = "^7Review build direction"
 			elseif turn.next == "clarify" then
 				self.controls.status.label = "^7Clarification needed"
 			else
@@ -367,12 +414,61 @@ function AIChatTabClass:SendMessage(text)
 		handleResponse,
 		history,
 		supersedesUnappliedActions,
-		self.conversationSession
+		self.conversationSession,
+		self.planningSession
 	)
 	if not started and not responseHandled then
 		AIBridge.pending = false
 		showRequestFailure("AI request crashed: " .. tostring(requestError))
 	end
+
+end
+
+--- Confirm a non-executable build direction without mutating the active PoB build.
+function AIChatTabClass:ConfirmBrief()
+	if self.pending then
+		return
+	end
+	local fingerprint, fingerprintError = AIBridge:GetBuildFingerprint(self.build)
+	if not fingerprint then
+		self:AddMessage("system", "Error: " .. tostring(fingerprintError))
+		self.controls.status.label = "^1Could not confirm direction"
+		return
+	end
+	local confirmed, confirmationOrError = AIPlanning:ConfirmBrief(self.planningSession, fingerprint)
+	if not confirmed then
+		self:AddMessage("system", "Error: " .. confirmationOrError)
+		self.controls.status.label = "^1Could not confirm direction"
+		return
+	end
+	self:FinishStream()
+	self.controls.confirmBrief.shown = false
+	self.controls.reviseBrief.shown = false
+	self.controls.applyActions.shown = false
+	self.controls.status.label = "^2Direction confirmed"
+	self.controls.input:SetPlaceholder("Build direction confirmed. Ask about your build...")
+	self:AddMessage("system", "^2Build direction confirmed.\n^8PoB build remains unchanged.")
+	self:SelectControl(self.controls.input)
+end
+
+--- Discard the unconfirmed brief while retaining the chat history for a revision request.
+function AIChatTabClass:ReviseBrief()
+	if self.pending then
+		return
+	end
+	local revised, revisionError = AIPlanning:ReviseBrief(self.planningSession)
+	if not revised then
+		self:AddMessage("system", "Error: " .. revisionError)
+		self.controls.status.label = "^1Could not revise direction"
+		return
+	end
+	self:FinishStream()
+	self.controls.confirmBrief.shown = false
+	self.controls.reviseBrief.shown = false
+	self.controls.status.label = "^7Direction needs revision"
+	self.controls.input:SetPlaceholder("Describe what to revise...")
+	self:AddMessage("system", "^7Direction needs revision. Describe what to change.")
+	self:SelectControl(self.controls.input)
 end
 
 --- Finish a progressive reply before another reply replaces the stream cursor.

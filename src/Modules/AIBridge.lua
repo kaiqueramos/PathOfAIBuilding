@@ -14,6 +14,7 @@ local dkjson = require "dkjson"
 local sha1 = require "sha1"
 local AIConfig = LoadModule("Modules/AIConfig")
 local AIConversation = LoadModule("Modules/AIConversation")
+local AIPlanning = LoadModule("Modules/AIPlanning")
 local AIBridge = {
 	pending = false,
 	lastError = nil,
@@ -2276,11 +2277,12 @@ end
 
 --- Send build state to LLM and get response
 -- @param build The active build object
--- @param callback function(response, errMsg, fingerprint) called with the result
+-- @param callback function(response, errMsg, fingerprint, turn, brief, planningSession)
 -- @param history optional array of prior {role, content} messages
 -- @param supersedesUnappliedActions whether this request replaces a proposal that was not applied
 -- @param conversationSession optional local AIConversation session
-function AIBridge:Ask(build, userMessage, callback, history, supersedesUnappliedActions, conversationSession)
+-- @param planningSession optional local AIPlanning session
+function AIBridge:Ask(build, userMessage, callback, history, supersedesUnappliedActions, conversationSession, planningSession)
 	if self.pending then
 		callback(nil, "Request already in progress")
 		return
@@ -2304,6 +2306,7 @@ function AIBridge:Ask(build, userMessage, callback, history, supersedesUnapplied
 		callback(nil, sessionError)
 		return
 	end
+	planningSession = planningSession or AIPlanning:NewSession()
 
 	local state, contextOrErr = self:BuildQuestionState(build, userMessage, requestFingerprint)
 	if not state then
@@ -2349,6 +2352,23 @@ Use proposal when presenting a change. Only proposal turns may include an action
 and answer turns MUST NOT include actions. If the player must choose between meaningful tradeoffs,
 ask one focused clarification instead of silently assuming a preference.
 
+For an explicit request to create or rebuild a build, use guided planning instead of executable
+actions. Ask one clarify turn only when a material decision is missing: the main skill, target
+level, league/budget/SSF constraint, offensive/defensive priority, or an otherwise unresolved
+class or ascendancy choice. Do not ask a long questionnaire when the player already supplied the
+details. Once those decisions are known, respond with concise prose and exactly one non-executable
+brief block followed by a proposal turn:
+<brief>
+{"stage":"brief","mainSkill":"Fireball","class":"Witch","ascendancy":"Elementalist","targetLevel":30,"priority":"balanced","constraints":["league starter"],"assumptions":["no required uniques"]}
+</brief>
+<turn>
+{"next":"proposal","goal":"confirm build direction","reason":"brief is complete"}
+</turn>
+Use priority values damage, defense, or balanced. A brief is only a direction for player review:
+it MUST NOT include an actions block, it never changes the PoB build, and it is not confirmed
+until the player explicitly uses Confirm direction. For existing-build advisor requests, do not
+emit a brief unless the player explicitly asks to create or rebuild a build.
+
 The simulated uniqueShortlist is a preselected sample, not an exhaustive proof about every
 unique in the catalog. If no entry improves both DPS and EHP, say "none among the tested
 candidates", never "no unique exists". balancedGainPct is positive only when both metrics improve.
@@ -2376,10 +2396,12 @@ numeric ID. If treeCandidates is false, request the "tree" context before propos
 If state.context.actionRecovery is present, the previous action batch was rejected because its
 tree data did not match the requested class/reset/plan. Replace it with one complete, ordered
 batch using the supplied projected candidates and plan.
-When enough evidence exists and no material player decision is missing, propose requested changes
-with a proposal turn. Do not tell the player to do work that a valid proposal can do.
-Never claim the build changed unless you emit a valid actions block inside a proposal turn.
-End the final response with its one turn block, exactly like this:
+For existing-build advisor requests only, when enough evidence exists and no material player
+decision is missing, propose requested changes with a proposal turn. Do not tell the player to do
+work that a valid proposal can do. Never claim the active build changed unless you emit a valid
+actions block inside a proposal turn. For guided creation or rebuild requests, emit no actions
+until a confirmed brief is consumed by a later planning stage.
+For an existing-build advisor action proposal, end the final response with its one turn block, exactly like this:
 <actions>
 [{"type":"set_level","value":100},{"type":"alloc_node","name":"Resolute Technique"}]
 </actions>
@@ -2456,7 +2478,7 @@ complete <actions> block for the requested change; never assume the previous pro
 		callback(nil, message)
 	end
 
-	local function complete(content, finalState, turn, mentionContent)
+	local function complete(content, finalState, turn, mentionContent, brief)
 		local turnApplied, turnError = AIConversation:ApplyTurn(
 			conversationSession,
 			turn,
@@ -2466,12 +2488,24 @@ complete <actions> block for the requested change; never assume the previous pro
 			fail("Invalid AI dialogue turn: " .. tostring(turnError))
 			return
 		end
+		if brief then
+			local storedPlanningSession, planningError = AIPlanning:StoreBrief(
+				planningSession,
+				brief,
+				requestFingerprint
+			)
+			if not storedPlanningSession then
+				fail("Invalid AI build brief: " .. tostring(planningError))
+				return
+			end
+			planningSession = storedPlanningSession
+		end
 		self.pending = false
 		self.lastError = nil
 		self.lastResponse = content
 		self.lastMentions = self:ExtractMentions(mentionContent or content, finalState)
 		self.lastMentionsFingerprint = requestFingerprint
-		callback(content, nil, requestFingerprint, turn)
+		callback(content, nil, requestFingerprint, turn, brief, planningSession)
 	end
 
 	local function buildRequest(currentState)
@@ -2494,6 +2528,14 @@ complete <actions> block for the requested change; never assume the previous pro
 			return nil, nil, "Could not encode conversation state: " .. tostring(conversationEncodeError)
 		end
 		userPrompt = userPrompt .. "\n\nConversation session (JSON):\n" .. conversationJson
+		local planningJson, planningEncodeError = dkjson.encode(
+			AIPlanning:GetPromptState(planningSession),
+			{ indent = false }
+		)
+		if not planningJson then
+			return nil, nil, "Could not encode planning state: " .. tostring(planningEncodeError)
+		end
+		userPrompt = userPrompt .. "\n\nGuided planning session (JSON):\n" .. planningJson
 
 		local messages = {
 			{ role = "system", content = systemPrompt },
@@ -2566,8 +2608,8 @@ complete <actions> block for the requested change; never assume the previous pro
 			local hasActionMarker = lowerContent:find("<actions", 1, true)
 				or lowerContent:find("</actions", 1, true)
 			if lowerContent:find("<context_request", 1, true)
-				and AIConversation:HasTurnMarker(content) then
-				fail("AI context request cannot include a turn block")
+				and (AIConversation:HasTurnMarker(content) or AIPlanning:HasBriefMarker(content)) then
+				fail("AI context request cannot include a turn or brief block")
 				return
 			end
 			local _, requestedScopes, contextRequestError =
@@ -2622,7 +2664,22 @@ complete <actions> block for the requested change; never assume the previous pro
 				fail("Invalid AI dialogue turn: " .. turnError)
 				return
 			end
-			local displayText, proposedActions, actionParseError = self:ParseActions(turnContent)
+			local briefContent, brief, briefError = AIPlanning:ParseBrief(turnContent)
+			if briefError then
+				fail("Invalid AI build brief: " .. briefError .. ". Ask for a complete build direction.")
+				return
+			end
+			if brief then
+				if hasActionMarker then
+					fail("AI build brief cannot include executable actions")
+					return
+				end
+				if turn.next ~= "proposal" then
+					fail("AI build brief must use a proposal turn")
+					return
+				end
+			end
+			local displayText, proposedActions, actionParseError = self:ParseActions(briefContent)
 			if proposedActions and turn.next ~= "proposal" then
 				fail("AI returned actions outside a proposal turn")
 				return
@@ -2637,7 +2694,7 @@ complete <actions> block for the requested change; never assume the previous pro
 					goal = turn.goal,
 					reason = "Action block failed local validation",
 				}
-				complete(turnContent, currentState, rejectedTurn, displayText)
+				complete(briefContent, currentState, rejectedTurn, displayText)
 				return
 			end
 			local treeActionsValid, treeActionError =
@@ -2685,7 +2742,7 @@ complete <actions> block for the requested change; never assume the previous pro
 				return
 			end
 
-			complete(turnContent, currentState, turn, displayText)
+			complete(briefContent, currentState, turn, displayText, brief)
 		end
 		local function onResponse(response, errMsg)
 			if responseHandled then

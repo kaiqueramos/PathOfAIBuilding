@@ -312,4 +312,129 @@ Use level 97 instead.
 		assert.is_truthy(chat.messages[2].full:find("Prioritize damage or defense?", 1, true))
 		assert.are.equal("Prioritize defensive upgrades first.", chat.messages[#chat.messages].full)
 	end)
+
+	it("requires explicit local confirmation before accepting a build direction", function()
+		local chat = build.aiChatTab
+		local bridge = assert(findUpvalue(chat.SendMessage, "AIBridge"))
+		local conversation = LoadModule("Modules/AIConversation")
+		local planning = LoadModule("Modules/AIPlanning")
+		local originalAsk = bridge.Ask
+		local originalLevel = build.characterLevel
+
+		bridge.Ask = function(_, _, _, callback, _, _, session, planningSession)
+			local fingerprint = assert(bridge:GetBuildFingerprint(build))
+			assert(conversation:BeginRequest(session, fingerprint))
+			local turn = {
+				next = "proposal",
+				goal = "confirm build direction",
+				reason = "brief is complete",
+			}
+			local brief = {
+				stage = "brief",
+				mainSkill = "Fireball",
+				class = "Witch",
+				ascendancy = "Elementalist",
+				targetLevel = 30,
+				priority = "balanced",
+				constraints = { "league starter" },
+				assumptions = { "no required uniques" },
+			}
+			assert.is_true(conversation:ApplyTurn(session, turn, fingerprint))
+			local storedSession = assert(planning:StoreBrief(planningSession, brief, fingerprint))
+			callback("Review this direction.", nil, fingerprint, turn, brief, storedSession)
+		end
+
+		local ok, err = pcall(function()
+			chat:SendMessage("Create a Fireball league starter at level 30.")
+			chat:FinishStream()
+		end)
+		bridge.Ask = originalAsk
+
+		assert(ok, err)
+		assert.are.equal("brief_pending", chat.planningSession.state)
+		assert.is_true(chat.controls.confirmBrief.shown)
+		assert.is_true(chat.controls.reviseBrief.shown)
+		assert.is_false(chat.controls.applyActions.shown)
+		assert.are.equal(originalLevel, build.characterLevel)
+		assert.is_truthy(chat.messages[#chat.messages].full:find("Build direction", 1, true))
+
+		chat:ConfirmBrief()
+
+		assert.are.equal("brief_confirmed", chat.planningSession.state)
+		assert.are.equal("Fireball", chat.planningSession.confirmedBrief.mainSkill)
+		assert.is_false(chat.controls.confirmBrief.shown)
+		assert.is_false(chat.controls.reviseBrief.shown)
+		assert.are.equal("^2Direction confirmed", chat.controls.status.label)
+		assert.are.equal(originalLevel, build.characterLevel)
+	end)
+
+	it("revises an unconfirmed brief without losing the conversation", function()
+		local chat = build.aiChatTab
+		local bridge = assert(findUpvalue(chat.SendMessage, "AIBridge"))
+		local conversation = LoadModule("Modules/AIConversation")
+		local planning = LoadModule("Modules/AIPlanning")
+		local originalAsk = bridge.Ask
+		local originalLevel = build.characterLevel
+		local requestCount = 0
+		local firstPlanningSession
+		local secondHistory
+
+		bridge.Ask = function(_, _, _, callback, history, _, session, planningSession)
+			requestCount = requestCount + 1
+			local fingerprint = assert(bridge:GetBuildFingerprint(build))
+			assert(conversation:BeginRequest(session, fingerprint))
+			if requestCount == 1 then
+				firstPlanningSession = planningSession
+				local turn = {
+					next = "proposal",
+					goal = "confirm build direction",
+					reason = "brief is complete",
+				}
+				local brief = {
+					stage = "brief",
+					mainSkill = "Fireball",
+					class = "Witch",
+					ascendancy = "Elementalist",
+					targetLevel = 30,
+					priority = "balanced",
+					constraints = { "league starter" },
+					assumptions = { "no required uniques" },
+				}
+				assert.is_true(conversation:ApplyTurn(session, turn, fingerprint))
+				local storedSession = assert(planning:StoreBrief(planningSession, brief, fingerprint))
+				callback("Review this direction.", nil, fingerprint, turn, brief, storedSession)
+				return
+			end
+
+			secondHistory = history
+			assert.is_true(planningSession == firstPlanningSession)
+			assert.are.equal("brief_revising", planningSession.state)
+			local turn = {
+				next = "answer",
+				goal = "acknowledge revision",
+				reason = "revision was received",
+			}
+			assert.is_true(conversation:ApplyTurn(session, turn, fingerprint))
+			callback("I will revise the direction.", nil, fingerprint, turn, nil, planningSession)
+		end
+
+		local ok, err = pcall(function()
+			chat:SendMessage("Create a Fireball league starter at level 30.")
+			chat:FinishStream()
+			chat:ReviseBrief()
+			chat:SendMessage("Make it defense-first.")
+			chat:FinishStream()
+		end)
+		bridge.Ask = originalAsk
+
+		assert(ok, err)
+		assert.are.equal(2, requestCount)
+		assert.are.equal("brief_revising", chat.planningSession.state)
+		assert.is_nil(chat.planningSession.pendingBrief)
+		assert.is_false(chat.controls.confirmBrief.shown)
+		assert.is_false(chat.controls.reviseBrief.shown)
+		assert.are.equal("Create a Fireball league starter at level 30.", secondHistory[1].content)
+		assert.is_truthy(secondHistory[2].content:find("Build direction", 1, true))
+		assert.are.equal(originalLevel, build.characterLevel)
+	end)
 end)
