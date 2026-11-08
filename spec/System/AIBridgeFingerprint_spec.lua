@@ -72,7 +72,7 @@ describe("AI build fingerprint", function()
 
 	it("refuses stale actions and accepts actions for the current state", function()
 		local chat = build.aiChatTab
-		local bridge = findUpvalue(chat.SendMessage, "AIBridge")
+		local bridge = findUpvalue(chat.SendRequest, "AIBridge")
 		assert.is_table(bridge)
 		bridge:InvalidateBuildContext()
 

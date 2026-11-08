@@ -119,7 +119,7 @@ describe("AI safe action batch", function()
 
 	it("replaces an unapplied proposal with a fresh actionable correction", function()
 		local chat = build.aiChatTab
-		local bridge = assert(findUpvalue(chat.SendMessage, "AIBridge"))
+		local bridge = assert(findUpvalue(chat.SendRequest, "AIBridge"))
 		local originalAsk = bridge.Ask
 		local originalLevel = build.characterLevel
 		local supersedesUnappliedActions
@@ -154,7 +154,7 @@ Use level 97 instead.
 
 	it("makes a malformed replacement proposal visible without keeping stale actions", function()
 		local chat = build.aiChatTab
-		local bridge = assert(findUpvalue(chat.SendMessage, "AIBridge"))
+		local bridge = assert(findUpvalue(chat.SendRequest, "AIBridge"))
 		local originalAsk = bridge.Ask
 		local originalLevel = build.characterLevel
 		chat.pendingActions = { { type = "set_level", value = 98 } }
@@ -184,7 +184,7 @@ Use level 97 instead.
 
 	it("clears an unapplied proposal and recovers after a follow-up request fails", function()
 		local chat = build.aiChatTab
-		local bridge = assert(findUpvalue(chat.SendMessage, "AIBridge"))
+		local bridge = assert(findUpvalue(chat.SendRequest, "AIBridge"))
 		local originalAsk = bridge.Ask
 		local originalLevel = build.characterLevel
 		chat.pendingActions = { { type = "set_level", value = 98 } }
@@ -211,7 +211,7 @@ Use level 97 instead.
 
 	it("completes a streaming reply before a fast follow-up replaces it", function()
 		local chat = build.aiChatTab
-		local bridge = assert(findUpvalue(chat.SendMessage, "AIBridge"))
+		local bridge = assert(findUpvalue(chat.SendRequest, "AIBridge"))
 		local originalAsk = bridge.Ask
 		local requestCount = 0
 
@@ -238,7 +238,7 @@ Use level 97 instead.
 
 	it("recovers the chat when the bridge throws before starting a request", function()
 		local chat = build.aiChatTab
-		local bridge = assert(findUpvalue(chat.SendMessage, "AIBridge"))
+		local bridge = assert(findUpvalue(chat.SendRequest, "AIBridge"))
 		local originalAsk = bridge.Ask
 
 		bridge.Ask = function(self)
@@ -259,7 +259,7 @@ Use level 97 instead.
 
 	it("keeps a clarification answer in the same local conversation session", function()
 		local chat = build.aiChatTab
-		local bridge = assert(findUpvalue(chat.SendMessage, "AIBridge"))
+		local bridge = assert(findUpvalue(chat.SendRequest, "AIBridge"))
 		local conversation = LoadModule("Modules/AIConversation")
 		local originalAsk = bridge.Ask
 		local requestCount = 0
@@ -313,64 +313,78 @@ Use level 97 instead.
 		assert.are.equal("Prioritize defensive upgrades first.", chat.messages[#chat.messages].full)
 	end)
 
-	it("requires explicit local confirmation before accepting a build direction", function()
+	it("requests the foundation automatically after confirming a build direction", function()
 		local chat = build.aiChatTab
-		local bridge = assert(findUpvalue(chat.SendMessage, "AIBridge"))
+		local bridge = assert(findUpvalue(chat.SendRequest, "AIBridge"))
 		local conversation = LoadModule("Modules/AIConversation")
 		local planning = LoadModule("Modules/AIPlanning")
 		local originalAsk = bridge.Ask
 		local originalLevel = build.characterLevel
+		local targetLevel = changedLevel(originalLevel)
+		local requestCount = 0
+		local secondUserMessage
 
-		bridge.Ask = function(_, _, _, callback, _, _, session, planningSession)
+		bridge.Ask = function(_, _, userMessage, callback, _, _, session, planningSession)
+			requestCount = requestCount + 1
 			local fingerprint = assert(bridge:GetBuildFingerprint(build))
 			assert(conversation:BeginRequest(session, fingerprint))
+			if requestCount == 1 then
+				local turn = {
+					next = "proposal",
+					goal = "confirm build direction",
+					reason = "brief is complete",
+				}
+				local brief = {
+					stage = "brief",
+					mainSkill = "Fireball",
+					class = "Witch",
+					ascendancy = "Elementalist",
+					targetLevel = 30,
+					priority = "balanced",
+					constraints = { "league starter" },
+					assumptions = { "no required uniques" },
+				}
+				assert.is_true(conversation:ApplyTurn(session, turn, fingerprint))
+				local storedSession = assert(planning:StoreBrief(planningSession, brief, fingerprint))
+				callback("Review this direction.", nil, fingerprint, turn, brief, storedSession)
+				return
+			end
+
+			secondUserMessage = userMessage
+			assert.are.equal("brief_confirmed", planningSession.state)
 			local turn = {
 				next = "proposal",
-				goal = "confirm build direction",
-				reason = "brief is complete",
+				goal = "apply foundation",
+				reason = "direction is confirmed",
 			}
-			local brief = {
-				stage = "brief",
-				mainSkill = "Fireball",
-				class = "Witch",
-				ascendancy = "Elementalist",
-				targetLevel = 30,
-				priority = "balanced",
-				constraints = { "league starter" },
-				assumptions = { "no required uniques" },
-			}
+			local actions = { { type = "set_level", value = targetLevel } }
 			assert.is_true(conversation:ApplyTurn(session, turn, fingerprint))
-			local storedSession = assert(planning:StoreBrief(planningSession, brief, fingerprint))
-			callback("Review this direction.", nil, fingerprint, turn, brief, storedSession)
+			local storedSession = assert(planning:StoreFoundation(planningSession, actions, fingerprint))
+			callback("Apply this foundation.", nil, fingerprint, turn, nil, storedSession)
 		end
 
 		local ok, err = pcall(function()
 			chat:SendMessage("Create a Fireball league starter at level 30.")
 			chat:FinishStream()
+			chat:ConfirmBrief()
+			chat:FinishStream()
 		end)
 		bridge.Ask = originalAsk
 
 		assert(ok, err)
-		assert.are.equal("brief_pending", chat.planningSession.state)
-		assert.is_true(chat.controls.confirmBrief.shown)
-		assert.is_true(chat.controls.reviseBrief.shown)
-		assert.is_false(chat.controls.applyActions.shown)
-		assert.are.equal(originalLevel, build.characterLevel)
-		assert.is_truthy(chat.messages[#chat.messages].full:find("Build direction", 1, true))
-
-		chat:ConfirmBrief()
-
-		assert.are.equal("brief_confirmed", chat.planningSession.state)
-		assert.are.equal("Fireball", chat.planningSession.confirmedBrief.mainSkill)
+		assert.are.equal(2, requestCount)
+		assert.is_truthy(secondUserMessage:find("confirmed", 1, true))
+		assert.are.equal("foundation_pending", chat.planningSession.state)
+		assert.is_true(chat.controls.applyFoundation.shown)
 		assert.is_false(chat.controls.confirmBrief.shown)
 		assert.is_false(chat.controls.reviseBrief.shown)
-		assert.are.equal("^2Direction confirmed", chat.controls.status.label)
+		assert.are.equal("^7Review build foundation", chat.controls.status.label)
 		assert.are.equal(originalLevel, build.characterLevel)
 	end)
 
 	it("revises an unconfirmed brief without losing the conversation", function()
 		local chat = build.aiChatTab
-		local bridge = assert(findUpvalue(chat.SendMessage, "AIBridge"))
+		local bridge = assert(findUpvalue(chat.SendRequest, "AIBridge"))
 		local conversation = LoadModule("Modules/AIConversation")
 		local planning = LoadModule("Modules/AIPlanning")
 		local originalAsk = bridge.Ask
@@ -440,7 +454,7 @@ Use level 97 instead.
 
 	it("applies a confirmed foundation and advances the planning session", function()
 		local chat = build.aiChatTab
-		local bridge = assert(findUpvalue(chat.SendMessage, "AIBridge"))
+		local bridge = assert(findUpvalue(chat.SendRequest, "AIBridge"))
 		local conversation = LoadModule("Modules/AIConversation")
 		local planning = LoadModule("Modules/AIPlanning")
 		local originalAsk = bridge.Ask
@@ -490,7 +504,6 @@ Use level 97 instead.
 			chat:SendMessage("Create a Fireball league starter at level 30.")
 			chat:FinishStream()
 			chat:ConfirmBrief()
-			chat:SendMessage("Apply the foundation.")
 			chat:FinishStream()
 			chat:ApplyFoundation()
 		end)

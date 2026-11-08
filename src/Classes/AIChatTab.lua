@@ -290,6 +290,15 @@ function AIChatTabClass:SendMessage(text)
 	self:AddMessage("user", text)
 	self.controls.input:SetText("")
 	self.controls.send.enabled = false
+	self:SendRequest(text)
+end
+
+--- Run one AI request using the current local conversation and planning sessions.
+function AIChatTabClass:SendRequest(text)
+	if self.pending then
+		return
+	end
+
 	self.pending = true
 	self.controls.status.label = "^7Thinking..."
 	local supersedesUnappliedActions = self.pendingActions and #self.pendingActions > 0
@@ -445,7 +454,6 @@ function AIChatTabClass:SendMessage(text)
 		AIBridge.pending = false
 		showRequestFailure("AI request crashed: " .. tostring(requestError))
 	end
-
 end
 
 --- Confirm a non-executable build direction without mutating the active PoB build.
@@ -470,9 +478,10 @@ function AIChatTabClass:ConfirmBrief()
 	self.controls.reviseBrief.shown = false
 	self.controls.applyActions.shown = false
 	self.controls.status.label = "^2Direction confirmed"
-	self.controls.input:SetPlaceholder("Build direction confirmed. Ask about your build...")
+	self.controls.input:SetPlaceholder("Preparing build foundation...")
 	self:AddMessage("system", "^2Build direction confirmed.\n^8PoB build remains unchanged.")
 	self:SelectControl(self.controls.input)
+	self:SendRequest("The build direction is confirmed. Propose the build foundation now.")
 end
 
 --- Discard the unconfirmed brief while retaining the chat history for a revision request.

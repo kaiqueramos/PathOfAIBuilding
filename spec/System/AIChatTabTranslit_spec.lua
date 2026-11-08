@@ -13,7 +13,7 @@ end
 describe("AI chat transliteration", function()
 	it("converts UTF-8 symbols before the Latin-1 fallback", function()
 		local AIChatTab = LoadModule("Classes/AIChatTab")
-		local translit = findUpvalue(AIChatTab.SendMessage, "translit")
+		local translit = findUpvalue(AIChatTab.SendRequest, "translit")
 		assert.is_function(translit)
 
 		local input = table.concat({
