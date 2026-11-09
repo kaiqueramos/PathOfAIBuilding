@@ -34,6 +34,12 @@ local AIBridge = {
 }
 
 local HISTORY_CHAR_BUDGET = 12000
+-- Reasoning models spend most of their output budget thinking, so a reply can need several thousand tokens.
+-- A reply cut off by the limit is retried once with a doubled budget, up to the ceiling.
+local DEFAULT_MAX_TOKENS = 8192
+local MAX_TOKENS_CEILING = 32768
+-- A provider that rejects the budget as too large gets it halved, down to this floor.
+local MIN_TOKENS_FALLBACK = 2048
 AIBridge.HISTORY_CHAR_BUDGET = HISTORY_CHAR_BUDGET
 
 local CONTEXT_SCOPE_ORDER = { "gems", "uniques", "tree", "config" }
@@ -169,9 +175,45 @@ local function applyRequestOptions(request, options)
 	return request
 end
 
+--- The provider's own explanation of a failed request, when it sent one.
+local function describeApiError(response)
+	local body = response and response.body
+	if type(body) ~= "string" or body == "" then
+		return nil
+	end
+	local parsed = dkjson.decode(body)
+	if type(parsed) ~= "table" or not parsed.error then
+		return nil
+	end
+	local message = type(parsed.error) == "table" and parsed.error.message or parsed.error
+	if type(message) ~= "string" or message == "" then
+		return nil
+	end
+	message = message:gsub("%s+", " ")
+	-- A provider can echo the key it rejected. Nothing key-like is kept, because error text ends
+	-- up in the chat history, which is saved inside the build file.
+	message = message:gsub("[%w_%-]+", function(word)
+		return #word >= 24 and "[redacted]" or nil
+	end)
+	return (message:sub(1, 200))
+end
+
+--- Whether a failed response says that the requested output token limit is not allowed.
+local function apiRejectedTokenLimit(response)
+	local detail = describeApiError(response)
+	if not detail then
+		return false
+	end
+	detail = detail:lower()
+	return detail:find("max_tokens", 1, true) ~= nil
+		or detail:find("max_completion_tokens", 1, true) ~= nil
+		or detail:find("output tokens", 1, true) ~= nil
+end
+
 local function parseChatCompletionResponse(response, errMsg)
 	if errMsg then
-		return nil, "API request failed: " .. tostring(errMsg)
+		local detail = describeApiError(response)
+		return nil, "API request failed: " .. tostring(errMsg) .. (detail and (" - " .. detail) or "")
 	end
 
 	local body = response and response.body
@@ -191,11 +233,12 @@ local function parseChatCompletionResponse(response, errMsg)
 		return nil, "No content in API response"
 	end
 
+	local finishReason = parsed.choices[1].finish_reason
 	local content = parsed.choices[1].message.content
 	if type(content) ~= "string" or content == "" then
-		return nil, "No content in API response"
+		return nil, "No content in API response", finishReason
 	end
-	return content
+	return content, nil, finishReason
 end
 
 local function containsAny(text, terms)
@@ -417,17 +460,16 @@ end
 local MAX_COST_SHARE_OF_MANA = 0.30
 -- Supports re-tested after the first pick, which keeps the number of recalculations bounded.
 local SUPPORT_REFINEMENT_POOL = 8
--- Skills that never get damage supports automatically.
-local UTILITY_SKILL_TYPES = { "Aura", "Herald", "Warcry", "Movement", "Guard", "AppliesCurse" }
--- Supports that change how a skill is placed or triggered rather than how it performs.
-local EXCLUDED_SUPPORT_FLAGS = { trap = true, mine = true, totem = true, ballista = true }
+-- Skills used for their effect or utility. Damage supports on them waste sockets, except when
+-- the skill is the build's first group, which is its main skill (Leap Slam, Shield Charge, ...).
+local SUPPORTLESS_SKILL_TYPES = { "Herald", "Warcry", "Movement", "Guard", "AppliesCurse" }
 
-local function isUtilitySkill(grantedEffect)
+local function hasSupportlessRole(grantedEffect)
 	local skillTypes = grantedEffect and grantedEffect.skillTypes
 	if type(skillTypes) ~= "table" or not SkillType then
 		return false
 	end
-	for _, typeName in ipairs(UTILITY_SKILL_TYPES) do
+	for _, typeName in ipairs(SUPPORTLESS_SKILL_TYPES) do
 		local typeId = SkillType[typeName]
 		if typeId and skillTypes[typeId] then
 			return true
@@ -435,6 +477,9 @@ local function isUtilitySkill(grantedEffect)
 	end
 	return false
 end
+
+-- Supports that change how a skill is placed or triggered rather than how it performs.
+local EXCLUDED_SUPPORT_FLAGS = { trap = true, mine = true, totem = true, ballista = true }
 
 --- True for supports a player can realistically buy or find at any level and that change
 -- the performance of the skill, not how it is triggered, placed or unlocked.
@@ -507,6 +552,22 @@ function AIBridge:WithTemporaryMainGroup(build, group, fn)
 	return result
 end
 
+--- True for an attack that deals no damage only because no weapon is equipped.
+-- @return boolean, table|nil the granted effect of the main skill
+local function attackLacksWeapon(build)
+	local slot = build and build.itemsTab and build.itemsTab.slots and build.itemsTab.slots["Weapon 1"]
+	if not slot or (slot.selItemId or 0) > 0 then
+		return false, nil
+	end
+	local calcsTab = build.calcsTab
+	local skill = calcsTab and calcsTab.mainEnv and calcsTab.mainEnv.player and calcsTab.mainEnv.player.mainSkill
+	local effect = skill and skill.activeEffect and skill.activeEffect.grantedEffect
+	if not effect or not effect.weaponTypes or readSkillDps(calcsTab.mainOutput) > 0 then
+		return false, nil
+	end
+	return true, effect
+end
+
 -- Plain weapon types in the order a new character is most likely to use them.
 local WEAPON_TYPE_PREFERENCE = {
 	"Bow", "Wand", "One Handed Sword", "One Handed Axe", "One Handed Mace", "Claw", "Dagger",
@@ -560,7 +621,10 @@ function AIBridge:WithTemporaryWeapon(build, baseName, fn)
 	local previous = slot.selItemId or 0
 	itemsTab:AddItem(item, true)
 	slot:SetSelItemId(item.id)
-	local ok, result = pcall(fn)
+	local ok, result = self:RebuildBuild(build)
+	if ok then
+		ok, result = pcall(fn)
+	end
 	slot:SetSelItemId(previous)
 	itemsTab:DeleteItem(item, true)
 	itemsTab:PopulateSlots()
@@ -574,6 +638,16 @@ function AIBridge:WithTemporaryWeapon(build, baseName, fn)
 	return result
 end
 
+--- Plain weapon base to test with when the main skill is an attack that does no damage unarmed.
+-- @return string|nil base name, nil when no weapon is needed
+function AIBridge:GetPlanningWeaponBase(build)
+	local lacks, effect = attackLacksWeapon(build)
+	if not lacks then
+		return nil
+	end
+	return pickPlanningWeaponBase(build, effect, build.characterLevel or 1)
+end
+
 --- Pick the supports that add the most damage to an active skill at this character level.
 -- Only supports that are legal at the level, compatible with the skill, realistic to own and
 -- affordable with the available mana are considered. Attack skills that need a weapon are
@@ -583,7 +657,7 @@ end
 function AIBridge:SelectOptimalSupportGems(build, activeGemData, characterLevel, maxSupports, excludedNames)
 	maxSupports = math.floor(tonumber(maxSupports) or 3)
 	local activeEffect = activeGemData and activeGemData.grantedEffect
-	if maxSupports <= 0 or not build or not activeEffect or activeEffect.support or isUtilitySkill(activeEffect) then
+	if maxSupports <= 0 or not build or not activeEffect or activeEffect.support then
 		return { }
 	end
 	if not build.skillsTab or not build.calcsTab or not build.calcsTab.calcs or not build.itemsTab
@@ -973,10 +1047,34 @@ local function computePriorityScore(priority, dpsGainPct, ehpGainPct, maxHitGain
 	return posDps + posEhp + posHit * 0.35 + posSustain + bothBonus
 end
 
+--- Rank passive candidates by simulation. An attack that deals no damage because no weapon is
+--- equipped is measured with a temporary plain weapon. Without it every candidate would be ranked
+--- by defence alone, and fillers for another weapon type could outrank the nodes that matter.
+function AIBridge:RankPassiveCandidatesBySimulation(build, candidates, skillProfile, priority, fingerprint, maxSimulations)
+	if build and build.calcsTab and build.buildFlag then
+		pcall(self.RebuildBuild, self, build)
+	end
+	local weaponBase = self:GetPlanningWeaponBase(build)
+	if not weaponBase then
+		return self:RankPassiveCandidatesCore(build, candidates, skillProfile, priority, fingerprint, maxSimulations)
+	end
+	fingerprint = fingerprint or self:GetBuildFingerprint(build)
+	local ok, result = pcall(self.WithTemporaryWeapon, self, build, weaponBase, function()
+		local ranked, excluded = self:RankPassiveCandidatesCore(
+			build, candidates, skillProfile, priority, fingerprint, maxSimulations
+		)
+		return { ranked, excluded }
+	end)
+	if not ok then
+		return candidates, {}
+	end
+	return result[1], result[2]
+end
+
 --- Rank a bounded semantic shortlist of passive candidates using isolated PoB simulations (US-006).
 --- Never brute-forces the passive tree: simulates at most maxSimulations compatible/defensive candidates
 --- from the same current build snapshot, caching by build fingerprint + skill profile + priority.
-function AIBridge:RankPassiveCandidatesBySimulation(build, candidates, skillProfile, priority, fingerprint, maxSimulations)
+function AIBridge:RankPassiveCandidatesCore(build, candidates, skillProfile, priority, fingerprint, maxSimulations)
 	maxSimulations = maxSimulations or 12
 	priority = (priority == "damage" or priority == "defense" or priority == "balanced") and priority or "balanced"
 	if not build or not skillProfile or type(candidates) ~= "table" or #candidates == 0 then
@@ -1900,6 +1998,9 @@ function AIBridge:GetBuildFingerprint(build)
 	end
 	-- Strip the conversational <AIChat> XML section so saving messages never invalidates the build fingerprint.
 	snapshot = snapshot:gsub("<AIChat>[%s%S]-</AIChat>", ""):gsub("<AIChat%s*/>", "")
+	-- PoB's calculations fill in default minion choices and Calcs tab selections on their own.
+	-- Those are not player edits, so they must not make a build look changed.
+	snapshot = snapshot:gsub(' skillMinion%w*="[^"]*"', ""):gsub(' skill%w+Calcs="[^"]*"', "")
 
 	return sha1(tostring(build) .. "\0" .. snapshot)
 end
@@ -3050,7 +3151,7 @@ function AIBridge:TestConnection(config, callback)
 		messages = {
 			{ role = "user", content = "Reply with OK." },
 		},
-		max_tokens = 16,
+		max_tokens = 256,
 		temperature = 0,
 	}, config.request_options)
 	local requestBody, encodeError = dkjson.encode(request, { indent = false })
@@ -3164,7 +3265,9 @@ When suggesting changes, explain the expected impact (e.g. "+15% DPS", "+200 lif
 Be concise. Use PoB color codes: ^2=green/good, ^1=red/bad, ^7=white, ^8=gray.
 If the user asks "how do I improve", focus on the top 3 highest-impact changes.
 Format responses for readability in a game tool UI.
-Reply in the same language as the player; use Portuguese when the player writes in Portuguese.
+Reply in the language the player typed. Some player messages are fixed English requests sent by UI
+buttons (for example "Propose complementary skills for this build"): for those, keep the language of the
+player's earlier typed messages, and use English when there are none. Never switch language on your own.
 
 state.context declares which optional sections are included and lists omitted sections in
 availableContexts. Missing data does not mean that no candidates exist.
@@ -3266,6 +3369,9 @@ point cap: use only its entries, in listed order, for a new or reset build. Each
 its incremental and cumulative allocation cost. Do not substitute a superficially related node.
 Keystones are build-defining tradeoffs: never choose one automatically; use one only when the
 player explicitly names it.
+If tree.availableNodes and tree.recommendedPlan are both empty, no notable fits the available
+points (typical below level 10). Say so in one sentence, do not tell the player to reload the build,
+and tell them they can press Skip Tree to continue with skills and gear.
 For alloc_node, use ONLY an exact name from tree.availableNodes; NEVER invent a node or use a
 numeric ID. If treeCandidates is false, request the "tree" context before proposing alloc_node.
 If state.context.actionRecovery is present, the previous action batch was rejected because its
@@ -3388,6 +3494,14 @@ complete <actions> block for the requested change; never assume the previous pro
 			planningSession = foundationSession
 		elseif proposedActions and (planningSession.state == "tree" or planningSession.state == "tree_pending")
 			and (not planningSession.passivePlanApplied or isPassiveOnlyBatch(proposedActions)) then
+			local fittedActions, droppedCount = self:FitPassivePlanToBudget(build, proposedActions)
+			if droppedCount > 0 then
+				proposedActions = fittedActions
+				content = content .. string.format(
+					"\n\n^1Note: the last %d allocation(s) of this plan did not fit your passive point budget and were removed. The remaining plan fits.",
+					droppedCount
+				)
+			end
 			local passivePlanSession, passivePlanError = AIPlanning:StorePassivePlan(
 				planningSession,
 				proposedActions,
@@ -3407,7 +3521,7 @@ complete <actions> block for the requested change; never assume the previous pro
 		callback(content, nil, requestFingerprint, turn, brief, planningSession)
 	end
 
-	local function buildRequest(currentState)
+	local function buildRequest(currentState, tokenBudget)
 		local stateJson, stateEncodeError = dkjson.encode(currentState, { indent = false })
 		if not stateJson then
 			return nil, nil, "Could not encode build state: " .. tostring(stateEncodeError)
@@ -3448,9 +3562,10 @@ complete <actions> block for the requested change; never assume the previous pro
 		local request = applyRequestOptions({
 			model = model,
 			messages = messages,
-			max_tokens = 2048,
+			max_tokens = tokenBudget,
 			temperature = 0.3,
 		}, AIConfig:GetRequestOptions())
+		request.max_tokens = tokenBudget
 		local requestBody, requestEncodeError = dkjson.encode(request, { indent = false })
 		if not requestBody then
 			return nil, nil, "Could not encode API request: " .. tostring(requestEncodeError)
@@ -3458,9 +3573,13 @@ complete <actions> block for the requested change; never assume the previous pro
 		return requestBody, stateJson, nil
 	end
 
+	local configuredTokens = math.floor(tonumber(AIConfig:GetRequestOptions().max_tokens) or 0)
+	local baseTokenBudget = configuredTokens > 0 and configuredTokens or DEFAULT_MAX_TOKENS
+
 	local sendRequest
-	sendRequest = function(currentState, currentContext, expansionsUsed)
-		local requestBody, stateJson, requestError = buildRequest(currentState)
+	sendRequest = function(currentState, currentContext, expansionsUsed, tokenBudget, afterTruncation)
+		tokenBudget = tokenBudget or baseTokenBudget
+		local requestBody, stateJson, requestError = buildRequest(currentState, tokenBudget)
 		if not requestBody then
 			fail(requestError)
 			return
@@ -3487,7 +3606,24 @@ complete <actions> block for the requested change; never assume the previous pro
 
 		local responseHandled = false
 		local function handleResponse(response, errMsg)
-			local content, responseError = parseChatCompletionResponse(response, errMsg)
+			local content, responseError, finishReason = parseChatCompletionResponse(response, errMsg)
+			if errMsg and not afterTruncation and tokenBudget > MIN_TOKENS_FALLBACK and apiRejectedTokenLimit(response) then
+				sendRequest(currentState, currentContext, expansionsUsed, math.max(MIN_TOKENS_FALLBACK, math.floor(tokenBudget / 2)))
+				return
+			end
+			if afterTruncation and not content then
+				fail("The reply was cut off by the output token limit and the provider did not accept a larger limit. "
+					.. "Set request_options.max_tokens in the AI settings to a value it supports.")
+				return
+			end
+			if finishReason == "length" then
+				if tokenBudget < MAX_TOKENS_CEILING then
+					sendRequest(currentState, currentContext, expansionsUsed, math.min(tokenBudget * 2, MAX_TOKENS_CEILING), true)
+					return
+				end
+				fail("The model ran out of output tokens before it finished. Raise request_options.max_tokens in the AI settings or pick a model that reasons less.")
+				return
+			end
 			if not content then
 				fail(responseError)
 				return
@@ -3554,11 +3690,11 @@ complete <actions> block for the requested change; never assume the previous pro
 					return
 				end
 
-				sendRequest(expandedState, expandedContextOrError, expansionsUsed + 1)
+				sendRequest(expandedState, expandedContextOrError, expansionsUsed + 1, tokenBudget)
 				return
 			end
 
-			local turnContent, turn, turnError = AIConversation:ParseTurn(content)
+			local turnContent, turn, turnError = AIConversation:ParseTurnOrAnswer(content)
 			if turnError then
 				fail("Invalid AI dialogue turn: " .. turnError)
 				return
@@ -3651,7 +3787,7 @@ complete <actions> block for the requested change; never assume the previous pro
 					return
 				end
 
-				sendRequest(recoveryState, recoveryContextOrError, expansionsUsed + 1)
+				sendRequest(recoveryState, recoveryContextOrError, expansionsUsed + 1, tokenBudget)
 				return
 			end
 
@@ -3675,7 +3811,7 @@ complete <actions> block for the requested change; never assume the previous pro
 			{
 				header = header,
 				body = requestBody,
-				timeout = AIConfig:GetTimeout(),
+				timeout = math.min(AIConfig:GetTimeout() * (tokenBudget > baseTokenBudget and 2 or 1), 600),
 			}
 		)
 		if (not submitted or not requestId) and not responseHandled then
@@ -4008,6 +4144,7 @@ function AIBridge:CaptureBuildMetrics(build)
 
 	return {
 		dps = dps,
+		needsWeapon = (dps <= 0 and attackLacksWeapon(build)) or nil,
 		ehp = finiteMetric(output.TotalEHP),
 		maxHits = {
 			physical = finiteMetric(output.PhysicalMaximumHitTaken),
@@ -4041,7 +4178,8 @@ local function formatMetricChange(label, beforeValue, afterValue)
 	end
 	local colour = delta > 0 and "^2" or "^1"
 	local change
-	if math.abs(beforeValue) > 0.000001 then
+	-- A percentage of a near-zero base (DPS 0.06 -> 378) is meaningless, so show the amount instead.
+	if math.abs(beforeValue) >= 1 then
 		change = string.format("%s%+.1f%%^7", colour, delta / math.abs(beforeValue) * 100)
 	else
 		change = colour .. (delta > 0 and "+" or "") .. formatMetricNumber(delta) .. "^7"
@@ -4074,6 +4212,9 @@ function AIBridge:FormatMetricDiff(before, after)
 		if beforeValue ~= 0 or afterValue ~= 0 then
 			t_insert(lines, formatMetricChange(entry[1], beforeValue, afterValue))
 		end
+	end
+	if after.needsWeapon then
+		t_insert(lines, "^8This attack deals no damage without a weapon. Equip one (see Recommended Gear) to see its real damage.")
 	end
 	local pointDelta = after.pointsUsed - before.pointsUsed
 	t_insert(lines, string.format("^7Passive points used: %d -> %d (%+d)",
@@ -4246,6 +4387,37 @@ function AIBridge:PreflightActions(build, actions, snapshotXml)
 		results = simulatedResults,
 		after = previewMetrics,
 	}
+end
+
+--- Remove the trailing actions of a passive plan that the point budget cannot pay for.
+-- The plan is checked on an isolated clone, exactly as applying it would be, so the player
+-- only ever sees a plan that can be applied. Other kinds of failure are left for apply time.
+-- @param build Active build
+-- @param actions Passive plan actions
+-- @return table actions that fit, number of removed actions
+function AIBridge:FitPassivePlanToBudget(build, actions)
+	local snapshotOk, snapshot = pcall(build.SaveDB, build, "AI passive plan fit")
+	if not snapshotOk or not isNonEmptyString(snapshot) then
+		return actions, 0
+	end
+	local current = actions
+	for _ = 1, #actions do
+		local report = self:PreflightActions(build, current, snapshot)
+		if report.ok then
+			return current, #actions - #current
+		end
+		local failure = report.results and report.results[1]
+		local failedIndex = failure and failure.index
+		if not failedIndex or failedIndex <= 1 or not tostring(failure.msg):find("Not enough", 1, true) then
+			return actions, 0
+		end
+		local shorter = { }
+		for index = 1, failedIndex - 1 do
+			t_insert(shorter, current[index])
+		end
+		current = shorter
+	end
+	return actions, 0
 end
 
 --- Preflight, apply, fully rebuild, and measure an action batch.
@@ -4513,7 +4685,16 @@ function AIBridge:ActionEquipItem(build, action)
 	-- Create the item from raw text
 	local item = new("Item"):Item(raw)
 	if not item or not item.baseName then
-		return false, "Invalid item data"
+		local lines = { }
+		for line in (raw .. "\n"):gmatch("([^\n]*)\n") do
+			t_insert(lines, line)
+		end
+		local rarity = (lines[1] or ""):match("^Rarity:%s*(%a+)")
+		local baseLine = (rarity == "NORMAL" or rarity == "MAGIC") and lines[2] or lines[3]
+		return false, string.format(
+			"Invalid item data: PoB has no item base named '%s'. Ask for the gear again.",
+			tostring(baseLine or lines[1] or ""):sub(1, 60)
+		)
 	end
 
 	-- Determine slot: explicit or auto-detect from item type
@@ -4864,7 +5045,8 @@ function AIBridge:ActionAddSkill(build, action)
 	end
 
 	local notes = {}
-	if firstActiveGemData and supportCount == 0 and #newGroup.gemList == 1 then
+	if firstActiveGemData and supportCount == 0 and #newGroup.gemList == 1
+		and (currentSocketsUsed == 0 or not hasSupportlessRole(firstActiveGemData.grantedEffect)) then
 		local room = socketBudget.maxMainLinks - 1
 		if socketBudget.enforceTotal then
 			room = math.min(room, socketBudget.maxTotalSockets - currentSocketsUsed - 1)

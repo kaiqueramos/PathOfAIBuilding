@@ -96,6 +96,26 @@ local UTF8_SYMBOL_TRANSLIT = {
 	["\226\137\136"] = "~", -- ≈
 	["\226\137\164"] = "<=", -- ≤
 	["\226\137\165"] = ">=", -- ≥
+	["\194\160"] = " ", -- no-break space
+	["\194\170"] = "a", -- feminine ordinal indicator
+	["\194\171"] = '"', ["\194\187"] = '"', -- double angle quotation marks
+	["\194\176"] = "deg", -- degree sign
+	["\194\181"] = "u", -- micro sign
+	["\194\183"] = "-", -- middle dot
+	["\194\186"] = "o", -- masculine ordinal indicator
+	["\226\128\137"] = " ", ["\226\128\175"] = " ", -- thin and narrow no-break spaces
+	["\226\128\139"] = "", -- zero width space
+	["\226\128\145"] = "-", ["\226\128\146"] = "-", -- non-breaking hyphen, figure dash
+	["\226\128\149"] = "--", -- horizontal bar
+	["\226\128\166"] = "...", -- ellipsis
+	["\226\134\144"] = "<-", -- left arrow
+	["\226\134\148"] = "<->", -- left right arrow
+	["\226\135\146"] = "=>", -- double right arrow
+	["\226\136\146"] = "-", -- minus sign
+	["\226\137\160"] = "!=", -- not equal
+	["\226\156\147"] = "ok", ["\226\156\148"] = "ok", -- check marks
+	["\226\156\151"] = "x", ["\226\156\152"] = "x", -- cross marks
+	["\226\152\133"] = "*", -- black star
 }
 
 local function translit(text)
@@ -106,6 +126,11 @@ local function translit(text)
 	text = text:gsub("\195[\128-\191]", function(seq)
 		return UTF8_TRANSLIT[seq] or ""
 	end)
+	-- Any other well-formed UTF-8 sequence is a symbol the font cannot draw. Left alone, its lead
+	-- byte would be read as a Latin-1 letter below (the ordinal indicator after a number became "A").
+	text = text:gsub("[\194-\223][\128-\191]", "")
+	text = text:gsub("[\224-\239][\128-\191][\128-\191]", "")
+	text = text:gsub("[\240-\247][\128-\191][\128-\191][\128-\191]", "")
 	-- Then: Latin-1 single bytes (remaining high bytes)
 	text = text:gsub("[\192-\255]", function(b)
 		return LATIN1_TRANSLIT[b] or ""
@@ -154,6 +179,9 @@ local function translit(text)
 	end)
 	return text
 end
+
+-- What a click on the "AI Decides" chip answers.
+local AI_DECIDES_ANSWER = "Choose the best option for me"
 
 local AIChatTabClass = newClass("AIChatTab", "ControlHost", "Control")
 
@@ -233,8 +261,7 @@ function AIChatTabClass:AIChatTab(build)
 		self:SendMessage("Recommend the best starter/upgrade items for each slot (uniques and rare stat priorities) and propose equip_item actions for key slots.")
 	end)
 	self.controls.quickGuide = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickGear,"RIGHT"}, {5, 0, 128, 22}, "Playstyle Guide", function()
-		self.saveGuideToNotesNext = true
-		self:SendMessage("Write a complete playstyle, skill rotation, leveling progression, and defensive mechanics guide for this build.")
+		self:SendMessage("Write a complete playstyle, skill rotation, leveling progression, and defensive mechanics guide for this build.", { saveGuideToNotes = true })
 	end)
 	self.controls.quickNewBuild = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickGuide,"RIGHT"}, {5, 0, 145, 22}, "^x5CF0BB+ New Guided Build", function()
 		self.controls.input:SetText("Create a league starter build at level 30: ")
@@ -246,7 +273,11 @@ function AIChatTabClass:AIChatTab(build)
 	end)
 	self.controls.quickTreePlan.shown = function()
 		return self.planningSession ~= nil and self.planningSession.state == "tree" and not self.pending
+			and not self.planningSession.passivePlanApplied
 	end
+	self.controls.quickSkipTree = new("ButtonControl"):ButtonControl({"LEFT",self.controls.quickTreePlan,"RIGHT"}, {5, 0, 100, 22}, "^8Skip Tree", function()
+		self:SkipTreeStage()
+	end)
 
 	-- Option chips (shown when AI asks a clarification question with options)
 	self.optionButtons = {}
@@ -336,20 +367,34 @@ end
 
 --- Populate clickable option buttons when the AI asks a clarification question.
 function AIChatTabClass:SetClarificationOptions(options)
+	-- Option text becomes the player's answer and is shown in the history, so it is
+	-- transliterated once here instead of at every use.
+	local cleaned = {}
+	for _, opt in ipairs(options or {}) do
+		local rawOpt = translit(tostring(opt))
+		local cleanOpt = rawOpt:match("^%s*(.-)%s*%(") or rawOpt
+		if #cleanOpt == 0 then
+			cleanOpt = rawOpt
+		end
+		cleanOpt = cleanOpt:gsub("^%s+", ""):gsub("%s+$", "")
+		if #cleanOpt > 0 then
+			t_insert(cleaned, cleanOpt)
+		end
+		if #cleaned == 4 then
+			break
+		end
+	end
+
 	self.optionValues = {}
-	local count = options and math.min(#options, 4) or 0
+	self.optionCount = #cleaned
+	self.optionAutoIndex = #cleaned > 0 and (#cleaned + 1) or nil
 	for idx = 1, 4 do
 		local btn = self.optionButtons and self.optionButtons[idx]
-		local opt = options and options[idx]
+		local text = cleaned[idx]
 		if btn then
-			if opt and #tostring(opt) > 0 then
-				local rawOpt = tostring(opt)
-				local cleanOpt = rawOpt:match("^%s*(.-)%s*%(") or rawOpt
-				if #cleanOpt == 0 then
-					cleanOpt = rawOpt
-				end
-				self.optionValues[idx] = cleanOpt
-				local shortLabel = translit(cleanOpt)
+			if text then
+				self.optionValues[idx] = text
+				local shortLabel = text
 				if #shortLabel > 24 then
 					shortLabel = shortLabel:sub(1, 22) .. ".."
 				end
@@ -363,16 +408,70 @@ function AIChatTabClass:SetClarificationOptions(options)
 	end
 	local autoBtn = self.optionButtons and self.optionButtons[5]
 	if autoBtn then
-		if count > 0 then
-			local autoIndex = count + 1
-			self.optionValues[5] = "Choose the best option for me"
-			autoBtn.label = "^2[" .. autoIndex .. "] AI Decides (Recommended)"
+		if #cleaned > 0 then
+			self.optionValues[5] = AI_DECIDES_ANSWER
+			autoBtn.label = "^2[" .. self.optionAutoIndex .. "] AI Decides (Recommended)"
 			autoBtn.width = 205
+			-- It follows the last visible option. Anchored to the fourth chip it would stay
+			-- hidden whenever the question has fewer than four options.
+			autoBtn:SetAnchor("LEFT", self.optionButtons[#cleaned], "RIGHT", 6, 0)
 			autoBtn.shown = true
 		else
 			autoBtn.shown = false
 		end
 	end
+end
+
+--- Re-create the buttons, chips and prompts that a loaded planning state implies.
+-- Only the saved sessions survive a save, so the screen is rebuilt from them.
+function AIChatTabClass:RestoreUiFromState()
+	local controls = self.controls
+	local state = self.planningSession and self.planningSession.state or "idle"
+	local conversation = self.conversationSession
+	controls.applyActions.shown = false
+	controls.confirmBrief.shown = state == "brief_pending"
+	controls.reviseBrief.shown = state == "brief_pending"
+	controls.applyFoundation.shown = state == "foundation_pending"
+	controls.applyPassivePlan.shown = state == "tree_pending"
+	if conversation and conversation.state == "awaiting_user" and conversation.pendingQuestion then
+		self:SetClarificationOptions(conversation.pendingQuestion.options)
+		controls.input:SetPlaceholder("Answer: " .. translit(tostring(conversation.pendingQuestion.prompt)))
+		controls.status.label = "^7Clarification needed"
+		return
+	end
+	self:SetClarificationOptions(nil)
+	if state == "brief_pending" then
+		controls.input:SetPlaceholder("Use Confirm direction or describe a revision...")
+		controls.status.label = "^7Review build direction"
+	elseif state == "foundation_pending" then
+		controls.input:SetPlaceholder("Use Apply Foundation or describe a revision...")
+		controls.status.label = "^7Review build foundation"
+	elseif state == "tree_pending" then
+		controls.input:SetPlaceholder("Use Apply Passive Plan or describe a revision...")
+		controls.status.label = "^7Review passive plan"
+	elseif state == "tree" then
+		local planDone = self.planningSession.passivePlanApplied
+		controls.input:SetPlaceholder(planDone
+			and "Use Complementary Skills, Recommended Gear, or Playstyle Guide below..."
+			or "Ask for the passive tree plan...")
+		controls.status.label = "^2Ready"
+	end
+end
+
+--- A reloaded build is a new object whose saved form differs in defaults PoB fills in, so the
+-- fingerprints stored with the chat can never match it. The first use after loading binds the
+-- restored sessions to the build as it is now. Preflight still checks every action on apply.
+function AIChatTabClass:RebindRestoredSessions()
+	if not self.restoredSessions then
+		return
+	end
+	local fingerprint = AIBridge:GetBuildFingerprint(self.build)
+	if not fingerprint then
+		return
+	end
+	self.restoredSessions = false
+	AIPlanning:Rebind(self.planningSession, fingerprint)
+	AIConversation:Rebind(self.conversationSession, fingerprint)
 end
 
 --- Reset the conversation and guided planning state.
@@ -399,18 +498,22 @@ function AIChatTabClass:ResetChat()
 end
 
 --- Send a message to the AI and display the response
-function AIChatTabClass:SendMessage(text)
+function AIChatTabClass:SendMessage(text, requestOptions)
 	if self.pending then
 		return
 	end
+	self:RebindRestoredSessions()
 	local awaitingClarification = self.conversationSession
 		and self.conversationSession.state == "awaiting_user"
 	if awaitingClarification then
+		-- A bare digit picks the chip with that number, the last number being "AI Decides".
 		local numChoice = tonumber(text:match("^%s*(%d)%s*$"))
-		if numChoice and self.optionValues and self.optionValues[numChoice] then
-			text = self.optionValues[numChoice]
-		elseif numChoice and numChoice == (#(self.optionValues or {}) + 1) or (numChoice and self.optionValues and self.optionValues[5]) then
-			text = self.optionValues[numChoice] or self.optionValues[5] or text
+		if numChoice then
+			if numChoice >= 1 and numChoice <= (self.optionCount or 0) then
+				text = self.optionValues[numChoice]
+			elseif numChoice == self.optionAutoIndex then
+				text = self.optionValues[5]
+			end
 		end
 		local accepted, answerError = AIConversation:SubmitAnswer(self.conversationSession, text)
 		if not accepted then
@@ -444,11 +547,24 @@ function AIChatTabClass:SendMessage(text)
 	self:AddMessage("user", text)
 	self.controls.input:SetText("")
 	self.controls.send.enabled = false
-	self:SendRequest(text)
+	self:SendRequest(text, requestOptions)
+end
+
+--- Remove protocol tags the model left outside a parsed block, such as a second </turn>.
+local function stripStrayProtocolTags(text)
+	text = text:gsub("</?[Tt][Uu][Rr][Nn]%s*>", "")
+		:gsub("</?[Bb][Rr][Ii][Ee][Ff]%s*>", "")
+		:gsub("</?[Aa][Cc][Tt][Ii][Oo][Nn][Ss]%s*>", "")
+		:gsub("</?[Cc][Oo][Nn][Tt][Ee][Xx][Tt]_[Rr][Ee][Qq][Uu][Ee][Ss][Tt]%s*>", "")
+		:gsub("\n\n\n+", "\n\n")
+		:gsub("^%s+", "")
+		:gsub("%s+$", "")
+	return text
 end
 
 --- Run one AI request using the current local conversation and planning sessions.
-function AIChatTabClass:SendRequest(text)
+-- @param requestOptions optional { saveGuideToNotes = true } for the Playstyle Guide button
+function AIChatTabClass:SendRequest(text, requestOptions)
 	if self.pending then
 		return
 	end
@@ -516,6 +632,7 @@ function AIChatTabClass:SendRequest(text)
 			resetRequestState()
 			-- Parse actions FIRST (before translit to avoid corrupting JSON).
 			local displayText, actions, actionError = AIBridge:ParseActions(response)
+			displayText = stripStrayProtocolTags(displayText)
 			if brief and ((actions and #actions > 0) or actionError) then
 				showRequestFailure("AI build brief cannot include executable actions")
 				return
@@ -591,8 +708,7 @@ function AIChatTabClass:SendRequest(text)
 			-- Transliterate only the display text.
 			local cleanDisplay = translit(displayText)
 			self:StartStream(cleanDisplay)
-			if self.saveGuideToNotesNext then
-				self.saveGuideToNotesNext = false
+			if requestOptions and requestOptions.saveGuideToNotes then
 				if self.build and self.build.notesTab and self.build.notesTab.controls and self.build.notesTab.controls.edit then
 					local existingNotes = self.build.notesTab.controls.edit.buf or ""
 					local guideHeader = "^x5CF0BB=== AI Playstyle & Leveling Guide ===\n^7"
@@ -637,11 +753,29 @@ function AIChatTabClass:SendRequest(text)
 	end
 end
 
+--- Leave the passive tree stage without a plan, for characters whose points reach no notable.
+-- The tree stays as it is and the later steps (skills, gear, guide) become available.
+function AIChatTabClass:SkipTreeStage()
+	if self.pending then
+		return
+	end
+	local session = self.planningSession
+	if not session or session.state ~= "tree" or session.passivePlanApplied then
+		return
+	end
+	session.passivePlanApplied = true
+	session.treeSkipped = true
+	self:AddMessage("system", "^7Passive tree stage skipped. The tree is unchanged.\n^8Ask for skills, gear or the guide whenever you want.")
+	self.controls.status.label = "^2Tree stage skipped"
+	self.controls.input:SetPlaceholder("Use Complementary Skills, Recommended Gear, or Playstyle Guide below...")
+end
+
 --- Confirm a non-executable build direction without mutating the active PoB build.
 function AIChatTabClass:ConfirmBrief()
 	if self.pending then
 		return
 	end
+	self:RebindRestoredSessions()
 	local fingerprint, fingerprintError = AIBridge:GetBuildFingerprint(self.build)
 	if not fingerprint then
 		self:AddMessage("system", "Error: " .. tostring(fingerprintError))
@@ -745,7 +879,7 @@ end
 function AIChatTabClass:RefreshHistory()
 	if #self.messages == 0 then
 		self.controls.history:SetText(
-			"^x5CF0BBAI Build Advisor — Ready\n"
+			"^x5CF0BBAI Build Advisor - Ready\n"
 			.. "^8Ask about your active build (DPS, EHP, gems, items, passive tree) or start a guided build from scratch.\n"
 			.. "^8Quick actions below: 'How do I improve?', 'Next upgrade?', 'Can I tank?', or '+ New Guided Build'."
 		)
@@ -918,7 +1052,8 @@ function AIChatTabClass:ApplyFoundation()
 		end
 	end
 
-	self.controls.applyFoundation.shown = false
+	-- A rejected proposal stays pending, so its button stays until the player revises it.
+	self.controls.applyFoundation.shown = self.planningSession.state == "foundation_pending"
 	self.controls.applyFoundation.enabled = true
 end
 
@@ -992,7 +1127,7 @@ function AIChatTabClass:ApplyPassivePlan()
 		end
 	end
 
-	self.controls.applyPassivePlan.shown = false
+	self.controls.applyPassivePlan.shown = self.planningSession.state == "tree_pending"
 	self.controls.applyPassivePlan.enabled = true
 end
 
@@ -1023,6 +1158,8 @@ function AIChatTabClass:Load(xml, dbFileName)
 			end
 		end
 	end
+	self.restoredSessions = self.conversationSession ~= nil or self.planningSession ~= nil
+	self:RestoreUiFromState()
 	self:RefreshHistory()
 	self.modFlag = false
 	return false

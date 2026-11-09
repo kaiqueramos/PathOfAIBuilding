@@ -376,24 +376,54 @@ describe("AI context escalation", function()
 		assert.is_false(bridge.pending)
 	end)
 
-	it("requires a final dialogue turn before exposing an answer", function()
+	it("treats a plain reply without a turn block as a read-only answer", function()
 		local bridge = LoadModule("Modules/AIBridge")
+		local conversation = LoadModule("Modules/AIConversation")
+		local session = conversation:NewSession()
 		local callbackContent
+		local callbackTurn
 		local callbackError
 
 		withMockedTransport(bridge, function()
 			return "This response has no turn envelope."
 		end, function(requests)
-			bridge:Ask(build, "Explain this build", function(content, err)
+			bridge:Ask(build, "Explain this build", function(content, err, _, turn)
 				callbackContent = content
 				callbackError = err
-			end, {})
+				callbackTurn = turn
+			end, {}, false, session)
 			assert.are.equal(1, #requests)
 		end)
 
-		assert.is_nil(callbackContent)
-		assert.is_truthy(callbackError:find("missing a turn block", 1, true))
+		assert.is_nil(callbackError)
+		assert.is_truthy(callbackContent:find("no turn envelope", 1, true))
+		assert.are.equal("answer", callbackTurn.next)
+		assert.are.equal("ready", session.state)
 		assert.is_false(bridge.pending)
+	end)
+
+	it("still rejects a reply with actions, a brief or a context request but no turn block", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local replies = {
+			'Do this.\n<actions>[{"type":"set_level","value":100}]</actions>',
+			'Direction.\n<brief>{"stage":"brief"}</brief>',
+			'<context_request>["gems"]</context_request> and a half-finished turn',
+		}
+		for _, reply in ipairs(replies) do
+			local callbackContent
+			local callbackError
+			withMockedTransport(bridge, function(count)
+				return count == 1 and reply or reply
+			end, function()
+				bridge:Ask(build, "Explain this build", function(content, err)
+					callbackContent = content
+					callbackError = err
+				end, {})
+			end)
+			assert.is_nil(callbackContent, reply)
+			assert.is_truthy(callbackError, reply)
+			assert.is_false(bridge.pending)
+		end
 	end)
 
 	it("rejects actions attached to an answer turn", function()

@@ -192,6 +192,24 @@ describe("AI skill planning", function()
 			assert.are.equal(1, #socketGroups()[1].gemList)
 		end)
 
+		it("keeps utility skills added after the main skill free of damage supports", function()
+			startCharacter("Witch", 30)
+			assert.is_true((bridge:ActionAddSkill(build, { label = "Main", gems = { "Fireball" } })))
+			for _, utility in ipairs({ "Flame Dash", "Steelskin", "Flammability", "Herald of Ash" }) do
+				assert.is_true((bridge:ActionAddSkill(build, { label = utility, gems = { utility } })))
+			end
+			assert.is_true(#socketGroups() >= 5)
+			for index = 2, #socketGroups() do
+				assert.are.equal(1, #socketGroups()[index].gemList, socketGroups()[index].label)
+			end
+		end)
+
+		it("links supports to a mine, which PoB also tags as an aura", function()
+			startCharacter("Shadow", 50)
+			assert.is_true((bridge:ActionAddSkill(build, { label = "Mine", gems = { "Icicle Mine" } })))
+			assert.is_true(#socketGroups()[1].gemList > 1)
+		end)
+
 		it("never picks supports that change how a skill is placed", function()
 			startCharacter("Witch", 90)
 			assert.is_true((bridge:ActionAddSkill(build, { label = "Main", gems = { "Fireball" } })))
@@ -250,6 +268,51 @@ describe("AI skill planning", function()
 			assert.are.equal(3, #picks)
 			assert.are.equal(before, assert(bridge:GetBuildFingerprint(build)))
 			assert.are.equal(0, #socketGroups())
+		end)
+	end)
+
+	describe("attacks that need a weapon", function()
+		local function lightningArrowRanger()
+			startCharacter("Ranger", 30)
+			assert.is_true((bridge:ActionAddSkill(build, { label = "Main", gems = { "Lightning Arrow" } })))
+			assert.is_true((bridge:ActionSetMainSkill(build, { name = "Main" })))
+			assert(bridge:RebuildBuild(build))
+		end
+
+		it("picks a test weapon only for an attack that deals no damage unarmed", function()
+			lightningArrowRanger()
+			assert.is_truthy(bridge:GetPlanningWeaponBase(build))
+
+			assert.is_true((bridge:ActionEquipItem(build, { slot = "Weapon 1", raw = "Rarity: NORMAL\n" .. bridge:GetPlanningWeaponBase(build) })))
+			assert(bridge:RebuildBuild(build))
+			assert.is_nil(bridge:GetPlanningWeaponBase(build))
+
+			startCharacter("Witch", 30)
+			assert.is_true((bridge:ActionAddSkill(build, { label = "Main", gems = { "Fireball" } })))
+			assert.is_true((bridge:ActionSetMainSkill(build, { name = "Main" })))
+			assert(bridge:RebuildBuild(build))
+			assert.is_nil(bridge:GetPlanningWeaponBase(build))
+		end)
+
+		it("ranks passive candidates by damage with a temporary weapon and leaves no item behind", function()
+			lightningArrowRanger()
+			local planning = LoadModule("Modules/AIPlanning")
+			local profile = assert(planning:BuildSkillProfile(build, "Lightning Arrow"))
+			local candidates = bridge:CollectTreeCandidates(build.spec, 34, 0, {}, profile)
+			local fingerprint = assert(bridge:GetBuildFingerprint(build))
+
+			local ranked = bridge:RankPassiveCandidatesBySimulation(build, candidates, profile, "damage", fingerprint, 6)
+
+			local sawDamage = false
+			for _, candidate in ipairs(ranked) do
+				if candidate.simulatedDelta and candidate.simulatedDelta.dpsGain > 0 then
+					sawDamage = true
+				end
+			end
+			assert.is_true(sawDamage)
+			assert.are.equal(fingerprint, assert(bridge:GetBuildFingerprint(build)))
+			assert.is_nil(next(build.itemsTab.items))
+			assert.are.equal(0, build.itemsTab.slots["Weapon 1"].selItemId)
 		end)
 	end)
 

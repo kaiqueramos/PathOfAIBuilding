@@ -103,6 +103,19 @@ function AIConversation:BeginRequest(session, fingerprint)
 	return session
 end
 
+--- Bind a restored session to the build as it is now, keeping its pending question.
+function AIConversation:Rebind(session, fingerprint)
+	if type(session) ~= "table" or not isNonEmptyString(fingerprint) then
+		return
+	end
+	if session.fingerprint then
+		session.fingerprint = fingerprint
+	end
+	if session.clarificationFingerprint then
+		session.clarificationFingerprint = fingerprint
+	end
+end
+
 --- Store a player's answer to the one pending clarification.
 function AIConversation:SubmitAnswer(session, answer)
 	if not session or session.state ~= "awaiting_user" or not session.pendingQuestion then
@@ -200,6 +213,38 @@ function AIConversation:ValidateTurn(turn)
 		return false, "Only clarify turns may include a question"
 	end
 	return true
+end
+
+--- Like ParseTurn, but a reply that omits the turn block still gets a sensible one.
+-- Prose cannot change the build, so discarding a useful reply because the model forgot the
+-- envelope would only cost the player the answer. A build direction is always a proposal for the
+-- player to review (the brief validation still runs on it). Replies with actions, a context
+-- request or a damaged turn block are still rejected.
+-- @return string display text, table|nil turn, string|nil error
+function AIConversation:ParseTurnOrAnswer(content)
+	local displayText, turn, turnError = self:ParseTurn(content)
+	if turn or not turnError then
+		return displayText, turn, turnError
+	end
+	if turnError == "AI response is missing a turn block" then
+		local lower = content:lower()
+		if not lower:find("<actions", 1, true) and not lower:find("</actions", 1, true)
+			and not lower:find("<context_request", 1, true) then
+			if lower:find("<brief", 1, true) then
+				return displayText, {
+					next = "proposal",
+					goal = "confirm build direction",
+					reason = "the model omitted the turn block",
+				}, nil
+			end
+			return displayText, {
+				next = "answer",
+				goal = "reply to the player",
+				reason = "the model omitted the turn block",
+			}, nil
+		end
+	end
+	return displayText, turn, turnError
 end
 
 --- Parse exactly one structured <turn> block and return prose without it.

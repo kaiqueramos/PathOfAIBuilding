@@ -219,6 +219,22 @@ function AIPlanning:StoreBrief(session, brief, fingerprint)
 	return session
 end
 
+--- Bind a restored session to the build as it is now, keeping every pending proposal.
+function AIPlanning:Rebind(session, fingerprint)
+	if type(session) ~= "table" or not isNonEmptyString(fingerprint) then
+		return
+	end
+	if session.fingerprint then
+		session.fingerprint = fingerprint
+	end
+	if session.foundationFingerprint then
+		session.foundationFingerprint = fingerprint
+	end
+	if session.passivePlanFingerprint then
+		session.passivePlanFingerprint = fingerprint
+	end
+end
+
 --- Confirm the local brief only after checking that the PoB build is unchanged.
 function AIPlanning:ConfirmBrief(session, fingerprint)
 	if not session or session.state ~= "brief_pending" or not session.pendingBrief then
