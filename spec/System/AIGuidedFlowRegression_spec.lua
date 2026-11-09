@@ -518,10 +518,22 @@ describe("AI gear proposals", function()
 	end)
 
 	describe("items above the character level", function()
-		it("leaves out what the character cannot wear and says so", function()
+		local function unique(name, base)
+			return "Rarity: UNIQUE\n" .. name .. "\n" .. base .. "\nImplicits: 0\n+10 to maximum Life"
+		end
+
+		local function rawLines(raw)
+			local lines = {}
+			for line in (raw .. "\n"):gmatch("([^\n]*)\n") do
+				table.insert(lines, line)
+			end
+			return lines
+		end
+
+		it("leaves out a unique the character cannot wear and says so", function()
 			levelThirty()
 			local actions = {
-				{ type = "equip_item", slot = "Weapon 1", raw = rare("Too Big", "Thicket Bow") },
+				{ type = "equip_item", slot = "Weapon 1", raw = unique("Too Big", "Thicket Bow") },
 				{ type = "equip_item", slot = "Ring 1", raw = rare("Just Right", "Coral Ring") },
 			}
 			local notes = {}
@@ -529,8 +541,53 @@ describe("AI gear proposals", function()
 			assert.are.equal(1, #kept)
 			assert.are.equal("Ring 1", kept[1].slot)
 			assert.are.equal(1, #notes)
+			assert.is_truthy(notes[1]:find("Left out", 1, true))
 			assert.is_truthy(notes[1]:find("Too Big", 1, true))
 			assert.is_truthy(notes[1]:find("level 56", 1, true))
+		end)
+
+		it("gives a rare the best base the character can wear and keeps its mods", function()
+			levelThirty()
+			local original = rare("Storm Bite", "Thicket Bow", "+20 to Dexterity")
+			local action = { type = "equip_item", slot = "Weapon 1", raw = original }
+			local notes = {}
+
+			local kept = bridge:PruneItemsAboveLevel(build, { action }, notes)
+
+			assert.are.equal(1, #kept)
+			assert.are.equal(original, action.raw)
+			local lines = rawLines(kept[1].raw)
+			assert.are.equal("Storm Bite", lines[2])
+			assert.are_not.equal("Thicket Bow", lines[3])
+			assert.are.equal("+20 to Dexterity", lines[5])
+			local base = build.data.itemBases[lines[3]]
+			assert.are.equal("Bow", base.type)
+			assert.is_true(base.req.level <= 30)
+			assert.are.equal(1, #notes)
+			assert.is_truthy(notes[1]:find("Changed the base", 1, true))
+			assert.is_truthy(notes[1]:find("Storm Bite", 1, true))
+			local ok, message = bridge:ActionEquipItem(build, kept[1])
+			assert.is_true(ok, tostring(message))
+		end)
+
+		it("leaves out a rare whose implicit mods belong to its base", function()
+			levelThirty()
+			local raw = "Rarity: RARE\nStorm Bite\nThicket Bow\nImplicits: 1\n+20 to Dexterity\n+10 to maximum Life"
+			local notes = {}
+			local kept = bridge:PruneItemsAboveLevel(build, { { type = "equip_item", slot = "Weapon 1", raw = raw } }, notes)
+			assert.are.equal(0, #kept)
+			assert.is_truthy(notes[1]:find("Left out", 1, true))
+		end)
+
+		it("reports a swap and a removal in the same proposal", function()
+			levelThirty()
+			local notes = {}
+			local kept = bridge:PruneItemsAboveLevel(build, {
+				{ type = "equip_item", slot = "Weapon 1", raw = rare("Storm Bite", "Thicket Bow") },
+				{ type = "equip_item", slot = "Ring 1", raw = unique("Too Big", "Opal Ring") },
+			}, notes)
+			assert.are.equal(1, #kept)
+			assert.are.equal(2, #notes)
 		end)
 
 		it("returns the same table when every item fits", function()
@@ -631,6 +688,82 @@ describe("AI turn parsing of unstructured questions", function()
 		local _, turn, err = conversation:ParseTurnOrAnswer('Text <turn>{"next":"fly","goal":"g","reason":"r"}</turn>')
 		assert.is_nil(turn)
 		assert.is_truthy(err)
+	end)
+end)
+
+describe("AI action block parsing", function()
+	it("adds the closing bracket that the model forgot", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local text, actions, err = bridge:ParseActions('Do it.\n<actions>\n[{"type":"set_level","value":30},{"type":"reset_tree"}\n</actions>')
+		assert.is_nil(err)
+		assert.are.equal("Do it.", text)
+		assert.are.equal(2, #actions)
+		assert.are.equal("reset_tree", actions[2].type)
+	end)
+
+	it("still rejects an array that was cut off in the middle of an item", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		for _, block in ipairs({
+			'[{"type":"set_level","value":30},{"type":"equip_item","raw":"Rarity: RA',
+			'[{"type":"set_level","value":30},{"type":"equip_item","raw":"x","extra":{"a":1}',
+			'{"type":"set_level","value":30}',
+			'[{"type":"set_level","value":30}] trailing words',
+		}) do
+			local _, actions, err = bridge:ParseActions("Text <actions>" .. block .. "</actions>")
+			assert.is_nil(actions, block)
+			assert.is_truthy(err, block)
+		end
+	end)
+end)
+
+describe("AI context requests for context that is already included", function()
+	before_each(function()
+		loadBuildFromXML(readFile("../spec/TestBuilds/3.13/OccVortex.xml"), "AI context repeat")
+	end)
+
+	it("answers once more with a note instead of failing", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local conversation = LoadModule("Modules/AIConversation")
+		local session = conversation:NewSession()
+		local callbackContent, callbackError
+
+		withTransport(bridge, function(count)
+			if count == 1 then
+				return '<context_request>["config"]</context_request>'
+			end
+			return ANSWER
+		end, function(requests)
+			bridge:Ask(build, "What config should I set for bosses?", function(content, err)
+				callbackContent = content
+				callbackError = err
+			end, {}, false, session)
+			assert.are.equal(2, #requests)
+			local secondPrompt = requests[2].messages[#requests[2].messages].content
+			assert.is_truthy(secondPrompt:find("already included in this state", 1, true))
+			assert.is_truthy(secondPrompt:find('"escalationRemaining":0', 1, true))
+		end)
+
+		assert.is_nil(callbackError)
+		assert.is_truthy(callbackContent:find("Full answer.", 1, true))
+		assert.are.equal("ready", session.state)
+		assert.is_false(bridge.pending)
+	end)
+
+	it("stops when the model asks again after the note", function()
+		local bridge = LoadModule("Modules/AIBridge")
+		local callbackError
+
+		withTransport(bridge, function()
+			return '<context_request>["config"]</context_request>'
+		end, function(requests)
+			bridge:Ask(build, "What config should I set for bosses?", function(_, err)
+				callbackError = err
+			end, {})
+			assert.are.equal(2, #requests)
+		end)
+
+		assert.is_truthy(callbackError:find("more than once", 1, true))
+		assert.is_false(bridge.pending)
 	end)
 end)
 
@@ -754,6 +887,10 @@ describe("AI chat tab guided flow", function()
 			return "Rarity: RARE\n" .. name .. "\n" .. base .. "\nImplicits: 0\n+10 to maximum Life"
 		end
 
+		local function uniqueItem(name, base)
+			return "Rarity: UNIQUE\n" .. name .. "\n" .. base .. "\nImplicits: 0\n+10 to maximum Life"
+		end
+
 		before_each(function()
 			build.characterLevel = 30
 			build.characterLevelAutoMode = false
@@ -762,7 +899,7 @@ describe("AI chat tab guided flow", function()
 
 		it("offers the items the character can wear and tells the player what was left out", function()
 			propose({
-				{ type = "equip_item", slot = "Weapon 1", raw = rareItem("Too Big", "Thicket Bow") },
+				{ type = "equip_item", slot = "Weapon 1", raw = uniqueItem("Too Big", "Thicket Bow") },
 				{ type = "equip_item", slot = "Ring 1", raw = rareItem("Just Right", "Coral Ring") },
 			})
 
@@ -775,8 +912,19 @@ describe("AI chat tab guided flow", function()
 			assert.is_truthy(note.text:find("Left out", 1, true))
 		end)
 
+		it("offers a rare above the level with a base the character can wear", function()
+			propose({ { type = "equip_item", slot = "Weapon 1", raw = rareItem("Storm Bite", "Thicket Bow") } })
+
+			assert.are.equal(1, #chat.pendingActions)
+			assert.is_nil(chat.pendingActions[1].raw:find("Thicket Bow", 1, true))
+			assert.is_true(chat.controls.applyActions.shown)
+			assert.is_truthy(chat.messages[#chat.messages].text:find("Changed the base", 1, true))
+			local snapshot = assert(build:SaveDB("fit"))
+			assert.is_true(bridge:PreflightActions(build, chat.pendingActions, snapshot).ok)
+		end)
+
 		it("hides Apply when nothing in the proposal is usable", function()
-			propose({ { type = "equip_item", slot = "Weapon 1", raw = rareItem("Too Big", "Thicket Bow") } })
+			propose({ { type = "equip_item", slot = "Weapon 1", raw = uniqueItem("Too Big", "Thicket Bow") } })
 
 			assert.is_nil(chat.pendingActions)
 			assert.is_false(chat.controls.applyActions.shown)

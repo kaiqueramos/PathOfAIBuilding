@@ -43,6 +43,7 @@ local MIN_TOKENS_FALLBACK = 2048
 AIBridge.HISTORY_CHAR_BUDGET = HISTORY_CHAR_BUDGET
 
 local CONTEXT_SCOPE_ORDER = { "gems", "uniques", "tree", "config" }
+local CONTEXT_ALREADY_INCLUDED = "Requested context is already included"
 local CONTEXT_SCOPE_DESCRIPTIONS = {
 	gems = "gem catalog and simulated support-gem DPS upgrades",
 	uniques = "unique catalog, item bases, and simulated DPS/EHP upgrades",
@@ -2800,7 +2801,7 @@ function AIBridge:ValidateContextScopes(scopes, currentContext)
 		end
 	end
 	if #normalized == 0 then
-		return nil, "Requested context is already included"
+		return nil, CONTEXT_ALREADY_INCLUDED
 	end
 	return normalized
 end
@@ -3344,7 +3345,7 @@ keystone unless the player explicitly requested it.
 
 Once passivePlanApplied is true (or in advisor mode), the player may ask for:
 - Complementary skills (auras, curses/marks, guard skills, movement skills, secondary setups): propose add_skill actions using exact canonical gem names from state.reference.gemNames (request "gems" context if omitted).
-- Recommended gear/items: explain best-in-slot starter uniques and rare stat priorities per slot, and propose equip_item actions with valid PoB item raw text when helpful. The raw text has the lines Rarity, then the item NAME, then the base type, then Implicits: N, then the mods (for example Rarity: RARE\nDoom Bite\nCrystal Wand\nImplicits: 0\n+50 to maximum Life). A rare always needs both a name line and a base-type line. Use only these slot names: Weapon 1, Weapon 2 (shield, quiver or second one-handed weapon), Helmet, Body Armour, Gloves, Boots, Amulet, Ring 1, Ring 2, Belt. Only propose items whose level requirement is at most the character level (state.meta.level) and base types that exist in PoB. Leave out anything the character could not wear yet instead of listing it as a later goal.
+- Recommended gear/items: explain best-in-slot starter uniques and rare stat priorities per slot, and propose equip_item actions with valid PoB item raw text when helpful. The raw text has the lines Rarity, then the item NAME, then the base type, then Implicits: N, then the mods (for example Rarity: RARE\nDoom Bite\nCrystal Wand\nImplicits: 0\n+50 to maximum Life). A rare always needs both a name line and a base-type line. Use only these slot names: Weapon 1, Weapon 2 (shield, quiver or second one-handed weapon), Helmet, Body Armour, Gloves, Boots, Amulet, Ring 1, Ring 2, Belt. Only propose items whose level requirement is at most the character level (state.meta.level) and base types that exist in PoB. Leave out anything the character could not wear yet instead of listing it as a later goal. When the main skill is an attack and Weapon 1 is empty, start with a weapon that skill can use (a bow for a bow skill), then the other slots.
 - Playstyle & leveling guide: provide skill rotation, single-target vs clear combo, aura/curse usage, defensive layers, and leveling progression.
 
 The simulated uniqueShortlist is a preselected sample, not an exhaustive proof about every
@@ -3662,6 +3663,16 @@ complete <actions> block for the requested change; never assume the previous pro
 				local missingScopes, scopeError =
 					self:ValidateContextScopes(requestedScopes, currentContext)
 				if not missingScopes then
+					if scopeError == CONTEXT_ALREADY_INCLUDED then
+						-- The state already carries what the model asked for, so a second request costs the
+						-- player nothing but a retry. Ask again with a note and no further context requests.
+						currentState.context = currentState.context or { }
+						currentState.context.escalationRemaining = 0
+						currentState.context.notice = "The context you asked for is already included in this state. "
+							.. "Do not request context again: answer from it and state any limitation."
+						sendRequest(currentState, currentContext, expansionsUsed + 1, tokenBudget)
+						return
+					end
 					fail("Invalid AI context request: " .. scopeError)
 					return
 				end
@@ -3884,6 +3895,17 @@ function AIBridge:ParseActions(content)
 
 	local block = content:match(ACTION_BLOCK_PATTERN)
 	local actions, nextPosition, decodeError = dkjson.decode(block, 1, dkjson.null)
+	if decodeError then
+		-- Models sometimes forget the closing bracket of the array. Adding it is safe: the result still has
+		-- to pass the full validation, and an item that was cut off in the middle still fails to parse.
+		local trimmed = block:gsub("^%s+", ""):gsub("%s+$", "")
+		if trimmed:sub(1, 1) == "[" and trimmed:sub(-1) == "}" then
+			local repaired, repairedPosition, repairedError = dkjson.decode(trimmed .. "]", 1, dkjson.null)
+			if not repairedError and type(repaired) == "table" then
+				block, actions, nextPosition, decodeError = trimmed .. "]", repaired, repairedPosition, nil
+			end
+		end
+	end
 	if decodeError or type(actions) ~= "table"
 		or type(nextPosition) ~= "number" or block:sub(nextPosition):find("%S") then
 		return displayText, nil, "AI returned an invalid action block"
@@ -4813,38 +4835,124 @@ function AIBridge:ActionEquipItem(build, action)
 	return true, "Equipped " .. (item.name or item.baseName) .. " in " .. slotName
 end
 
---- Items whose level requirement is above the character level cannot be worn, and PoB would still
---- count their stats. They are left out of a proposal, with a note for the player.
+--- Best base that a character of this level can wear in place of `baseName`: the same item type and
+--- kind, the same attribute requirements and the highest level that is not above the character level.
+-- @return string|nil base name, number|nil its level requirement
+local function findWearableBase(baseName, characterLevel)
+	local base = data.itemBases[baseName]
+	if not base then
+		return nil
+	end
+	local function attributes(candidate)
+		local req = candidate.req or { }
+		return (req.str and req.str > 0 and "S" or "-")
+			.. (req.dex and req.dex > 0 and "D" or "-")
+			.. (req.int and req.int > 0 and "I" or "-")
+	end
+	local wanted = attributes(base)
+	local bestName, bestLevel
+	for name, candidate in pairs(data.itemBases) do
+		local level = candidate.req and candidate.req.level
+		if type(level) == "number" and level <= characterLevel and not candidate.hidden
+			and candidate.type == base.type and candidate.subType == base.subType
+			and attributes(candidate) == wanted
+			and (not bestLevel or level > bestLevel or (level == bestLevel and name < bestName)) then
+			bestName, bestLevel = name, level
+		end
+	end
+	return bestName, bestLevel
+end
+
+--- Rewrite a rare item so that it uses the best base this character level can wear. Uniques have
+--- fixed bases and a magic item's name embeds its base, so those are left alone.
+-- @return string|nil raw text, string|nil old base, string|nil new base, number|nil new base level
+local function rewriteRareBaseForLevel(raw, characterLevel)
+	local lines = { }
+	for line in (repairItemRaw(raw) .. "\n"):gmatch("([^\n]*)\n") do
+		t_insert(lines, line)
+	end
+	local rarity = (lines[1] or ""):match("^Rarity:%s*(%a+)")
+	if not rarity or rarity:upper() ~= "RARE" then
+		return nil
+	end
+	for index = 4, #lines do
+		local implicitCount = lines[index]:match("^Implicits:%s*(%d+)")
+		if implicitCount and tonumber(implicitCount) ~= 0 then
+			-- Its first mod lines are implicits of the old base, which the new base would not have.
+			return nil
+		end
+	end
+	local oldBase = ((lines[3] or ""):gsub("^%s+", ""):gsub("%s+$", ""))
+	local newBase, newLevel = findWearableBase(oldBase, characterLevel)
+	if not newBase or newBase == oldBase then
+		return nil
+	end
+	lines[3] = newBase
+	return table.concat(lines, "\n"), oldBase, newBase, newLevel
+end
+
+local function itemLevelRequirement(raw)
+	local parsedOk, item = pcall(function()
+		return new("Item"):Item(raw)
+	end)
+	if not parsedOk or not item or not item.baseName then
+		return nil, nil
+	end
+	return tonumber(item.requirements and item.requirements.level) or 0, item
+end
+
+--- An item whose level requirement is above the character level cannot be worn, yet PoB would
+--- still count its stats. A rare gets the best base the character can wear and keeps its mods;
+--- anything else is left out. The player is told about both.
 -- @param notes array that receives one line per kind of change
 -- @return table the actions to offer (the same table when nothing changed)
 function AIBridge:PruneItemsAboveLevel(build, actions, notes)
 	local level = math.floor(tonumber(build and build.characterLevel) or 100)
-	local kept, dropped = { }, { }
+	local kept, swapped, dropped = { }, { }, { }
 	for _, action in ipairs(actions) do
-		local dropLabel
+		local keep = action
 		if type(action) == "table" and action.type == "equip_item" and type(action.raw) == "string" then
-			local parsedOk, item = pcall(function()
-				return new("Item"):Item(repairItemRaw(action.raw))
-			end)
-			local required = parsedOk and item and item.baseName and item.requirements
-				and tonumber(item.requirements.level) or 0
-			if required > level then
-				dropLabel = string.format("%s (level %d)", tostring(item.name or item.baseName), math.floor(required))
+			local required, item = itemLevelRequirement(repairItemRaw(action.raw))
+			if required and required > level then
+				keep = nil
+				local title = tostring(item.title or item.name or item.baseName)
+				local raw, oldBase, newBase, newLevel = rewriteRareBaseForLevel(action.raw, level)
+				if raw then
+					local newRequired = itemLevelRequirement(raw)
+					if newRequired and newRequired <= level then
+						keep = { }
+						for key, value in pairs(action) do
+							keep[key] = value
+						end
+						keep.raw = raw
+						t_insert(swapped, string.format("%s: %s (level %d) -> %s (level %d)",
+							title, oldBase, math.floor(required), newBase, math.floor(newLevel)))
+					end
+				end
+				if not keep then
+					t_insert(dropped, string.format("%s (%s, level %d)", title, tostring(item.baseName), math.floor(required)))
+				end
 			end
 		end
-		if dropLabel then
-			t_insert(dropped, dropLabel)
-		else
-			t_insert(kept, action)
+		if keep then
+			t_insert(kept, keep)
 		end
 	end
-	if #dropped == 0 then
+	if #swapped == 0 and #dropped == 0 then
 		return actions
 	end
-	t_insert(notes, string.format(
-		"Left out %d item(s) that need a higher level than your character (level %d): %s. Raise the level or ask for lower-level gear.",
-		#dropped, level, table.concat(dropped, ", ")
-	))
+	if #swapped > 0 then
+		t_insert(notes, string.format(
+			"Changed the base of %d item(s) that need a higher level than your character (level %d), keeping their mods: %s.",
+			#swapped, level, table.concat(swapped, "; ")
+		))
+	end
+	if #dropped > 0 then
+		t_insert(notes, string.format(
+			"Left out %d item(s) that need a higher level than your character (level %d): %s. Raise the level or ask for lower-level gear.",
+			#dropped, level, table.concat(dropped, "; ")
+		))
+	end
 	return kept
 end
 
