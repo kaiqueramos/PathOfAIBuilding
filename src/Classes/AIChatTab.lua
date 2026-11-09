@@ -650,6 +650,16 @@ function AIChatTabClass:SendRequest(text, requestOptions)
 				self.planningSession = storedPlanningSession
 			end
 			local planningState = self.planningSession and self.planningSession.state or "idle"
+			-- Offer only what this build can use: no items above its level, no skills its mana cannot carry.
+			local proposalNotes
+			if actions and #actions > 0 and not brief
+				and planningState ~= "foundation_pending" and planningState ~= "tree_pending" then
+				local fitted, notes = AIBridge:FitProposalToBuild(self.build, actions)
+				actions = #fitted > 0 and fitted or nil
+				if #notes > 0 then
+					proposalNotes = table.concat(notes, "\n")
+				end
+			end
 			self.pendingActions = actions
 			self.pendingActionsFingerprint = actions and #actions > 0 and responseFingerprint or nil
 			self.controls.applyActions.shown = (actions ~= nil and #actions > 0)
@@ -708,6 +718,9 @@ function AIChatTabClass:SendRequest(text, requestOptions)
 			-- Transliterate only the display text.
 			local cleanDisplay = translit(displayText)
 			self:StartStream(cleanDisplay)
+			if proposalNotes then
+				self:AddMessage("system", "^7" .. translit(proposalNotes))
+			end
 			if requestOptions and requestOptions.saveGuideToNotes then
 				if self.build and self.build.notesTab and self.build.notesTab.controls and self.build.notesTab.controls.edit then
 					local existingNotes = self.build.notesTab.controls.edit.buf or ""

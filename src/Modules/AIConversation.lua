@@ -226,6 +226,16 @@ function AIConversation:ParseTurnOrAnswer(content)
 	if turn or not turnError then
 		return displayText, turn, turnError
 	end
+	if turnError == "Clarify turn requires a question id and prompt"
+		or (turnError and turnError:find("^Clarify question options")) then
+		-- The model asked in prose and left the structured question out. The reply still reads as a
+		-- question, and the player's answer reaches the model through the conversation history.
+		return displayText, {
+			next = "answer",
+			goal = "ask the player",
+			reason = "the question was not structured",
+		}, nil
+	end
 	if turnError == "AI response is missing a turn block" then
 		local lower = content:lower()
 		if not lower:find("<actions", 1, true) and not lower:find("</actions", 1, true)

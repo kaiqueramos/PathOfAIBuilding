@@ -3344,7 +3344,7 @@ keystone unless the player explicitly requested it.
 
 Once passivePlanApplied is true (or in advisor mode), the player may ask for:
 - Complementary skills (auras, curses/marks, guard skills, movement skills, secondary setups): propose add_skill actions using exact canonical gem names from state.reference.gemNames (request "gems" context if omitted).
-- Recommended gear/items: explain best-in-slot starter uniques and rare stat priorities per slot, and propose equip_item actions with valid PoB item raw text (e.g. Rarity: RARE\nName\nBase\nImplicits: 0\n+50 to maximum Life\n+35% to Fire Resistance) when helpful.
+- Recommended gear/items: explain best-in-slot starter uniques and rare stat priorities per slot, and propose equip_item actions with valid PoB item raw text when helpful. The raw text has the lines Rarity, then the item NAME, then the base type, then Implicits: N, then the mods (for example Rarity: RARE\nDoom Bite\nCrystal Wand\nImplicits: 0\n+50 to maximum Life). A rare always needs both a name line and a base-type line. Use only these slot names: Weapon 1, Weapon 2 (shield, quiver or second one-handed weapon), Helmet, Body Armour, Gloves, Boots, Amulet, Ring 1, Ring 2, Belt. Only propose items whose level requirement is at most the character level (state.meta.level) and base types that exist in PoB. Leave out anything the character could not wear yet instead of listing it as a later goal.
 - Playstyle & leveling guide: provide skill rotation, single-target vs clear combo, aura/curse usage, defensive layers, and leveling progression.
 
 The simulated uniqueShortlist is a preselected sample, not an exhaustive proof about every
@@ -4670,6 +4670,79 @@ function AIBridge:ExecuteAction(build, action)
 	end
 end
 
+-- Names that models use for the equipment slots, mapped to PoB's slot names.
+local SLOT_ALIASES = {
+	["quiver"] = "Weapon 2",
+	["shield"] = "Weapon 2",
+	["off hand"] = "Weapon 2",
+	["off-hand"] = "Weapon 2",
+	["offhand"] = "Weapon 2",
+	["offhand 1"] = "Weapon 2",
+	["main hand"] = "Weapon 1",
+	["main-hand"] = "Weapon 1",
+	["mainhand"] = "Weapon 1",
+	["mainhand 1"] = "Weapon 1",
+	["weapon"] = "Weapon 1",
+	["ring"] = "Ring 1",
+	["body"] = "Body Armour",
+	["body armor"] = "Body Armour",
+	["chest"] = "Body Armour",
+	["head"] = "Helmet",
+	["helm"] = "Helmet",
+	["hands"] = "Gloves",
+	["glove"] = "Gloves",
+	["feet"] = "Boots",
+	["boot"] = "Boots",
+	["neck"] = "Amulet",
+	["waist"] = "Belt",
+}
+
+--- Map the slot that a proposal names to one of the build's item slots, or nil when it names none.
+local function resolveItemSlot(itemsTab, slotName)
+	if type(slotName) ~= "string" then
+		return nil
+	end
+	local slots = itemsTab and itemsTab.slots
+	if type(slots) ~= "table" then
+		return nil
+	end
+	if slots[slotName] then
+		return slotName
+	end
+	local wanted = slotName:lower():gsub("^%s+", ""):gsub("%s+$", "")
+	for name in pairs(slots) do
+		if type(name) == "string" and name:lower() == wanted then
+			return name
+		end
+	end
+	local alias = SLOT_ALIASES[wanted]
+	if alias and slots[alias] then
+		return alias
+	end
+	return nil
+end
+
+--- Models often drop the name line of a rare item and write the base type there. PoB reads the
+--- second line as the name and the third as the base, so such an item would be rejected.
+local function repairItemRaw(raw)
+	local lines = { }
+	for line in (raw .. "\n"):gmatch("([^\n]*)\n") do
+		t_insert(lines, line)
+	end
+	local rarity = (lines[1] or ""):match("^Rarity:%s*(%a+)")
+	rarity = rarity and rarity:upper()
+	if rarity ~= "RARE" and rarity ~= "UNIQUE" then
+		return raw
+	end
+	local second = (lines[2] or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	local third = (lines[3] or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	if data.itemBases[second] and not data.itemBases[third] then
+		t_insert(lines, 2, "AI " .. second)
+		return table.concat(lines, "\n")
+	end
+	return raw
+end
+
 --- Equip an item from its raw string into the appropriate slot
 function AIBridge:ActionEquipItem(build, action)
 	local raw = action.raw
@@ -4683,38 +4756,240 @@ function AIBridge:ActionEquipItem(build, action)
 	end
 
 	-- Create the item from raw text
-	local item = new("Item"):Item(raw)
+	local item = new("Item"):Item(repairItemRaw(raw))
 	if not item or not item.baseName then
 		local lines = { }
 		for line in (raw .. "\n"):gmatch("([^\n]*)\n") do
 			t_insert(lines, line)
 		end
 		local rarity = (lines[1] or ""):match("^Rarity:%s*(%a+)")
+		rarity = rarity and rarity:upper()
 		local baseLine = (rarity == "NORMAL" or rarity == "MAGIC") and lines[2] or lines[3]
+		if baseLine and baseLine:match("^Implicits:") then
+			baseLine = lines[2]
+		end
 		return false, string.format(
 			"Invalid item data: PoB has no item base named '%s'. Ask for the gear again.",
 			tostring(baseLine or lines[1] or ""):sub(1, 60)
 		)
 	end
 
-	-- Determine slot: explicit or auto-detect from item type
-	local slotName = action.slot or item:GetPrimarySlot()
-	if not slotName then
-		return false, "Cannot determine slot for item: " .. (item.name or "unknown")
-	end
-
-	-- Validate slot exists
-	if not itemsTab.slots[slotName] then
-		return false, "Invalid slot: " .. slotName
+	-- Determine slot: the one named (including the usual alternative names) or the item's own
+	local slotName
+	if action.slot then
+		slotName = resolveItemSlot(itemsTab, action.slot)
+		if not slotName then
+			return false, "Invalid slot: " .. tostring(action.slot)
+		end
+	else
+		slotName = item:GetPrimarySlot()
+		if not slotName then
+			return false, "Cannot determine slot for item: " .. (item.name or "unknown")
+		end
+		if not itemsTab.slots[slotName] then
+			return false, "Invalid slot: " .. slotName
+		end
 	end
 
 	-- Add and equip
 	itemsTab:AddItem(item, true)
 	itemsTab.slots[slotName]:SetSelItemId(item.id)
 	itemsTab:PopulateSlots()
+	if itemsTab.slots[slotName].selItemId ~= item.id then
+		-- PoB empties a slot that cannot hold the item, such as a quiver without a bow in Weapon 1.
+		if itemsTab.DeleteItem then
+			itemsTab:DeleteItem(item, true)
+			itemsTab:PopulateSlots()
+		end
+		return false, string.format(
+			"%s does not fit in %s with the gear already equipped%s",
+			tostring(item.name or item.baseName),
+			slotName,
+			slotName:find("^Weapon 2") and " (a quiver needs a bow in Weapon 1, so equip the weapon first)" or ""
+		)
+	end
 	itemsTab:AddUndoState()
 
 	return true, "Equipped " .. (item.name or item.baseName) .. " in " .. slotName
+end
+
+--- Items whose level requirement is above the character level cannot be worn, and PoB would still
+--- count their stats. They are left out of a proposal, with a note for the player.
+-- @param notes array that receives one line per kind of change
+-- @return table the actions to offer (the same table when nothing changed)
+function AIBridge:PruneItemsAboveLevel(build, actions, notes)
+	local level = math.floor(tonumber(build and build.characterLevel) or 100)
+	local kept, dropped = { }, { }
+	for _, action in ipairs(actions) do
+		local dropLabel
+		if type(action) == "table" and action.type == "equip_item" and type(action.raw) == "string" then
+			local parsedOk, item = pcall(function()
+				return new("Item"):Item(repairItemRaw(action.raw))
+			end)
+			local required = parsedOk and item and item.baseName and item.requirements
+				and tonumber(item.requirements.level) or 0
+			if required > level then
+				dropLabel = string.format("%s (level %d)", tostring(item.name or item.baseName), math.floor(required))
+			end
+		end
+		if dropLabel then
+			t_insert(dropped, dropLabel)
+		else
+			t_insert(kept, action)
+		end
+	end
+	if #dropped == 0 then
+		return actions
+	end
+	t_insert(notes, string.format(
+		"Left out %d item(s) that need a higher level than your character (level %d): %s. Raise the level or ask for lower-level gear.",
+		#dropped, level, table.concat(dropped, ", ")
+	))
+	return kept
+end
+
+local function isResourceFailure(message)
+	message = tostring(message)
+	return message:find("Insufficient unreserved", 1, true) ~= nil or message:find("Cannot afford", 1, true) ~= nil
+end
+
+--- True when an add_skill action reserves mana or life, which is what makes a batch unaffordable.
+local function addSkillReserves(build, action)
+	if action.type ~= "add_skill" or type(action.gems) ~= "table" then
+		return false
+	end
+	for _, gem in ipairs(action.gems) do
+		local name = type(gem) == "table" and gem.name or gem
+		local gemData = type(name) == "string" and findGemDataByName(build, name)
+		local skillTypes = gemData and gemData.grantedEffect and gemData.grantedEffect.skillTypes
+		if skillTypes and SkillType and skillTypes[SkillType.HasReservation] then
+			return true
+		end
+	end
+	return false
+end
+
+--- Leave out the last skills of a batch until the unreserved mana and life carry the rest.
+--- A batch that the build cannot afford is rejected whole at apply time, so this keeps what fits.
+-- @param notes array that receives one line when something was left out
+-- @return table the actions to offer (the same table when nothing changed)
+function AIBridge:FitSkillBatchToResources(build, actions, notes)
+	local hasSkill = false
+	for _, action in ipairs(actions) do
+		if type(action) == "table" and action.type == "add_skill" then
+			hasSkill = true
+			break
+		end
+	end
+	if not hasSkill then
+		return actions
+	end
+	local snapshotOk, snapshot = pcall(build.SaveDB, build, "AI skill batch fit")
+	if not snapshotOk or not isNonEmptyString(snapshot) then
+		return actions
+	end
+
+	local current, dropped = { }, { }
+	for _, action in ipairs(actions) do
+		t_insert(current, action)
+	end
+	local fits = false
+	for _ = 1, #actions do
+		local report = self:PreflightActions(build, current, snapshot)
+		if report.ok then
+			fits = true
+			break
+		end
+		local failure = report.results and report.results[1]
+		if not failure or not isResourceFailure(failure.msg) then
+			return actions
+		end
+		-- Reservation skills go first, the last proposed first. Another skill goes only when none is left.
+		local victim
+		for index = #current, 1, -1 do
+			if addSkillReserves(build, current[index]) then
+				victim = index
+				break
+			end
+		end
+		if not victim then
+			for index = #current, 1, -1 do
+				if current[index].type == "add_skill" then
+					victim = index
+					break
+				end
+			end
+		end
+		if not victim then
+			return actions
+		end
+		local label = current[victim].label
+		if not isNonEmptyString(label) then
+			local first = current[victim].gems and current[victim].gems[1]
+			label = type(first) == "table" and first.name or first or "a skill"
+		end
+		t_insert(dropped, tostring(label))
+		table.remove(current, victim)
+	end
+	if not fits or #dropped == 0 then
+		return actions
+	end
+	t_insert(notes, string.format(
+		"Left out %d skill(s) that do not fit your mana or life together with the rest: %s.",
+		#dropped, table.concat(dropped, ", ")
+	))
+	return current
+end
+
+--- A quiver or a second weapon is only valid once Weapon 1 holds a matching weapon, so the main
+--- weapon is moved ahead of it when the model listed them the other way round.
+local function putMainWeaponFirst(build, actions)
+	local itemsTab = build and build.itemsTab
+	local mainIndex, offIndex
+	for index, action in ipairs(actions) do
+		if type(action) == "table" and action.type == "equip_item" then
+			local slot = resolveItemSlot(itemsTab, action.slot)
+			if slot == "Weapon 1" and not mainIndex then
+				mainIndex = index
+			elseif slot == "Weapon 2" and not offIndex then
+				offIndex = index
+			end
+		end
+	end
+	if not mainIndex or not offIndex or offIndex > mainIndex then
+		return actions
+	end
+	local reordered = { }
+	for index, action in ipairs(actions) do
+		if index ~= offIndex then
+			t_insert(reordered, action)
+		end
+		if index == mainIndex then
+			t_insert(reordered, actions[offIndex])
+		end
+	end
+	return reordered
+end
+
+--- Make a proposal fit the build before it is offered: items above the character level and skills
+--- that the mana cannot carry are left out, and the player is told.
+-- @return table actions to offer, table notes (array of lines)
+function AIBridge:FitProposalToBuild(build, actions)
+	local notes = { }
+	if type(actions) ~= "table" then
+		return actions, notes
+	end
+	local ok, fitted = pcall(function()
+		local pruned = self:PruneItemsAboveLevel(build, putMainWeaponFirst(build, actions), notes)
+		if #pruned > 0 then
+			pruned = self:FitSkillBatchToResources(build, pruned, notes)
+		end
+		return pruned
+	end)
+	if not ok then
+		return actions, { }
+	end
+	return fitted, notes
 end
 
 --- Allocate a passive tree node by ID or name

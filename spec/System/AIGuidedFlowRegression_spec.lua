@@ -421,6 +421,219 @@ describe("AI item actions", function()
 	end)
 end)
 
+describe("AI gear proposals", function()
+	local bridge
+
+	local function levelThirty(className, level)
+		newBuild()
+		bridge = LoadModule("Modules/AIBridge")
+		build.characterLevel = level or 30
+		build.characterLevelAutoMode = false
+		build.spec:ResetNodes()
+		build.spec:SelectClass(assert(build.spec.tree.classNameMap[className or "Ranger"]))
+		build.spec:BuildAllDependsAndPaths()
+		assert((bridge:RebuildBuild(build)))
+	end
+
+	local function rare(name, base, mod)
+		return "Rarity: RARE\n" .. name .. "\n" .. base .. "\nImplicits: 0\n" .. (mod or "+10 to maximum Life")
+	end
+
+	describe("slot names", function()
+		it("accepts the names that models use for the off hand and the other slots", function()
+			levelThirty()
+			local cases = {
+				{ slot = "Main Hand", raw = rare("Wind Bite", "Composite Bow"), expect = "Weapon 1" },
+				{ slot = "Quiver", raw = rare("Wind Flight", "Two-Point Arrow Quiver"), expect = "Weapon 2" },
+				{ slot = "offhand 1", raw = rare("Wind Flight", "Two-Point Arrow Quiver"), expect = "Weapon 2" },
+				{ slot = "helm", raw = rare("Cold Hood", "Leather Cap"), expect = "Helmet" },
+				{ slot = "body armor", raw = rare("Cold Shroud", "Buckskin Tunic"), expect = "Body Armour" },
+				{ slot = "RING 2", raw = rare("Cold Loop", "Coral Ring"), expect = "Ring 2" },
+			}
+			for _, case in ipairs(cases) do
+				local ok, message = bridge:ActionEquipItem(build, { slot = case.slot, raw = case.raw })
+				assert.is_true(ok, case.slot .. ": " .. tostring(message))
+				assert.is_truthy(message:find("in " .. case.expect, 1, true), case.slot .. ": " .. message)
+				assert.is_true(build.itemsTab.slots[case.expect].selItemId > 0, case.slot)
+			end
+		end)
+
+		it("does not report a quiver as equipped while Weapon 1 has no bow", function()
+			levelThirty("Ranger", 60)
+			local ok, message = bridge:ActionEquipItem(build, { slot = "Quiver", raw = rare("Wind Flight", "Two-Point Arrow Quiver") })
+			assert.is_false(ok)
+			assert.is_truthy(message:find("Weapon 1", 1, true))
+			assert.is_nil(next(build.itemsTab.items))
+			assert.are.equal(0, build.itemsTab.slots["Weapon 2"].selItemId)
+		end)
+
+		it("moves the main weapon ahead of the quiver in a proposal", function()
+			levelThirty("Ranger", 60)
+			local quiver = { type = "equip_item", slot = "Quiver", raw = rare("Wind Flight", "Two-Point Arrow Quiver") }
+			local bow = { type = "equip_item", slot = "Weapon 1", raw = rare("Wind Bite", "Composite Bow") }
+			local fitted, notes = bridge:FitProposalToBuild(build, { quiver, bow })
+
+			assert.are.equal(0, #notes)
+			assert.are.equal(bow, fitted[1])
+			assert.are.equal(quiver, fitted[2])
+			local snapshot = assert(build:SaveDB("order"))
+			assert.is_true(bridge:PreflightActions(build, fitted, snapshot).ok)
+		end)
+
+		it("keeps a proposal that already lists the weapon first", function()
+			levelThirty("Ranger", 60)
+			local quiver = { type = "equip_item", slot = "Weapon 2", raw = rare("Wind Flight", "Two-Point Arrow Quiver") }
+			local bow = { type = "equip_item", slot = "Weapon 1", raw = rare("Wind Bite", "Composite Bow") }
+			local actions = { bow, quiver }
+			local fitted = bridge:FitProposalToBuild(build, actions)
+			assert.are.equal(actions, fitted)
+		end)
+
+		it("still rejects a slot that does not exist", function()
+			levelThirty()
+			local ok, message = bridge:ActionEquipItem(build, { slot = "Pocket", raw = rare("Wind Loop", "Coral Ring") })
+			assert.is_false(ok)
+			assert.is_truthy(message:find("Invalid slot: Pocket", 1, true))
+			assert.is_nil(next(build.itemsTab.items))
+		end)
+	end)
+
+	describe("item text", function()
+		it("repairs a rare that is missing its name line", function()
+			levelThirty("Witch")
+			local ok, message = bridge:ActionEquipItem(build, {
+				slot = "Weapon 1",
+				raw = "Rarity: RARE\nCrystal Wand\nImplicits: 0\n+10 to maximum Life",
+			})
+			assert.is_true(ok, tostring(message))
+			assert.is_truthy(message:find("Crystal Wand", 1, true))
+		end)
+
+		it("keeps a rare that has both lines unchanged", function()
+			levelThirty("Witch")
+			local ok, message = bridge:ActionEquipItem(build, { slot = "Weapon 1", raw = rare("Doom Bite", "Crystal Wand") })
+			assert.is_true(ok, tostring(message))
+			assert.is_truthy(message:find("Doom Bite", 1, true))
+		end)
+	end)
+
+	describe("items above the character level", function()
+		it("leaves out what the character cannot wear and says so", function()
+			levelThirty()
+			local actions = {
+				{ type = "equip_item", slot = "Weapon 1", raw = rare("Too Big", "Thicket Bow") },
+				{ type = "equip_item", slot = "Ring 1", raw = rare("Just Right", "Coral Ring") },
+			}
+			local notes = {}
+			local kept = bridge:PruneItemsAboveLevel(build, actions, notes)
+			assert.are.equal(1, #kept)
+			assert.are.equal("Ring 1", kept[1].slot)
+			assert.are.equal(1, #notes)
+			assert.is_truthy(notes[1]:find("Too Big", 1, true))
+			assert.is_truthy(notes[1]:find("level 56", 1, true))
+		end)
+
+		it("returns the same table when every item fits", function()
+			levelThirty()
+			local actions = { { type = "equip_item", slot = "Weapon 1", raw = rare("Light Bow", "Composite Bow") } }
+			local notes = {}
+			assert.are.equal(actions, bridge:PruneItemsAboveLevel(build, actions, notes))
+			assert.are.equal(0, #notes)
+		end)
+	end)
+
+	describe("skills that the mana cannot carry", function()
+		local function witchWithFireball()
+			levelThirty("Witch")
+			assert.is_true((bridge:ActionAddSkill(build, { label = "Main", gems = { "Fireball" } })))
+			assert.is_true((bridge:ActionSetMainSkill(build, { name = "Main" })))
+			assert((bridge:RebuildBuild(build)))
+		end
+
+		it("keeps the reservations that fit and drops the last ones", function()
+			witchWithFireball()
+			local actions = {
+				{ type = "add_skill", label = "Hatred", gems = { "Hatred" } },
+				{ type = "add_skill", label = "Anger", gems = { "Anger" } },
+				{ type = "add_skill", label = "Wrath", gems = { "Wrath" } },
+			}
+			local snapshot = assert(build:SaveDB("fit"))
+			assert.is_false(bridge:PreflightActions(build, actions, snapshot).ok)
+
+			local notes = {}
+			local fitted = bridge:FitSkillBatchToResources(build, actions, notes)
+
+			assert.is_true(#fitted >= 1 and #fitted < 3)
+			assert.are.equal("Hatred", fitted[1].label)
+			assert.is_true(bridge:PreflightActions(build, fitted, snapshot).ok)
+			assert.are.equal(1, #notes)
+			assert.is_truthy(notes[1]:find("Left out", 1, true))
+			assert.is_truthy(notes[1]:find("Wrath", 1, true))
+		end)
+
+		it("returns the same table when everything fits", function()
+			witchWithFireball()
+			local actions = { { type = "add_skill", label = "A", gems = { "Hatred" } } }
+			local notes = {}
+			assert.are.equal(actions, bridge:FitSkillBatchToResources(build, actions, notes))
+			assert.are.equal(0, #notes)
+		end)
+
+		it("leaves a batch alone when it fails for another reason", function()
+			witchWithFireball()
+			local actions = { { type = "add_skill", label = "A", gems = { "Definitely Not A Gem" } } }
+			local notes = {}
+			assert.are.equal(actions, bridge:FitSkillBatchToResources(build, actions, notes))
+			assert.are.equal(0, #notes)
+		end)
+
+		it("fits a whole proposal in one call", function()
+			witchWithFireball()
+			local actions = {
+				{ type = "equip_item", slot = "Ring 1", raw = rare("Cold Loop", "Coral Ring") },
+				{ type = "equip_item", slot = "Amulet", raw = rare("Too Big", "Agate Amulet") },
+				{ type = "add_skill", label = "A", gems = { "Hatred" } },
+				{ type = "add_skill", label = "B", gems = { "Anger" } },
+				{ type = "add_skill", label = "C", gems = { "Wrath" } },
+			}
+			local fitted, notes = bridge:FitProposalToBuild(build, actions)
+			assert.is_true(#fitted < #actions)
+			assert.is_true(#notes >= 1)
+			local snapshot = assert(build:SaveDB("fit"))
+			assert.is_true(bridge:PreflightActions(build, fitted, snapshot).ok)
+		end)
+	end)
+end)
+
+describe("AI turn parsing of unstructured questions", function()
+	it("keeps the prose of a clarify turn that has no question", function()
+		local conversation = LoadModule("Modules/AIConversation")
+		local text, turn, err = conversation:ParseTurnOrAnswer(
+			'<turn>{"next":"clarify","goal":"pick a minion","reason":"it decides the tree"}</turn>\n\nWhich minion?\n- Zombies\n- Skeletons'
+		)
+		assert.is_nil(err)
+		assert.are.equal("answer", turn.next)
+		assert.is_truthy(text:find("Which minion?", 1, true))
+		assert.is_nil(text:find("<turn", 1, true))
+	end)
+
+	it("keeps the prose of a clarify turn whose options are malformed", function()
+		local conversation = LoadModule("Modules/AIConversation")
+		local _, turn, err = conversation:ParseTurnOrAnswer(
+			'Pick one.\n<turn>{"next":"clarify","goal":"g","reason":"r","question":{"id":"q","prompt":"Which?","options":5}}</turn>'
+		)
+		assert.is_nil(err)
+		assert.are.equal("answer", turn.next)
+	end)
+
+	it("still rejects other damaged turn blocks", function()
+		local conversation = LoadModule("Modules/AIConversation")
+		local _, turn, err = conversation:ParseTurnOrAnswer('Text <turn>{"next":"fly","goal":"g","reason":"r"}</turn>')
+		assert.is_nil(turn)
+		assert.is_truthy(err)
+	end)
+end)
+
 describe("AI chat tab guided flow", function()
 	local chat, bridge, planning
 
@@ -515,6 +728,69 @@ describe("AI chat tab guided flow", function()
 			assert(ok, err)
 
 			assert.are.same({ "Fireball", "Arc", "Choose the best option for me", "4" }, answers)
+		end)
+	end)
+
+	describe("proposals", function()
+		local function propose(actions)
+			local conversation = LoadModule("Modules/AIConversation")
+			local originalAsk = bridge.Ask
+			bridge.Ask = function(_, _, _, callback, _, _, session, planningSession)
+				local fingerprint = assert(bridge:GetBuildFingerprint(build))
+				assert(conversation:BeginRequest(session, fingerprint))
+				local turn = { next = "proposal", goal = "gear", reason = "validated proposal" }
+				assert(conversation:ApplyTurn(session, turn, fingerprint))
+				callback("Here is the gear.\n<actions>" .. assert(dkjson.encode(actions)) .. "</actions>", nil, fingerprint, turn, nil, planningSession)
+			end
+			local ok, err = pcall(function()
+				chat:SendMessage("Recommend gear")
+				chat:FinishStream()
+			end)
+			bridge.Ask = originalAsk
+			assert(ok, err)
+		end
+
+		local function rareItem(name, base)
+			return "Rarity: RARE\n" .. name .. "\n" .. base .. "\nImplicits: 0\n+10 to maximum Life"
+		end
+
+		before_each(function()
+			build.characterLevel = 30
+			build.characterLevelAutoMode = false
+			assert((bridge:RebuildBuild(build)))
+		end)
+
+		it("offers the items the character can wear and tells the player what was left out", function()
+			propose({
+				{ type = "equip_item", slot = "Weapon 1", raw = rareItem("Too Big", "Thicket Bow") },
+				{ type = "equip_item", slot = "Ring 1", raw = rareItem("Just Right", "Coral Ring") },
+			})
+
+			assert.are.equal(1, #chat.pendingActions)
+			assert.are.equal("Ring 1", chat.pendingActions[1].slot)
+			assert.is_true(chat.controls.applyActions.shown)
+			local note = chat.messages[#chat.messages]
+			assert.are.equal("system", note.role)
+			assert.is_truthy(note.text:find("Too Big", 1, true))
+			assert.is_truthy(note.text:find("Left out", 1, true))
+		end)
+
+		it("hides Apply when nothing in the proposal is usable", function()
+			propose({ { type = "equip_item", slot = "Weapon 1", raw = rareItem("Too Big", "Thicket Bow") } })
+
+			assert.is_nil(chat.pendingActions)
+			assert.is_false(chat.controls.applyActions.shown)
+			assert.is_truthy(chat.messages[#chat.messages].text:find("Left out", 1, true))
+		end)
+
+		it("shows a proposal that needs no change exactly as it came", function()
+			propose({ { type = "equip_item", slot = "Ring 1", raw = rareItem("Just Right", "Coral Ring") } })
+
+			assert.are.equal(1, #chat.pendingActions)
+			assert.is_true(chat.controls.applyActions.shown)
+			for _, message in ipairs(chat.messages) do
+				assert.is_nil((message.text or ""):find("Left out", 1, true))
+			end
 		end)
 	end)
 
