@@ -41,6 +41,7 @@ return {
 	["DivergentAdditionalAttackTotemsUnique__1"] = {
 	},
 	["DivergentAdditionalBaseCritUnique__1"] = {
+		"Veil of Flesh",
 	},
 	["DivergentAdditionalBlockChanceUniqueShieldDex2"] = {
 		"Crest of Perandus",
@@ -139,6 +140,7 @@ return {
 	["DivergentAttackSpeedChangedStanceUnique__1"] = {
 	},
 	["DivergentAttackSpeedIfUsedAttackMovementSkillRecentlyUnique__1"] = {
+		"Hide of the Vendigo",
 	},
 	["DivergentAttackSpeedOnFullLifeUniqueGlovesStr1"] = {
 		"Ondar's Clasp",
@@ -413,6 +415,7 @@ return {
 		"Replica Kalisa's Grace",
 	},
 	["DivergentDisplaySupportedByUnleashUnique__2"] = {
+		"Mantle of Dreams",
 	},
 	["DivergentDodgeAndSpellDodgePerMaximumManaUnique__1"] = {
 		"Omeyocan",
@@ -501,6 +504,7 @@ return {
 		"Starkonja's Head",
 	},
 	["DivergentEverySecondSpellcastUnique__1"] = {
+		"Ordered Fate",
 	},
 	["DivergentExcommunicateOnMeleeHitUnique"] = {
 		"Hand of Heresy",
@@ -749,6 +753,9 @@ return {
 	},
 	["DivergentIronWillUniqueGlovesStrInt4__"] = {
 		"Repentance",
+	},
+	["DivergentItemActsAsConcentratedAOESupportUnique__1"] = {
+		"Wyrmsign",
 	},
 	["DivergentItemFoundRarityIncreaseUniqueBodyStr5"] = {
 		"Greed's Embrace",
@@ -1254,6 +1261,12 @@ return {
 	},
 	["DivergentSocketedGemQualityUnique__1"] = {
 		"Crest of Desire",
+	},
+	["DivergentSocketedGemsGetElementalProliferationUniqueBodyInt5"] = {
+		"Thousand Ribbons",
+	},
+	["DivergentSocketedGemsHaveAddedChaosDamageUnique__3"] = {
+		"The Covenant",
 	},
 	["DivergentSocketedGemsHaveReducedManaCostUniqueHelmetDexInt5"] = {
 		"The Vertex",
